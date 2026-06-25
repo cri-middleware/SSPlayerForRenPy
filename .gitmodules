@@ -1,0 +1,4 @@
+[submodule "SpriteStudio-SDK"]
+	path = SpriteStudio-SDK
+	url = https://github.com/cri-middleware/SpriteStudio-SDK.git
+
