@@ -50,4 +50,5 @@ convert () { # <sspj-relative-to-sdk> <dest-abs>
 }
 convert "tests/overall/overall.sspj" "$GAME_DIR/sprites/overall"
 convert "tests/Ringo/Ringo.sspj"     "$GAME_DIR/sprites/Ringo"
-echo "deploy-examples.sh: done -> game/sprites/{overall,Ringo}/"
+convert "tests/ParticleEffect/ParticleEffect.sspj" "$GAME_DIR/sprites/ParticleEffect"
+echo "deploy-examples.sh: done -> game/sprites/{overall,Ringo,ParticleEffect}/"

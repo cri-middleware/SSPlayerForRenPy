@@ -44,4 +44,5 @@ function Convert-Project([string]$Sspj, [string]$Dest) {
 }
 Convert-Project "tests/overall/overall.sspj" (Join-Path $GameDir "sprites\overall")
 Convert-Project "tests/Ringo/Ringo.sspj"     (Join-Path $GameDir "sprites\Ringo")
-Write-Host "deploy-examples.ps1: done -> game\sprites\{overall,Ringo}\"
+Convert-Project "tests/ParticleEffect/ParticleEffect.sspj" (Join-Path $GameDir "sprites\ParticleEffect")
+Write-Host "deploy-examples.ps1: done -> game\sprites\{overall,Ringo,ParticleEffect}\"

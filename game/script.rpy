@@ -10,6 +10,8 @@ style text:
     font "SourceHanSansLite.ttf"
 
 init python:
+    import os
+
     # Sample packs. Basic exercises alpha / local-alpha; Effect and Instance
     # exercise the particle and nested-animation features; Ringo is a real
     # character (its Normal parts render; its Mesh-deform parts are not drawn
@@ -26,6 +28,12 @@ init python:
         ("sprites/overall", "Sound.ssab"),
         ("sprites/Ringo",   "Ringo.ssab"),                  # character (Mesh gap)
     ]
+
+    _fx_dir = os.path.join(renpy.config.gamedir, "sprites", "ParticleEffect")
+    if os.path.isdir(_fx_dir):
+        for f in sorted(os.listdir(_fx_dir)):
+            if f.endswith(".ssab"):
+                SS_DEMO_PACKS.append(("sprites/ParticleEffect", f))
 
     def ss_make(entry):
         # entry is (sprites_subdir, pack). The event-log overlay consumes events
@@ -106,7 +114,7 @@ screen ss_demo():
     add Solid("#2a2e36")
     add ss_current:
         xalign 0.5
-        yalign (0.75 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
+        yalign (0.95 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
 
     # Drain timeline events from the displayable's poll queue a few times a
     # second; the screen re-renders each tick to show the latest log.
@@ -132,7 +140,7 @@ screen ss_demo():
         hbox:
             spacing 18
             text "[SS_DEMO_PACKS[ss_index][1]] : [ss_current.animation]" size 20 color "#ffffff"
-            text "←/→ pack · ↑/↓ anim · Esc quit" size 16 color "#9aa0ab" yalign 0.5
+            text "< > pack | ^ v anim | Esc quit" size 16 color "#9aa0ab" yalign 0.5
 
     key "K_RIGHT" action Function(ss_switch, 1)
     key "K_LEFT" action Function(ss_switch, -1)
