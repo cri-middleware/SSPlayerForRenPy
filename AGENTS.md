@@ -75,6 +75,9 @@ build artifacts regenerated from the SDK by `scripts/`.
 | M0 wiring smoke test | `python3 tools/m0_smoke.py` (expects `draw_batches > 0`) |
 | M2 render-core check | `python3 tools/verify_m2.py` (geometry/colour/blend math) |
 | Timeline events check | `python3 tools/verify_events.py` (UserData/Signal/Audio decode + finished/looped) |
+| Instance parts check | `python3 tools/verify_instance.py` (nested child playback + external .ssab + matrix compose) |
+| Effect parts check | `python3 tools/verify_effect.py` (EffectDrawPlan decode → particle batches) |
+| Mesh(deform) check | `python3 tools/verify_mesh.py` (mesh SoA → deforming world geometry) |
 | Displayability audit | `python3 tools/analyze.py` |
 | Software-render a pack | `./.venv/bin/python tools/render_png.py <anim.ssab>` → `out/` |
 | In Ren'Py (visual) | The Ren'Py SDK is not in this repo and renders to a GUI; **ask the user to launch the project** to verify on-screen behavior. |
@@ -85,3 +88,14 @@ build artifacts regenerated from the SDK by `scripts/`.
   cold-start guide §5/§6.2 are wrong). `SSRuntime.update()` takes seconds, converts.
 - `DrawBatch.texture_hash` keys on `cellmap.name_hash` (not the image-path hash).
 - `parts_color`'s alpha is pre-composed; don't re-multiply by `PartState.alpha`.
+- **Ren'Py GL2 is premultiplied-alpha** (cf. built-in `renpy.alpha` shader). A
+  custom mesh shader must output `vec4(rgb*a, a)`, not `vec4(rgb, a)` — else
+  opacity never dims the part. For PartColor: un-premultiply → straight math →
+  re-premultiply.
+- **`PartState.alpha` already includes `local_alpha`** — use `ps.Alpha()` as the
+  final opacity; don't multiply by `ps.LocalAlpha()`.
+- **Effect (`EffectDrawPlan`) UVs are normalized 0..1**; Normal/Mesh-deform UVs
+  are texture-pixel (divide by atlas size). Don't normalize effect UVs.
+- `PartData.part_type` is a flatbuffers **union** (`PartTypeType()` discriminator
+  + `PartType()` value table); Instance/Effect refs live there. Mesh-deform parts
+  feed off the mesh SoA buffers (`ss_runtime_get_mesh_*`), not `FrameData`.

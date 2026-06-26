@@ -50,9 +50,9 @@ M1_RENDERABLE_KINDS = frozenset({KIND_NORMAL})
 
 MASK_INFLUENCE = 0x01  # DrawBatch.flags bit
 
-# SoA buffer strides (floats per part), mirroring the runtime's layout and the
-# Godot player's `constexpr int STRIDE = 10` (ss_internal_player.h). The local-
-# vertex and local-UV buffers share the same 10-float stride: 5 verts × 2 coords.
+# SoA buffer strides (floats per part), mirroring the runtime's layout. The
+# local-vertex and local-UV buffers share the same 10-float stride: 5 verts ×
+# 2 coords (LT, RT, LB, RB, CENTER).
 MATRIX_STRIDE = 16   # 4×4 world matrix, column-major
 VERT_STRIDE = 10     # local vertices: LT,RT,LB,RB,CENTER × (x, y)
 UV_STRIDE = 10       # local UVs: same layout, in texture-pixel space
@@ -149,7 +149,7 @@ def normalize_uvs(uvs, tex_w, tex_h) -> list:
     """Convert texture-*pixel* UVs to texture-*normalized* UVs (``uv / texsize``).
 
     Pure math, engine-independent — the equivalent of the reference players'
-    ``uv * inv_tex_size`` (Godot ``ss_internal_player.cpp:1762``). Results may
+    ``uv * inv_tex_size`` UV normalize. Results may
     fall outside ``[0, 1]`` for UV-scaled / -translated / -rotated parts; the
     consumer must sample with **REPEAT** wrap (not clamp) to reproduce them — the
     runtime has already baked ``UvScale``/``UvTranslation``/``UvRotation`` into
@@ -179,14 +179,70 @@ class _NormalPart:
     src_rect: tuple          # (left, top, w, h)
 
 
+def _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask):
+    """Build a :class:`_NormalPart` for part ``p`` from the SoA buffers.
+
+    The per-part SoA read shared by :func:`_iter_visible_normal_parts` and
+    :func:`iter_draw_plan`. Must run while the SoA pointers are still valid
+    (i.e. before the next Brain call).
+    """
+    mo = p * MATRIX_STRIDE
+    vo = p * VERT_STRIDE
+    uo = p * UV_STRIDE
+    co = p * CELL_STRIDE
+    mat = wm[mo:mo + MATRIX_STRIDE]
+    positions = [_transform(mat, lv[vo + j * 2], lv[vo + j * 2 + 1])
+                 for j in range(5)]   # LT, RT, LB, RB, CENTER
+    uvs = [(uv[uo + j * 2], uv[uo + j * 2 + 1]) for j in range(5)]
+    src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
+    return _NormalPart(
+        part_index=p, ps=ps, blend_type=blend, texture_hash=thash,
+        mask_influence=mask, positions=positions, uvs=uvs, src_rect=src_rect)
+
+
+def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
+    """Build a :class:`MeshPart` for a Mesh(deform) part from the mesh SoA.
+
+    Per docs/08 §4: vertices are pre-computed WORLD coords (``x``/``y`` SoA),
+    UVs are interleaved texture-pixel at ``vertex_offset*2``, indices are
+    part-local 0-based, and the offset arrays are CSR (length ``num_parts+1``).
+    Returns ``None`` for an empty/degenerate range (non-Mesh part, bad offsets).
+    Colour is the part's hierarchical alpha on white (Mesh ``parts_color`` is
+    Whole-only; per-part tint is a later refinement).
+    """
+    (mvx, nvx), (mvy, _nvy), (muv, nuv), (midx, ni), (voff, nvo), (ioff, nio) = mesh_soa
+    if not mvx or not voff or not ioff:
+        return None
+    if p + 1 >= nvo or p + 1 >= nio:
+        return None
+    v0, v1 = voff[p], voff[p + 1]
+    if v1 <= v0 or v1 > nvx or v1 * 2 > nuv:
+        return None
+    i0, i1 = ioff[p], ioff[p + 1]
+    if i1 <= i0 or (i1 - i0) % 3 != 0 or i1 > ni:
+        return None
+    n = v1 - v0
+    positions = [(mvx[v0 + k], mvy[v0 + k]) for k in range(n)]   # world
+    uvs = [(muv[(v0 + k) * 2], muv[(v0 + k) * 2 + 1]) for k in range(n)]  # tex px
+    alpha = max(0.0, min(1.0, ps.Alpha()))
+    colors = [(1.0, 1.0, 1.0, alpha)] * n
+    rates = [0.0] * n
+    tris = [(midx[t], midx[t + 1], midx[t + 2]) for t in range(i0, i1, 3)]
+    return MeshPart(
+        part_index=p, texture_hash=thash, blend_type=blend,
+        color_blend=PC_BLEND_MIX, positions=positions, uvs=uvs, colors=colors,
+        rates=rates, triangles=tris, src_rect=(0, 0, 0, 0),
+        mask_influence=mask, use_center=False, has_partcolor=False)
+
+
 def _iter_visible_normal_parts(rt, fd: FrameData):
     """Yield a :class:`_NormalPart` for each visible Normal part of ``fd``.
 
     The single source of truth for walking the draw plan + reading the SoA
-    buffers (the engine-independent analogue of Godot's
-    ``get_local_vertices(p_idx)`` / ``get_local_uvs(p_idx)`` accessors). Must be
-    iterated right after ``rt.get_frame_data`` for the same frame — the SoA
-    pointers are valid only until the next Brain call.
+    buffers (the engine-independent analogue of the reference players'
+    ``get_local_vertices`` / ``get_local_uvs`` accessors). Must be iterated right
+    after ``rt.get_frame_data`` for the same frame — the SoA pointers are valid
+    only until the next Brain call.
     """
     wm, _ = rt.world_matrices()
     lv, _ = rt.local_vertices()
@@ -208,19 +264,7 @@ def _iter_visible_normal_parts(rt, fd: FrameData):
             ps = fd.Parts(p)
             if ps is None or ps.Hide():
                 continue
-            mo = p * MATRIX_STRIDE
-            vo = p * VERT_STRIDE
-            uo = p * UV_STRIDE
-            co = p * CELL_STRIDE
-            mat = wm[mo:mo + MATRIX_STRIDE]
-            positions = [_transform(mat, lv[vo + j * 2], lv[vo + j * 2 + 1])
-                         for j in range(5)]   # LT, RT, LB, RB, CENTER
-            uvs = [(uv[uo + j * 2], uv[uo + j * 2 + 1]) for j in range(5)]
-            src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
-            yield _NormalPart(
-                part_index=p, ps=ps, blend_type=blend, texture_hash=thash,
-                mask_influence=mask, positions=positions, uvs=uvs,
-                src_rect=src_rect)
+            yield _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask)
 
 
 def build_normal_quads(rt, fd: FrameData) -> list:
@@ -422,6 +466,42 @@ def _avg(seq):
     return sum(seq) / float(len(seq)) if seq else 0.0
 
 
+def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
+    """Project one resolved :class:`_NormalPart` to a coloured triangulated mesh.
+
+    The per-part half of :func:`build_mesh_parts`, factored out so the z-ordered
+    :func:`iter_draw_plan` walk can reuse it.
+    """
+    ps = part.ps
+    cblend, corners = part_colors(fd, ps)
+
+    positions = list(part.positions[:4])             # LT, RT, LB, RB
+    uvs = list(part.uvs[:4])
+    colors = [c.rgba for c in corners]
+    rates = [c.rate for c in corners]
+    has_pc = any(r > 0.0 for r in rates)
+
+    use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
+    if use_center:
+        # Centre vertex (index 4) — fan for smooth deform / gradient.
+        positions.append(part.positions[CENTER])
+        uvs.append(part.uvs[CENTER])
+        colors.append(tuple(_avg(c[i] for c in colors) for i in range(4)))
+        rates.append(_avg(rates))
+        # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
+        tris = [(CENTER, LT, RT), (CENTER, RT, RB),
+                (CENTER, RB, LB), (CENTER, LB, LT)]
+    else:
+        tris = [(LT, RT, LB), (RT, RB, LB)]
+
+    return MeshPart(
+        part_index=part.part_index, texture_hash=part.texture_hash,
+        blend_type=part.blend_type, color_blend=cblend, positions=positions,
+        uvs=uvs, colors=colors, rates=rates, triangles=tris,
+        src_rect=part.src_rect, mask_influence=part.mask_influence,
+        use_center=use_center, has_partcolor=has_pc)
+
+
 def build_mesh_parts(rt, fd: FrameData) -> list:
     """Resolve every visible Normal part of ``fd`` into a coloured world mesh.
 
@@ -432,37 +512,94 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
     transient. ``uvs`` are texture-pixel; normalize with :func:`normalize_uvs`
     and sample with REPEAT wrap (the runtime bakes UV scale/rotation in).
     """
-    out = []
-    for part in _iter_visible_normal_parts(rt, fd):
-        ps = part.ps
-        cblend, corners = part_colors(fd, ps)
+    return [_mesh_part_from(fd, part)
+            for part in _iter_visible_normal_parts(rt, fd)]
 
-        positions = list(part.positions[:4])             # LT, RT, LB, RB
-        uvs = list(part.uvs[:4])
-        colors = [c.rgba for c in corners]
-        rates = [c.rate for c in corners]
-        has_pc = any(r > 0.0 for r in rates)
 
-        use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
-        if use_center:
-            # Centre vertex (index 4) — fan for smooth deform / gradient.
-            positions.append(part.positions[CENTER])
-            uvs.append(part.uvs[CENTER])
-            colors.append(tuple(_avg(c[i] for c in colors) for i in range(4)))
-            rates.append(_avg(rates))
-            # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
-            tris = [(CENTER, LT, RT), (CENTER, RT, RB),
-                    (CENTER, RB, LB), (CENTER, LB, LT)]
-        else:
-            tris = [(LT, RT, LB), (RT, RB, LB)]
+def iter_draw_plan(rt, fd: FrameData):
+    """Walk the draw plan in z-order, yielding tagged, SoA-resolved items.
 
-        out.append(MeshPart(
-            part_index=part.part_index, texture_hash=part.texture_hash,
-            blend_type=part.blend_type, color_blend=cblend, positions=positions,
-            uvs=uvs, colors=colors, rates=rates, triangles=tris,
-            src_rect=part.src_rect, mask_influence=part.mask_influence,
-            use_center=use_center, has_partcolor=has_pc))
-    return out
+    Yields, in draw order, one of:
+
+    * ``("mesh", MeshPart)`` — a visible Normal *or* Mesh(deform) part;
+    * ``("instance", part_index, matrix, alpha, hidden)`` — an Instance slot;
+    * ``("effect", part_index, matrix, alpha, hidden)`` — an Effect slot;
+    * ``("skip", kind, part_index)`` — an unsupported kind (Shape/Text/Nines/Mask).
+
+    ``matrix`` is the part's 16-float column-major world matrix (a *copy*) and
+    ``alpha`` its hierarchical ``PartState.alpha``. Every payload is copied out
+    of the transient SoA buffers, so the caller may fully materialize this
+    generator (``list(...)``) and only *then* make further Brain calls (e.g.
+    stepping a child/effect slot, which invalidates the SoA pointers).
+
+    Instance/Effect items are yielded even when ``hidden`` so their slots can
+    still be stepped (independent playback must keep advancing while off-screen,
+    docs/08 §3); the consumer suppresses *drawing* on ``hidden``.
+    """
+    wm, wn = rt.world_matrices()
+    lv, _ = rt.local_vertices()
+    uv, _ = rt.local_uvs()
+    cm, _ = rt.cell_meta()
+    have_soa = bool(wm and lv)
+    # Mesh(deform) SoA (docs/08 §4) — separate CSR buffers; cheap pointer fetch
+    # even when the pack has no Mesh parts (then ranges are empty / skipped).
+    mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
+                rt.mesh_indices(), rt.mesh_vertex_offsets(),
+                rt.mesh_index_offsets())
+    for b in range(fd.DrawBatchesLength()):
+        batch = fd.DrawBatches(b)
+        kind = batch.Kind()
+        blend = batch.BlendType()
+        thash = batch.TextureHash()
+        mask = bool(batch.Flags() & MASK_INFLUENCE)
+        start, count = batch.StartRank(), batch.Count()
+        for k in range(count):
+            p = fd.DrawOrder(start + k)
+            ps = fd.Parts(p)
+            hidden = ps is None or ps.Hide()
+            if kind == KIND_NORMAL:
+                if not have_soa or hidden:
+                    continue
+                part = _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask)
+                yield ("mesh", _mesh_part_from(fd, part))
+            elif kind == KIND_MESH:
+                if hidden:
+                    continue
+                mp = _read_mesh_part(mesh_soa, ps, p, blend, thash, mask)
+                if mp is not None:
+                    yield ("mesh", mp)
+            elif kind == KIND_INSTANCE or kind == KIND_EFFECT:
+                mo = p * MATRIX_STRIDE
+                mat = (list(wm[mo:mo + MATRIX_STRIDE])
+                       if have_soa and mo + MATRIX_STRIDE <= wn else None)
+                alpha = ps.Alpha() if ps is not None else 1.0
+                tag = "instance" if kind == KIND_INSTANCE else "effect"
+                yield (tag, p, mat, alpha, hidden)
+            else:
+                yield ("skip", kind, p)
+
+
+def transform_mesh_part(mp: MeshPart, m, alpha_mul: float = 1.0) -> MeshPart:
+    """Copy ``mp`` with its positions sent through 4x4 ``m`` and alpha scaled.
+
+    Composes an Instance part's world matrix onto a child animation's geometry
+    (and folds the instance part's hierarchical alpha in), per docs/08 §1. ``m``
+    is a 16-float column-major matrix (``None`` = identity); ``alpha_mul``
+    multiplies every vertex colour's alpha.
+    """
+    if m is None and alpha_mul == 1.0:
+        return mp
+    positions = ([_transform(m, x, y) for (x, y) in mp.positions]
+                 if m is not None else list(mp.positions))
+    colors = ([(r, g, b, a * alpha_mul) for (r, g, b, a) in mp.colors]
+              if alpha_mul != 1.0 else list(mp.colors))
+    return MeshPart(
+        part_index=mp.part_index, texture_hash=mp.texture_hash,
+        blend_type=mp.blend_type, color_blend=mp.color_blend,
+        positions=positions, uvs=list(mp.uvs), colors=colors,
+        rates=list(mp.rates), triangles=list(mp.triangles),
+        src_rect=mp.src_rect, mask_influence=mp.mask_influence,
+        use_center=mp.use_center, has_partcolor=mp.has_partcolor)
 
 
 def classify_frame(fd: FrameData) -> dict:

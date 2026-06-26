@@ -44,6 +44,71 @@ UNIT_DOT = 1
 PLAY_FORWARD = 0
 PLAY_REVERSE = 1
 
+# playback_style (ss_runtime_set_playback_direction's second arg)
+STYLE_NORMAL = 0
+STYLE_PINGPONG = 1
+
+
+# --- by-value structs for the Instance / Effect slot API ------------------
+# These mirror the C structs in ``target/ssruntime.h`` *exactly* (field order
+# and width). They are passed/returned BY VALUE across the FFI, so the layout
+# must match; ctypes' natural alignment matches the runtime's ``#[repr(C)]``.
+
+class ss_effect_step_result(C.Structure):
+    """Return of ``ss_effect_slot_step`` (ssruntime.h §27-37).
+
+    ``draw_plan_buf`` is a FlatBuffers ``EffectDrawPlan`` valid only until the
+    next step on the same slot — copy it out immediately.
+    """
+    _fields_ = [
+        ("visible", C.c_bool),
+        ("draw_plan_buf", C.POINTER(C.c_uint8)),
+        ("draw_plan_len", C.c_size_t),   # uintptr_t
+    ]
+
+
+class ss_effect_event_info(C.Structure):
+    """Resolved per-slot Effect event (ssruntime.h §48-58)."""
+    _fields_ = [
+        ("event_frame", C.c_int32),
+        ("start_time", C.c_int32),
+        ("speed", C.c_float),
+        ("independent", C.c_bool),
+        ("is_synthetic_default", C.c_bool),
+    ]
+
+
+class ss_instance_step_result(C.Structure):
+    """Return of ``ss_instance_slot_step`` (ssruntime.h §66-72).
+
+    ``child_frame_no`` is a raw float (sub-frame precise) — write it back
+    verbatim; never floor/round it for state (docs/08 §3).
+    """
+    _fields_ = [
+        ("visible", C.c_bool),
+        ("transitioned", C.c_bool),
+        ("independent", C.c_bool),
+        ("child_frame_no", C.c_float),
+        ("child_looped", C.c_bool),
+    ]
+
+
+class ss_event_instance_info(C.Structure):
+    """Resolved per-slot Instance event (ssruntime.h §87-104)."""
+    _fields_ = [
+        ("event_frame", C.c_int32),
+        ("start_label_hash", C.c_uint32),
+        ("start_offset", C.c_int32),
+        ("end_label_hash", C.c_uint32),
+        ("end_offset", C.c_int32),
+        ("loop_num", C.c_int32),
+        ("speed", C.c_float),
+        ("independent", C.c_bool),
+        ("reverse", C.c_bool),
+        ("pingpong", C.c_bool),
+        ("is_synthetic_default", C.c_bool),
+    ]
+
 
 def platform_subdir() -> str:
     """Per-platform/arch subdirectory under the ``libs`` dir.
@@ -231,6 +296,43 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_hash_string.argtypes = [C.c_char_p]
     f.ss_runtime_hash_string.restype = C.c_uint32
 
+    # --- Instance / Effect slot API (docs/08, ssruntime.h §484-602) --------
+    # Effect slots bind to a *resource* + effect-name hash; instance slots are
+    # stateless and step against a *child context* per call. The active-event
+    # getters resolve the per-slot event off the parent context (slot_index =
+    # the part index from the draw plan).
+    f.ss_effect_slot_create.argtypes = [P, C.c_uint32, C.c_uint32]
+    f.ss_effect_slot_create.restype = P
+    f.ss_effect_slot_destroy.argtypes = [P]
+    f.ss_effect_slot_destroy.restype = None
+    f.ss_effect_slot_reset.argtypes = [P]
+    f.ss_effect_slot_reset.restype = None
+    f.ss_effect_slot_step.argtypes = [
+        P, ss_effect_event_info, C.c_float, C.c_float, C.c_float,
+        C.c_bool, C.c_bool, C.c_uint8]
+    f.ss_effect_slot_step.restype = ss_effect_step_result
+    f.ss_effect_slot_get_seed.argtypes = [P]
+    f.ss_effect_slot_get_seed.restype = C.c_uint32
+    f.ss_effect_slot_is_independent.argtypes = [P]
+    f.ss_effect_slot_is_independent.restype = C.c_bool
+
+    f.ss_instance_slot_create.argtypes = []
+    f.ss_instance_slot_create.restype = P
+    f.ss_instance_slot_destroy.argtypes = [P]
+    f.ss_instance_slot_destroy.restype = None
+    f.ss_instance_slot_reset.argtypes = [P]
+    f.ss_instance_slot_reset.restype = None
+    f.ss_instance_slot_step.argtypes = [
+        P, ss_event_instance_info, P, C.c_float, C.c_float, C.c_float, C.c_bool]
+    f.ss_instance_slot_step.restype = ss_instance_step_result
+    f.ss_instance_slot_is_independent.argtypes = [P]
+    f.ss_instance_slot_is_independent.restype = C.c_bool
+
+    f.ss_runtime_get_active_event_instance.argtypes = [P, C.c_uint32]
+    f.ss_runtime_get_active_event_instance.restype = ss_event_instance_info
+    f.ss_runtime_get_active_effect_event.argtypes = [P, C.c_uint32]
+    f.ss_runtime_get_active_effect_event.restype = ss_effect_event_info
+
 
 def load_library(path: str | None = None, base_dir: str | None = None,
                  *, log: bool = False) -> C.CDLL:
@@ -334,6 +436,23 @@ class SSRuntime:
     def set_frame_no(self, frame: float):
         self._lib.ss_runtime_set_frame_no(self._ctx, frame)
 
+    def play_with_start_frame(self, frame: float):
+        """Start playback from ``frame`` (docs/06 §1, ``play(startFrame)``)."""
+        self._lib.ss_runtime_play_with_start_frame(self._ctx, float(frame))
+        return self
+
+    def set_frame_rate(self, fps: int):
+        self._lib.ss_runtime_set_frame_rate(self._ctx, int(fps))
+
+    def set_animation_section(self, start: int, end: int):
+        """Limit playback/loop to ``[start, end]`` (docs/06 §4 set_animation_section)."""
+        self._lib.ss_runtime_set_animation_section(self._ctx, int(start), int(end))
+
+    def set_playback_direction(self, direction: int, style: int = STYLE_NORMAL):
+        """``direction`` = PLAY_FORWARD/REVERSE; ``style`` = STYLE_NORMAL/PINGPONG."""
+        self._lib.ss_runtime_set_playback_direction(
+            self._ctx, int(direction), int(style))
+
     def update(self, dt_seconds: float) -> float:
         """Advance by ``dt_seconds`` **seconds**; returns current frame (float).
 
@@ -358,6 +477,10 @@ class SSRuntime:
         return bool(self._lib.ss_runtime_is_playing(self._ctx))
 
     @property
+    def is_pausing(self) -> bool:
+        return bool(self._lib.ss_runtime_is_pausing(self._ctx))
+
+    @property
     def is_end_frame_reached(self) -> bool:
         return bool(self._lib.ss_runtime_is_end_frame_reached(self._ctx))
 
@@ -377,6 +500,11 @@ class SSRuntime:
     @property
     def end_frame(self) -> int:
         return int(self._lib.ss_runtime_get_end_frame(self._ctx))
+
+    @property
+    def total_frames(self) -> int:
+        """Frame count of the current section (``end - start + 1``)."""
+        return max(0, self.end_frame - self.start_frame + 1)
 
     @property
     def remain_loops(self) -> int:
@@ -415,6 +543,18 @@ class SSRuntime:
         getter(self._ctx, C.byref(ptr), C.byref(n))
         return ptr, n.value
 
+    def _soa_int32(self, getter):
+        ptr = C.POINTER(C.c_int32)()
+        n = C.c_size_t()
+        getter(self._ctx, C.byref(ptr), C.byref(n))
+        return ptr, n.value
+
+    def _soa_uint32(self, getter):
+        ptr = C.POINTER(C.c_uint32)()
+        n = C.c_size_t()
+        getter(self._ctx, C.byref(ptr), C.byref(n))
+        return ptr, n.value
+
     def world_matrices(self):
         """(ptr, count_floats) for the world-matrix SoA buffer (16/part)."""
         return self._soa_float(self._lib.ss_runtime_get_world_matrices)
@@ -427,6 +567,116 @@ class SSRuntime:
 
     def cell_meta(self):
         return self._soa_float(self._lib.ss_runtime_get_cell_meta)
+
+    # -- Mesh(deform) SoA buffers (docs/08 §4) ----------------------------
+    # Pre-computed WORLD vertices (coordinate system already applied), part-
+    # local 0-based indices, and CSR offset arrays (length num_parts + 1). UVs
+    # are interleaved [u, v, ...] at offset vertex_offset*2. Empty (len 0) under
+    # RenderMode::SceneGraph — this Player uses Direct, so they are populated.
+    def mesh_vertices_x(self):
+        return self._soa_float(self._lib.ss_runtime_get_mesh_vertices_x)
+
+    def mesh_vertices_y(self):
+        return self._soa_float(self._lib.ss_runtime_get_mesh_vertices_y)
+
+    def mesh_uvs(self):
+        return self._soa_float(self._lib.ss_runtime_get_mesh_uvs)
+
+    def mesh_indices(self):
+        return self._soa_int32(self._lib.ss_runtime_get_mesh_indices)
+
+    def mesh_vertex_offsets(self):
+        return self._soa_uint32(self._lib.ss_runtime_get_mesh_vertex_offsets)
+
+    def mesh_index_offsets(self):
+        return self._soa_uint32(self._lib.ss_runtime_get_mesh_index_offsets)
+
+    # -- Instance / Effect slots (docs/08 "Instance / Effect") ------------
+    # Instance: stateless slot stepped against a *child* context per call.
+    # Effect: stateful slot bound to this runtime's resource + an effect hash.
+    # ``slot_index`` for the active-event getters is the part index from the
+    # draw plan. See ss_renpy.instance / ss_renpy.effect for the consumers.
+    @property
+    def resource(self):
+        """The bound resource handle (needed to create Effect slots)."""
+        return self._res
+
+    def active_event_instance(self, slot_index: int):
+        """Active ``EventInstance`` for part ``slot_index`` (returns a struct)."""
+        return self._lib.ss_runtime_get_active_event_instance(
+            self._ctx, int(slot_index))
+
+    def active_effect_event(self, slot_index: int):
+        """Active ``EventEffect`` for part ``slot_index`` (returns a struct)."""
+        return self._lib.ss_runtime_get_active_effect_event(
+            self._ctx, int(slot_index))
+
+    def instance_slot_create(self):
+        return self._lib.ss_instance_slot_create()
+
+    def instance_slot_destroy(self, slot):
+        if slot:
+            self._lib.ss_instance_slot_destroy(slot)
+
+    def instance_slot_reset(self, slot):
+        if slot:
+            self._lib.ss_instance_slot_reset(slot)
+
+    def instance_slot_step(self, slot, ev, child_ctx, previous_child_frame,
+                           parent_frame, delta_seconds, parent_looped):
+        """Drive one instance slot a tick; returns ``ss_instance_step_result``.
+
+        ``child_ctx`` is the *child* runtime's context pointer; ``ev`` an
+        :class:`ss_event_instance_info` from :meth:`active_event_instance` on
+        the *parent*. ``previous_child_frame`` is the child's raw float head
+        before this tick (loop-edge detection only) — never floor it.
+        """
+        return self._lib.ss_instance_slot_step(
+            slot, ev, child_ctx, float(previous_child_frame),
+            float(parent_frame), float(delta_seconds), bool(parent_looped))
+
+    def instance_slot_is_independent(self, slot):
+        return bool(self._lib.ss_instance_slot_is_independent(slot))
+
+    def effect_slot_create(self, effect_name_hash, seed=0):
+        """Create an Effect slot bound to this runtime's resource.
+
+        Returns a slot handle, or ``None`` on failure (effect hash not found /
+        malformed effect data / no resource bound).
+        """
+        if not self._res:
+            return None
+        slot = self._lib.ss_effect_slot_create(
+            self._res, int(effect_name_hash) & 0xFFFFFFFF, int(seed) & 0xFFFFFFFF)
+        return slot or None
+
+    def effect_slot_destroy(self, slot):
+        if slot:
+            self._lib.ss_effect_slot_destroy(slot)
+
+    def effect_slot_reset(self, slot):
+        if slot:
+            self._lib.ss_effect_slot_reset(slot)
+
+    def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
+                         parent_looped, y_flip=True, vert_stride=2):
+        """Advance one effect slot (docs/08 §2).
+
+        Returns ``(visible, draw_plan_bytes)``: the ``EffectDrawPlan``
+        FlatBuffer is copied out immediately (the raw pointer is valid only
+        until the next call on this slot). ``ev`` is an
+        :class:`ss_effect_event_info` from :meth:`active_effect_event`.
+        ``y_flip=True`` / ``vert_stride=2`` suit a 2D Y-down host (Ren'Py).
+        """
+        r = self._lib.ss_effect_slot_step(
+            slot, ev, float(parent_frame), float(delta_seconds), float(fps),
+            bool(parent_looped), bool(y_flip), int(vert_stride))
+        if not r.visible or not r.draw_plan_buf or r.draw_plan_len == 0:
+            return (bool(r.visible), b"")
+        return (True, C.string_at(r.draw_plan_buf, r.draw_plan_len))
+
+    def effect_slot_is_independent(self, slot):
+        return bool(self._lib.ss_effect_slot_is_independent(slot))
 
     # -- lifecycle --------------------------------------------------------
     @property

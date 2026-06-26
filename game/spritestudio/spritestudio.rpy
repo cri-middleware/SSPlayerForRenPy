@@ -1,15 +1,20 @@
-# SpriteStudio Player for Ren'Py — M2 (full-fidelity Normal rendering)
+# SpriteStudio Player for Ren'Py — SSPlayer
 #
-# Renders a SpriteStudio 7 .ssab animation as a Creator-Defined Displayable.
-# The heavy lifting (frame stepping, world transforms, UVs, vertex colours) is
-# done by the native "Brain" (libssruntime) via ctypes; this file is only the
-# thin Ren'Py rendering layer + the lazy setup/path wiring.
+# Renders a SpriteStudio 7 .ssab animation pack as a Creator-Defined
+# Displayable (`SSPlayer`; one instance plays one .ssab, selecting an animation
+# by name). The heavy lifting (frame stepping, world transforms, UVs, vertex
+# colours, particle sim) is done by the native "Brain" (libssruntime) via
+# ctypes; this file is only the thin Ren'Py rendering layer + the lazy
+# setup/path wiring.
 #
-# Scope (M2): the Normal draw-batch kind, rendered from the per-vertex mesh the
-# Brain emits (`framedata.build_mesh_parts`): shear / free-deform-exact world
-# geometry, per-vertex `parts_color`, the framebuffer blend modes, and the
-# PartColor blend modes (Mix/Mul/Add/Sub). Mesh / Effect / Mask / Shape /
-# Instance / Text / NineSlice batch kinds are still skipped (M3/M4).
+# Scope: Normal parts (per-vertex mesh — shear / free-deform exact, per-vertex
+# `parts_color`, framebuffer + PartColor blend), **Instance** parts (nested
+# child animations, synced or independent, recursive), **Effect** parts
+# (particles), and **Mesh(deform)** parts (skinned/free-deform meshes) — all
+# walked z-ordered via `ss_renpy.instance.collect_ordered` and batched by
+# texture. Shape / Mask / Text / NineSlice batch kinds are still skipped (later
+# milestones). The engine-independent cores are headless-verified by
+# tools/verify_*.py.
 #
 # Timeline events (roadmap Step 4) are surfaced independently of rendering:
 # UserData / Signal / Audio markers are decoded by `ss_renpy.events` and
@@ -44,7 +49,9 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan
+    from ss_renpy.effect import EffectRig
+    from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
 
     # Load the native library once, from spritestudio/libs/<platform-arch>/.
@@ -64,7 +71,7 @@ init -10 python:
     #   "mesh" (default) — model-based per-vertex mesh (renpy.gl2 Mesh2) + custom
     #       shader. The only backend that reproduces shear / free-deform and the
     #       baked UV transforms (UvScale/UvTranslation/UvRotation) by sampling the
-    #       full atlas with gl_texture_wrap = REPEAT. Mirrors the Godot/Web/Unity
+    #       full atlas with gl_texture_wrap = REPEAT. Mirrors the reference
     #       renderers. On any error it falls back per-part to the transform
     #       backend, so it can never blank the screen.
     #
@@ -112,14 +119,110 @@ init -10 python:
                 vertex_300="v_tex_coord = a_tex_coord;",
                 fragment_300="""
                     vec4 p = texture2D(tex0, v_tex_coord);
-                    // out_rgb = pixel*varg.x + mix(1, pixel, varg.z)*color*varg.y  (§1-4-3)
-                    vec3 wp = mix(vec3(1.0), p.rgb, u_ss_varg.z);
-                    vec3 rgb = p.rgb * u_ss_varg.x + wp * u_ss_color.rgb * u_ss_varg.y;
-                    gl_FragColor = vec4(rgb, p.a * u_ss_color.a);
+                    // Ren'Py GL2 textures are premultiplied-alpha (cf. the
+                    // built-in renpy.alpha shader, which scales rgb AND a by
+                    // opacity). Work in straight space for the PartColor formula,
+                    // then re-premultiply so opacity actually dims the part.
+                    vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
+                    // out_rgb = s*varg.x + mix(1, s, varg.z)*color*varg.y  (§1-4-3)
+                    vec3 wp = mix(vec3(1.0), s, u_ss_varg.z);
+                    vec3 rgb = s * u_ss_varg.x + wp * u_ss_color.rgb * u_ss_varg.y;
+                    float a = p.a * u_ss_color.a;
+                    gl_FragColor = vec4(rgb * a, a);
                 """,
             )
         except Exception as e:
             renpy.log("ss: register_shader(ss.partcolor) failed: %r" % (e,))
+
+        # Effect-particle shader: straight texel * (per-quad) colour. Effect
+        # particle colours are RGBA 0..1 from the EffectDrawPlan (parent alpha
+        # already folded in); unlike Normal parts there is no PartColor blend.
+        try:
+            renpy.register_shader(
+                "ss.effect",
+                variables="""
+                    uniform sampler2D tex0;
+                    attribute vec2 a_tex_coord;
+                    varying vec2 v_tex_coord;
+                    uniform vec4 u_ss_color;   // particle RGBA (0..1)
+                """,
+                vertex_300="v_tex_coord = a_tex_coord;",
+                fragment_300="""
+                    // Premultiplied-alpha output: tint by colour.rgb, dim by
+                    // colour.a (scaling rgb too, not just alpha).
+                    vec4 p = texture2D(tex0, v_tex_coord);
+                    gl_FragColor = vec4(p.rgb * u_ss_color.rgb * u_ss_color.a,
+                                        p.a * u_ss_color.a);
+                """,
+            )
+        except Exception as e:
+            renpy.log("ss: register_shader(ss.effect) failed: %r" % (e,))
+
+        # Batched variants: per-vertex colour (and PartColor varg) so a whole
+        # same-texture run / a whole effect batch draws in ONE mesh + ONE blit
+        # (docs/07 §2, 08 §2 dynamic batching). Same fragment math as the
+        # per-part shaders above, but reading varyings instead of uniforms.
+        try:
+            renpy.register_shader(
+                "ss.partcolor_batched",
+                variables="""
+                    uniform sampler2D tex0;
+                    attribute vec2 a_tex_coord;
+                    attribute vec4 a_ss_color;
+                    attribute vec3 a_ss_varg;
+                    varying vec2 v_tex_coord;
+                    varying vec4 v_ss_color;
+                    varying vec3 v_ss_varg;
+                """,
+                vertex_300="""
+                    v_tex_coord = a_tex_coord;
+                    v_ss_color = a_ss_color;
+                    v_ss_varg = a_ss_varg;
+                """,
+                fragment_300="""
+                    vec4 p = texture2D(tex0, v_tex_coord);
+                    vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;   // un-premultiply
+                    vec3 wp = mix(vec3(1.0), s, v_ss_varg.z);
+                    vec3 rgb = s * v_ss_varg.x + wp * v_ss_color.rgb * v_ss_varg.y;
+                    float a = p.a * v_ss_color.a;
+                    gl_FragColor = vec4(rgb * a, a);            // re-premultiply
+                """,
+            )
+            renpy.register_shader(
+                "ss.effect_batched",
+                variables="""
+                    uniform sampler2D tex0;
+                    attribute vec2 a_tex_coord;
+                    attribute vec4 a_ss_color;
+                    varying vec2 v_tex_coord;
+                    varying vec4 v_ss_color;
+                """,
+                vertex_300="""
+                    v_tex_coord = a_tex_coord;
+                    v_ss_color = a_ss_color;
+                """,
+                fragment_300="""
+                    vec4 p = texture2D(tex0, v_tex_coord);
+                    gl_FragColor = vec4(p.rgb * v_ss_color.rgb * v_ss_color.a,
+                                        p.a * v_ss_color.a);
+                """,
+            )
+        except Exception as e:
+            renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
+
+    # SS Effect blend (EmitterState.blend_type): 0=Mix (normal), 1=Add. This is
+    # a *different* enum from the framebuffer BlendType used by Normal parts.
+    SS_EFFECT_BLEND_FUNC_KEY = {effectplan.FX_BLEND_ADD: "add"}
+
+    def _ss_effect_blend_property(blend):
+        if not SS_ENABLE_BLEND:
+            return None
+        key = SS_EFFECT_BLEND_FUNC_KEY.get(blend)
+        if not key:
+            return None
+        table = getattr(renpy.config, "gl_blend_func", None) or {}
+        val = table.get(key)
+        return ("gl_blend_func", val) if val is not None else None
 
     # Model-based mesh backend dependencies (Ren'Py gl2). `Mesh2` is Ren'Py's
     # built-in 2D mesh (vs Mesh3 = 3D); we build one per part with explicit
@@ -139,6 +242,30 @@ init -10 python:
         _SS_TEXTURE_WRAP = (_SS_GL_REPEAT, _SS_GL_REPEAT)
     except Exception:
         _SS_TEXTURE_WRAP = None
+
+    # Batch draw (docs/07 §2, 08 §2): pack per-vertex colour into custom Mesh2
+    # vertex layouts so a run of same-texture Normal parts — and a whole effect
+    # batch's particles — go through one Mesh2 + one blit instead of one each.
+    #   ss.partcolor (Normal): a_tex_coord(2) + a_ss_color(4) + a_ss_varg(3)
+    #   ss.effect    (particles): a_tex_coord(2) + a_ss_color(4)
+    # Built defensively: a Ren'Py without AttributeLayout.add_attribute leaves
+    # the layouts None and the per-part / per-particle path is used instead.
+    SS_BATCH_DRAW = True             # set False to force per-part drawing
+    _SS_PC_LAYOUT = None
+    _SS_FX_LAYOUT = None
+    try:
+        from renpy.gl2.gl2mesh import AttributeLayout as _SS_AttributeLayout
+        _SS_PC_LAYOUT = _SS_AttributeLayout()
+        _SS_PC_LAYOUT.add_attribute("a_tex_coord", 2)
+        _SS_PC_LAYOUT.add_attribute("a_ss_color", 4)
+        _SS_PC_LAYOUT.add_attribute("a_ss_varg", 3)
+        _SS_FX_LAYOUT = _SS_AttributeLayout()
+        _SS_FX_LAYOUT.add_attribute("a_tex_coord", 2)
+        _SS_FX_LAYOUT.add_attribute("a_ss_color", 4)
+    except Exception as e:
+        _SS_PC_LAYOUT = None
+        _SS_FX_LAYOUT = None
+        renpy.log("ss: batch-draw layouts unavailable (%r); per-part draw" % (e,))
 
     def _ss_blend_property(blend_type):
         """Return a (key, value) for Render.add_property('gl_blend_func', …) or None."""
@@ -190,43 +317,60 @@ init -10 python:
         except Exception:
             return None
 
-    class SpriteStudioDisplayable(renpy.Displayable):
-        """Play one .ssab animation. Place it in a screen or `show` it.
+    class SSPlayer(renpy.Displayable):
+        """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
 
-            add SpriteStudioDisplayable("Basic.ssab") xalign 0.5 yalign 0.5
+            add SSPlayer("Basic.ssab") xalign 0.5 yalign 0.5
+
+        One instance plays one .ssab; select an animation in it by name
+        (constructor ``animation=`` or :meth:`ss_set_animation`). Renders Normal,
+        Instance (nested child animations) and Effect (particle) parts, exposing
+        a small ``ss_*`` playback / control / query API.
         """
 
         def __init__(self, ssab, animation=None, sprites_subdir="sprites",
-                     loop=-1, speed=1.0,
+                     loop=-1, speed=1.0, sub_frame=False,
                      on_user_data=None, on_signal=None, on_audio=None,
-                     on_finished=None, on_looped=None, **kwargs):
-            super(SpriteStudioDisplayable, self).__init__(**kwargs)
+                     on_finished=None, on_looped=None, on_started=None, **kwargs):
+            super(SSPlayer, self).__init__(**kwargs)
             self.ssab = ssab
             self.animation = animation
             self.sprites_subdir = sprites_subdir
             self.loop = loop
             self.speed = speed
+            # Sub-frame interpolation: when off (the default) the frame handed
+            # to the Brain for *display* is floored; the playback
+            # head stays a raw float either way (docs/06 §サブフレーム).
+            self._sub_frame = bool(sub_frame)
             # Optional event callbacks (docs/06 §4 recommended Player API). Each
             # is invoked as cb(self, frame_index, event) for the per-part events
-            # and cb(self) for finished/looped, guarded so a raising callback can
-            # never break rendering. Prefer module-level functions / store
-            # methods (lambdas/locals defeat rollback pickling).
+            # and cb(self) for started/finished/looped, guarded so a raising
+            # callback can never break rendering. Prefer module-level functions /
+            # store methods (lambdas/locals defeat rollback pickling).
             self.on_user_data = on_user_data
             self.on_signal = on_signal
             self.on_audio = on_audio
             self.on_finished = on_finished
             self.on_looped = on_looped
+            self.on_started = on_started
             # runtime state (built lazily on first render)
             self._rt = None
             self._anim = None
             self._ssab_data = None  # retained for per-animation EventResolver rebuilds
+            self._meta = None
             self._evt = None        # ss_renpy.events.EventResolver for self._anim
             self._event_queue = []  # FrameEvents awaiting ss_poll_events()
             self._was_playing = False
+            self._instances = None  # ss_renpy.instance.InstanceRig (instance parts)
+            self._effects = None    # ss_renpy.effect.EffectRig (effect parts)
+            self._loader = None     # pack_name -> bytes, for external instance .ssab
+            self._part_index = {}   # part name -> index (for the part-query API)
             self._texmap = {}
             self._texpath = {}     # texture_hash -> "sprites/foo.png"
             self._base = {}        # path -> Image()
             self._last_st = None
+            self._last_wm = []      # snapshot of root world matrices (part query)
+            self._last_fb = None    # last frame's FrameData bytes (part query)
             self._warned = set()
 
         # -- lazy native setup ---------------------------------------------
@@ -238,7 +382,10 @@ init -10 python:
                 data = fh.read()
             self._ssab_data = data
             meta = SsabMeta(data)
+            self._meta = meta
             self._texmap = meta.texture_hash_map()
+            self._part_index = {p.name: p.index for p in meta.parts()}
+            self._loader = self._make_loader()
             rt = ssruntime.SSRuntime(_SS_LIB)
             rt.configure(coordinate_system=ssruntime.COORD_Y_DOWN,
                          origin=ssruntime.ORIGIN_CENTER)
@@ -258,6 +405,64 @@ init -10 python:
             self._anim = anim
             self._evt = events.EventResolver(data, anim)
             self._was_playing = True
+            self._build_rigs()
+
+        def _make_loader(self):
+            """Loader(pack_name)->bytes for external instance packs (docs/08 §1).
+
+            Caches bytes and merges each loaded pack's cellmap → image-path map
+            into ``self._texmap`` so child-part texture hashes resolve to PNGs in
+            the same sprites dir.
+            """
+            cache = {}
+
+            def load(pack_name):
+                if pack_name in cache:
+                    return cache[pack_name]
+                p = os.path.join(self._SS_dir(), pack_name + ".ssab")
+                data = b""
+                try:
+                    with open(p, "rb") as fh:
+                        data = fh.read()
+                except OSError:
+                    self._warn_once(("ext", pack_name),
+                                    "external instance pack %r not found "
+                                    "next to %s" % (pack_name, self.ssab))
+                cache[pack_name] = data
+                if data:
+                    try:
+                        self._texmap.update(SsabMeta(data).texture_hash_map())
+                    except Exception:
+                        pass
+                return data
+
+            return load
+
+        def _build_rigs(self):
+            """Build the Instance/Effect rigs once for this pack (parts are
+            pack-static; animation changes only reset slot state, see
+            :meth:`_reset_slots`). Each is guarded so a failure disables only
+            that feature, never rendering."""
+            try:
+                self._instances = InstanceRig(self._rt, self._meta,
+                                              self._loader, _SS_LIB)
+            except Exception as e:
+                self._instances = None
+                self._warn_once("inst-rig", "instance rig build failed: %r" % (e,))
+            try:
+                self._effects = EffectRig(self._rt, self._meta)
+            except Exception as e:
+                self._effects = None
+                self._warn_once("fx-rig", "effect rig build failed: %r" % (e,))
+
+        def _reset_slots(self):
+            """Re-arm Instance/Effect slots (on replay / animation change)."""
+            for rig in (self._instances, self._effects):
+                if rig is not None:
+                    try:
+                        rig.reset()
+                    except Exception:
+                        pass
 
         def _SS_dir(self):
             return os.path.join(renpy.config.gamedir, self.sprites_subdir)
@@ -348,22 +553,77 @@ init -10 python:
             self._last_st = st
             frame_no = self._rt.update(dt)           # seconds -> ms internally
             self._pump_events()                      # collect events this update
-            fb = self._rt.get_frame_data(frame_no)
+            looped = self._rt.is_looped
+            # Sub-frame off (default) floors the *display* frame; the head stays
+            # a raw float (docs/06). The slot steps below get the raw frame_no.
+            disp = frame_no if self._sub_frame else math.floor(frame_no)
+            fb = self._rt.get_frame_data(disp)
+            self._last_fb = fb
+            # Snapshot the root world matrices for the part-query API now (the
+            # SoA pointer is transient; instance/effect steps below reuse it).
+            wm, wn = self._rt.world_matrices()
+            self._last_wm = list(wm[0:wn]) if (wm and wn) else []
 
             r = renpy.Render(width, height)
             if fb:
                 fd = framedata.parse(fb)
-                parts = framedata.build_mesh_parts(self._rt, fd)
                 ox, oy = width / 2.0, height / 2.0   # SS center -> screen center
-                use_mesh = SS_RENDER_BACKEND == "mesh"
-                for mp in parts:
-                    drawn = False
-                    if use_mesh:
-                        drawn = self._draw_mesh(r, mp, ox, oy, st, at, width, height)
-                    if not drawn:
-                        self._draw_transform(r, mp, ox, oy, st, at, width, height)
+                # Walk Normal / Instance / Effect parts in true draw order.
+                try:
+                    items = collect_ordered(self._rt, fd, self._instances,
+                                            self._effects, frame_no, dt, looped,
+                                            self._sub_frame)
+                except Exception as e:
+                    self._warn_once("collect", "draw-plan walk failed (%r); "
+                                    "Normal-only this frame" % (e,))
+                    items = [("mesh", mp)
+                             for mp in framedata.build_mesh_parts(self._rt, fd)]
+                self._draw_items(r, items, ox, oy, st, at, width, height)
             renpy.redraw(self, 0)                    # keep animating
             return r
+
+        # -- draw dispatch (batched) ---------------------------------------
+        def _draw_items(self, r, items, ox, oy, st, at, width, height):
+            """Draw the z-ordered renderables, batching consecutive same-texture
+            Normal parts into one mesh/blit (and each effect batch likewise).
+
+            A run breaks when the texture or framebuffer blend changes, or an
+            effect batch interrupts it — preserving draw order. Falls back to
+            per-part drawing when batching is unavailable / fails."""
+            use_mesh = SS_RENDER_BACKEND == "mesh"
+            can_batch = SS_BATCH_DRAW and use_mesh and _SS_PC_LAYOUT is not None
+            run = []
+            run_key = None
+            for tag, payload in items:
+                if tag == "mesh":
+                    key = (payload.texture_hash, payload.blend_type)
+                    if run and key != run_key:
+                        self._flush_mesh_run(r, run, ox, oy, st, at, width,
+                                             height, can_batch, use_mesh)
+                        run = []
+                    run_key = key
+                    run.append(payload)
+                else:  # "fx" — an effect particle batch
+                    if run:
+                        self._flush_mesh_run(r, run, ox, oy, st, at, width,
+                                             height, can_batch, use_mesh)
+                        run = []
+                    self._draw_effect_batch(r, payload, ox, oy, st, at,
+                                            width, height)
+            if run:
+                self._flush_mesh_run(r, run, ox, oy, st, at, width, height,
+                                     can_batch, use_mesh)
+
+        def _flush_mesh_run(self, r, run, ox, oy, st, at, width, height,
+                            can_batch, use_mesh):
+            if can_batch and self._draw_mesh_batch(r, run, ox, oy, st, at,
+                                                   width, height):
+                return
+            for mp in run:
+                drawn = (self._draw_mesh(r, mp, ox, oy, st, at, width, height)
+                         if use_mesh else False)
+                if not drawn:
+                    self._draw_transform(r, mp, ox, oy, st, at, width, height)
 
         # -- transform backend (default, documented) -----------------------
         def _draw_transform(self, r, mp, ox, oy, st, at, width, height):
@@ -447,7 +707,7 @@ init -10 python:
             past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
             clamping. This is the only backend that is shear / free-deform exact
             and honours the UV transforms — the Ren'Py-native form of what the
-            Godot/Web/Unity players do. ``parts_color`` is applied per-part
+            the reference players do. ``parts_color`` is applied per-part
             (uniform) via the ``ss.partcolor`` shader.
 
             On any error returns False so the caller falls back to the transform
@@ -501,27 +761,335 @@ init -10 python:
                                 "transform backend" % (e,))
                 return False
 
+        def _draw_mesh_batch(self, r, parts, ox, oy, st, at, width, height):
+            """Draw a run of same-texture Normal parts as ONE batched mesh+blit.
+
+            All parts share one atlas (same texture_hash) and framebuffer blend.
+            Per-vertex colour and the PartColor ``varg`` are packed as mesh
+            attributes (``ss.partcolor_batched``), so an entire run is a single
+            Mesh2 with REPEAT wrap. Returns True on success; False makes the
+            caller draw the run per-part.
+            """
+            if _SS_PC_LAYOUT is None or _SS_Mesh2 is None or not parts:
+                return False
+            tex = self._texture_path(parts[0].texture_hash)
+            if not tex:
+                return False
+            try:
+                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                tw, th = cr.get_size()
+                if tw <= 0 or th <= 0:
+                    return False
+                geometry = []
+                attributes = []
+                indices = []
+                base = 0
+                for mp in parts:
+                    nuv = framedata.normalize_uvs(mp.uvs, tw, th)
+                    for idx in range(len(mp.positions)):
+                        x, y = mp.positions[idx]
+                        geometry += [ox + x, oy + y]
+                        u, v = nuv[idx]
+                        c = mp.colors[idx]
+                        vx, vy, vz = framedata.partcolor_varg(
+                            mp.color_blend, mp.rates[idx])
+                        attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+                    for (i, j, k) in mp.triangles:
+                        indices += [base + i, base + j, base + k]
+                    base += len(mp.positions)
+                mesh = _SS_Mesh2(_SS_PC_LAYOUT, base, len(indices) // 3)
+                mesh.set_geometry_data(geometry)
+                mesh.set_attribute_data(attributes)
+                mesh.set_triangle_data(indices)
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))
+                rv.mesh = mesh
+                if _SS_TEXTURE_WRAP is not None:
+                    rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
+                rv.add_shader("ss.partcolor_batched")
+                self._apply_blend(rv, parts[0])
+                r.blit(rv, (0, 0))
+                return True
+            except Exception as e:
+                self._warn_once("mesh-batch", "batched mesh draw failed (%r); "
+                                "per-part fallback" % (e,))
+                return False
+
+        # -- effect backend: particle batches ------------------------------
+        def _draw_effect_batch(self, r, eb, ox, oy, st, at, width, height):
+            """Draw one Effect batch (particles). Effect UVs are already
+            normalized 0..1 (used directly). Preferred path: the whole batch in
+            ONE mesh with per-vertex colour (``ss.effect_batched``); fallback:
+            per-particle uniform-colour quads; then skip — never blanks."""
+            if _SS_Mesh2 is None or not eb.positions:
+                return
+            tex = self._texture_path(eb.cellmap_hash)
+            if not tex:
+                self._warn_once(("fxtex", eb.cellmap_hash),
+                                "effect cellmap hash %d unresolved" % eb.cellmap_hash)
+                return
+            try:
+                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                blend_prop = _ss_effect_blend_property(eb.blend)
+                if (_SS_FX_LAYOUT is not None and SS_BATCH_DRAW
+                        and self._draw_fx_batched(r, eb, cr, ox, oy, width,
+                                                  height, blend_prop)):
+                    return
+                self._draw_fx_per_particle(r, eb, cr, ox, oy, width, height,
+                                           blend_prop)
+            except Exception as e:
+                self._warn_once("fx-draw",
+                                "effect draw failed (%r); skipped" % (e,))
+
+        def _draw_fx_batched(self, r, eb, cr, ox, oy, width, height, blend_prop):
+            """All particles of ``eb`` in one Mesh2 (per-vertex colour)."""
+            try:
+                geometry = []
+                attributes = []
+                indices = []
+                for idx in range(len(eb.positions)):
+                    x, y = eb.positions[idx]
+                    geometry += [ox + x, oy + y]
+                    u, v = eb.uvs[idx]
+                    c = eb.colors[idx]
+                    attributes += [u, v, c[0], c[1], c[2], c[3]]
+                for (i, j, k) in eb.triangles:
+                    indices += [i, j, k]
+                mesh = _SS_Mesh2(_SS_FX_LAYOUT, len(eb.positions),
+                                 len(indices) // 3)
+                mesh.set_geometry_data(geometry)
+                mesh.set_attribute_data(attributes)
+                mesh.set_triangle_data(indices)
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))
+                rv.mesh = mesh
+                rv.add_shader("ss.effect_batched")
+                if blend_prop is not None:
+                    try:
+                        rv.add_property(*blend_prop)
+                    except Exception:
+                        pass
+                r.blit(rv, (0, 0))
+                return True
+            except Exception as e:
+                self._warn_once("fx-batch", "batched effect draw failed (%r); "
+                                "per-particle fallback" % (e,))
+                return False
+
+        def _draw_fx_per_particle(self, r, eb, cr, ox, oy, width, height,
+                                  blend_prop):
+            """Fallback: one uniform-colour quad per particle (proven layout)."""
+            tris = eb.triangles
+            for q in range(len(eb.positions) // 4):
+                base = q * 4
+                quad_tris = tris[2 * q:2 * q + 2]
+                if len(quad_tris) < 2:
+                    break
+                col = eb.colors[base]
+                indices = []
+                for (i, j, k) in quad_tris:
+                    indices += [i - base, j - base, k - base]
+                mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, 4, 2)
+                geometry = []
+                for (x, y) in eb.positions[base:base + 4]:
+                    geometry += [ox + x, oy + y]
+                mesh.set_geometry_data(geometry)
+                attributes = []
+                for (u, v) in eb.uvs[base:base + 4]:
+                    attributes += [u, v]
+                mesh.set_attribute_data(attributes)
+                mesh.set_triangle_data(indices)
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))
+                rv.mesh = mesh
+                rv.add_shader("ss.effect")
+                rv.add_uniform("u_ss_color", (col[0], col[1], col[2], col[3]))
+                if blend_prop is not None:
+                    try:
+                        rv.add_property(*blend_prop)
+                    except Exception:
+                        pass
+                r.blit(rv, (0, 0))
+
         def visit(self):
             return []
 
-        # -- minimal playback API (callable from Ren'Py script) ------------
-        def ss_play(self, animation=None, loop=-1):
+        # -- playback / control / query API --------------------------------
+        # A small ss_-prefixed, Ren'Py-idiomatic playback / control surface.
+        # setAnimation/play are split (docs/06 §4): set_animation loads+poses;
+        # ss_play starts.
+        def _reapply_playback(self):
+            # setup_animation resets loop/speed/direction to defaults (docs/06
+            # §4 NOTE) — re-apply the player's settings after a switch.
+            self._rt.set_loop(self.loop)
+            if self.speed != 1.0:
+                self._rt.set_animation_speed(self.speed)
+
+        def ss_set_animation(self, name):
+            """Load + pose animation ``name`` (does NOT start playback).
+
+            Front-loads the heavy work — native setup, asset loading, and
+            Instance child-context allocation — so a later :meth:`play` starts
+            instantly with no re-allocation (docs/06 §4 setAnimation/play split).
+            """
+            if self._rt is None:
+                if name:
+                    self.animation = name      # set up straight into `name`
+                self._ensure()
+                return True
+            if name and name != self._anim:
+                if not self._rt.setup_animation(name):
+                    self._warn_once(("anim", name),
+                                    "setup_animation(%r) failed" % name)
+                    return False
+                self._anim = name
+                self.animation = name
+                self._reapply_playback()
+                self._evt = events.EventResolver(self._ssab_data, name)
+                self._reset_slots()
+                renpy.redraw(self, 0)
+            return True
+
+        def ss_get_animation(self):
+            return self._anim
+
+        def ss_animation_names(self):
             self._ensure()
-            if animation and animation != self._anim:
-                self._rt.setup_animation(animation)
-                self._anim = animation
-                # Events are indexed per-animation: rebuild the resolver.
-                self._evt = events.EventResolver(self._ssab_data, animation)
-            self._rt.set_loop(loop)
-            self._rt.play()
+            return self._meta.animation_names() if self._meta else []
+
+        def ss_play(self, animation=None, loop=None, start_frame=-1.0):
+            """Start playback (optionally switching animation / loop first).
+
+            ``start_frame >= 0`` begins at that frame; otherwise resumes from the
+            section start. Re-arms Instance/Effect slots so they re-fire."""
+            self._ensure()
+            if animation:
+                self.ss_set_animation(animation)
+            if loop is not None:
+                self.loop = loop
+                self._rt.set_loop(loop)
+            self._reset_slots()
+            if start_frame is not None and start_frame >= 0:
+                self._rt.play_with_start_frame(start_frame)
+            else:
+                self._rt.play()
             self._was_playing = True
+            self._call_cb(self.on_started)
             renpy.redraw(self, 0)
 
         def ss_pause(self):
-            if self._rt:
+            # The C-API pause toggles; gate on state so this is idempotent.
+            if self._rt and not self._rt.is_pausing:
                 self._rt.pause()
+
+        def ss_resume(self):
+            if self._rt and self._rt.is_pausing:
+                self._rt.pause()
+                self._was_playing = True
+                renpy.redraw(self, 0)
+
+        def ss_stop(self):
+            if self._rt:
+                self._rt.stop()
+
+        def ss_is_playing(self):
+            return bool(self._rt and self._rt.is_playing)
+
+        def ss_is_pausing(self):
+            return bool(self._rt and self._rt.is_pausing)
+
+        def ss_get_frame(self):
+            return self._rt.frame_no if self._rt else 0.0
 
         def ss_set_frame(self, frame):
             if self._rt:
                 self._rt.set_frame_no(frame)
                 renpy.redraw(self, 0)
+
+        def ss_total_frames(self):
+            return self._rt.total_frames if self._rt else 0
+
+        def ss_start_frame(self):
+            return self._rt.start_frame if self._rt else 0
+
+        def ss_end_frame(self):
+            return self._rt.end_frame if self._rt else 0
+
+        def ss_set_speed(self, speed):
+            self.speed = speed
+            if self._rt:
+                self._rt.set_animation_speed(speed)
+
+        def ss_get_speed(self):
+            return self.speed
+
+        def ss_set_loop(self, count):
+            self.loop = count
+            if self._rt:
+                self._rt.set_loop(count)
+
+        def ss_get_loop(self):
+            return self.loop
+
+        def ss_set_section(self, start, end):
+            if self._rt:
+                self._rt.set_animation_section(start, end)
+                renpy.redraw(self, 0)
+
+        def ss_set_playback_direction(self, direction, style=0):
+            """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
+            if self._rt:
+                self._rt.set_playback_direction(direction, style)
+
+        def ss_set_frame_rate(self, fps):
+            if self._rt:
+                self._rt.set_frame_rate(fps)
+
+        def ss_get_frame_rate(self):
+            return self._rt.fps if self._rt else 0
+
+        def ss_set_sub_frame_enabled(self, enabled):
+            """Toggle sub-frame interpolation (default off)."""
+            self._sub_frame = bool(enabled)
+            renpy.redraw(self, 0)
+
+        def ss_is_sub_frame_enabled(self):
+            return self._sub_frame
+
+        # -- part query ----------------------------------------------------
+        def ss_part_names(self):
+            self._ensure()
+            return list(self._part_index.keys())
+
+        def ss_part_index(self, name):
+            self._ensure()
+            return self._part_index.get(name, -1)
+
+        def ss_part_transform(self, name):
+            """Player-local transform of a part on the last rendered frame, or
+            ``None``: a dict with x/y (px), rotation (deg), xscale/yscale."""
+            i = self.ss_part_index(name)
+            base = i * 16
+            if i < 0 or base + 16 > len(self._last_wm):
+                return None
+            m = self._last_wm[base:base + 16]
+            return {
+                "x": m[12], "y": m[13],
+                "rotation": math.degrees(math.atan2(m[1], m[0])),
+                "xscale": math.hypot(m[0], m[1]),
+                "yscale": math.hypot(m[4], m[5]),
+            }
+
+        def ss_is_part_hidden(self, name):
+            """Whether ``name`` is hidden on the last rendered frame."""
+            i = self.ss_part_index(name)
+            if i < 0 or not self._last_fb:
+                return True
+            try:
+                ps = framedata.parse(self._last_fb).Parts(i)
+                return bool(ps is None or ps.Hide())
+            except Exception:
+                return True
+
+    # Back-compat alias for the pre-rename class name (README / older scripts).
+    SpriteStudioDisplayable = SSPlayer
