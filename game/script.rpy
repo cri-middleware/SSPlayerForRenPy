@@ -116,6 +116,13 @@ image ringo = SSPlayer(
 
 define r = Character(_("Ringo"), image="ringo")
 
+image hit_effect = SSPlayer(
+    "e038.ssab", 
+    sprites_subdir="sprites/ParticleEffect", 
+    animation="hit", 
+    loop=1 # エフェクトなので1回再生で終了させる
+)
+
 label start:
     "Please select your language. / 言語を選択してください。"
     menu:
@@ -153,6 +160,12 @@ label ringo_demo:
     r "After moving back to the center..." id ringo_msg5
 
     show ringo attack
+    $ renpy.pause(0.05) # 攻撃のヒットタイミング（手が振り下ろされる瞬間）まで少し待つ
+
+    # 攻撃に合わせて手元でエフェクトを発火 (右手側に調整)
+    show hit_effect:
+        xoffset -150 yoffset 50
+
     r "Ei! (When the attack finishes, I automatically return to the idle motion, su.)" id ringo_msg6
 
     r idle "Furthermore, by linking with the Character's 'image' argument, you can control expressions and motions just with say statements like this, su!" id ringo_msg7
