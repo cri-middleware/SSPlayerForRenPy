@@ -373,6 +373,21 @@ init -10 python:
             self._last_fb = None    # last frame's FrameData bytes (part query)
             self._warned = set()
 
+        def __getstate__(self):
+            """Drop native pointers and reconstructible caches for pickling/saves."""
+            state = self.__dict__.copy()
+            for k in ("_rt", "_anim", "_ssab_data", "_meta", "_evt", 
+                      "_instances", "_effects", "_loader", "_base",
+                      "_last_st", "_last_fb"):
+                state[k] = None
+            state["_event_queue"] = []
+            state["_part_index"] = {}
+            state["_texmap"] = {}
+            state["_texpath"] = {}
+            state["_last_wm"] = []
+            state["_warned"] = set()
+            return state
+
         # -- lazy native setup ---------------------------------------------
         def _ensure(self):
             if self._rt is not None:
