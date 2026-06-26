@@ -4,6 +4,9 @@
 # keys to cycle through the bundled sample packs. Each entry is
 # (sprites_subdir, pack) so packs in different folders (overall, Ringo) coexist.
 
+style default:
+    font "SourceHanSansLite.ttf"
+
 init python:
     # Sample packs. Basic exercises alpha / local-alpha; Effect and Instance
     # exercise the particle and nested-animation features; Ringo is a real
