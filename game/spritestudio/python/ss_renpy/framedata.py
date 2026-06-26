@@ -25,6 +25,7 @@ retain the raw buffers.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from ss.runtime.FrameData import FrameData
@@ -48,6 +49,17 @@ BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub", 4: "Mulalpha",
 M1_RENDERABLE_KINDS = frozenset({KIND_NORMAL})
 
 MASK_INFLUENCE = 0x01  # DrawBatch.flags bit
+
+# SoA buffer strides (floats per part), mirroring the runtime's layout and the
+# Godot player's `constexpr int STRIDE = 10` (ss_internal_player.h). The local-
+# vertex and local-UV buffers share the same 10-float stride: 5 verts × 2 coords.
+MATRIX_STRIDE = 16   # 4×4 world matrix, column-major
+VERT_STRIDE = 10     # local vertices: LT,RT,LB,RB,CENTER × (x, y)
+UV_STRIDE = 10       # local UVs: same layout, in texture-pixel space
+CELL_STRIDE = 6      # cell meta: [pivot_x, pivot_y, size_w, size_h, rect_left, rect_top]
+
+# Vertex order within a part (indices into the 5-vertex local position/UV arrays).
+LT, RT, LB, RB, CENTER = 0, 1, 2, 3, 4
 
 # -- PartColor blend (texel<->vertex-colour, shader-side; 10_parts_color) -----
 # This is a DIFFERENT axis from the framebuffer blend on DrawBatch.blend_type:
@@ -133,20 +145,56 @@ def _transform(m, vx, vy):
             m[1] * vx + m[5] * vy + m[13])
 
 
-def build_normal_quads(rt, fd: FrameData) -> list:
-    """Resolve every visible Normal part of ``fd`` into world-space quads.
+def normalize_uvs(uvs, tex_w, tex_h) -> list:
+    """Convert texture-*pixel* UVs to texture-*normalized* UVs (``uv / texsize``).
 
-    ``rt`` is an :class:`ss_renpy.ssruntime.SSRuntime`. Must be called right
-    after ``rt.get_frame_data`` for the same frame (SoA buffers are transient).
+    Pure math, engine-independent — the equivalent of the reference players'
+    ``uv * inv_tex_size`` (Godot ``ss_internal_player.cpp:1762``). Results may
+    fall outside ``[0, 1]`` for UV-scaled / -translated / -rotated parts; the
+    consumer must sample with **REPEAT** wrap (not clamp) to reproduce them — the
+    runtime has already baked ``UvScale``/``UvTranslation``/``UvRotation`` into
+    these UVs. Degenerate texture sizes pass the UVs through unchanged.
+    """
+    if tex_w <= 0 or tex_h <= 0:
+        return [(u, v) for (u, v) in uvs]
+    return [(u / tex_w, v / tex_h) for (u, v) in uvs]
+
+
+@dataclass
+class _NormalPart:
+    """Per-part data shared by the M1 (quad) and M2 (mesh) builders.
+
+    The common walk of the FrameData draw plan resolves this once per visible
+    Normal part; both builders then project it onto their own output shape.
+    ``positions`` / ``uvs`` carry all 5 verts (LT,RT,LB,RB,CENTER) — the M1 path
+    uses the first 4, the M2 path appends the centre only when it fans.
+    """
+    part_index: int
+    ps: object               # PartState (kept for Alpha/UpdateFlag/PartColor)
+    blend_type: int
+    texture_hash: int
+    mask_influence: bool
+    positions: list          # [(x, y)] * 5 world  (LT,RT,LB,RB,CENTER)
+    uvs: list                # [(u, v)] * 5 texture px
+    src_rect: tuple          # (left, top, w, h)
+
+
+def _iter_visible_normal_parts(rt, fd: FrameData):
+    """Yield a :class:`_NormalPart` for each visible Normal part of ``fd``.
+
+    The single source of truth for walking the draw plan + reading the SoA
+    buffers (the engine-independent analogue of Godot's
+    ``get_local_vertices(p_idx)`` / ``get_local_uvs(p_idx)`` accessors). Must be
+    iterated right after ``rt.get_frame_data`` for the same frame — the SoA
+    pointers are valid only until the next Brain call.
     """
     wm, _ = rt.world_matrices()
     lv, _ = rt.local_vertices()
     uv, _ = rt.local_uvs()
     cm, _ = rt.cell_meta()
     if not wm or not lv:
-        return []
+        return
 
-    quads = []
     for b in range(fd.DrawBatchesLength()):
         batch = fd.DrawBatches(b)
         if batch.Kind() != KIND_NORMAL:
@@ -160,17 +208,34 @@ def build_normal_quads(rt, fd: FrameData) -> list:
             ps = fd.Parts(p)
             if ps is None or ps.Hide():
                 continue
-            mo, vo, co = p * 16, p * 10, p * 6
-            mat = wm[mo:mo + 16]
-            positions, uvs = [], []
-            for j in range(4):  # LT, RT, LB, RB (corner verts; center skipped)
-                positions.append(_transform(mat, lv[vo + j * 2], lv[vo + j * 2 + 1]))
-                uvs.append((uv[vo + j * 2], uv[vo + j * 2 + 1]))
+            mo = p * MATRIX_STRIDE
+            vo = p * VERT_STRIDE
+            uo = p * UV_STRIDE
+            co = p * CELL_STRIDE
+            mat = wm[mo:mo + MATRIX_STRIDE]
+            positions = [_transform(mat, lv[vo + j * 2], lv[vo + j * 2 + 1])
+                         for j in range(5)]   # LT, RT, LB, RB, CENTER
+            uvs = [(uv[uo + j * 2], uv[uo + j * 2 + 1]) for j in range(5)]
             src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
-            quads.append(NormalQuad(
-                part_index=p, texture_hash=thash, blend_type=blend,
-                positions=positions, uvs=uvs, src_rect=src_rect,
-                alpha=ps.Alpha(), mask_influence=mask))
+            yield _NormalPart(
+                part_index=p, ps=ps, blend_type=blend, texture_hash=thash,
+                mask_influence=mask, positions=positions, uvs=uvs,
+                src_rect=src_rect)
+
+
+def build_normal_quads(rt, fd: FrameData) -> list:
+    """Resolve every visible Normal part of ``fd`` into world-space quads.
+
+    ``rt`` is an :class:`ss_renpy.ssruntime.SSRuntime`. Must be called right
+    after ``rt.get_frame_data`` for the same frame (SoA buffers are transient).
+    """
+    quads = []
+    for part in _iter_visible_normal_parts(rt, fd):
+        quads.append(NormalQuad(
+            part_index=part.part_index, texture_hash=part.texture_hash,
+            blend_type=part.blend_type, positions=part.positions[:4],
+            uvs=part.uvs[:4], src_rect=part.src_rect,
+            alpha=part.ps.Alpha(), mask_influence=part.mask_influence))
     return quads
 
 
@@ -207,7 +272,6 @@ def reconstruct_corners(p: Placement) -> list:
     Rebuilds LT, RT, LB, RB world corners from the placement. Compared against
     the original quad, the gap is the shear M1 cannot represent.
     """
-    import math
     _, _, w, h = p.src_rect
     cx, cy = p.center
     a = math.radians(p.rotation_deg)
@@ -236,7 +300,6 @@ def placement_from_corners(positions, src_rect) -> tuple:
     ``(center, rotation_deg, xscale, yscale, mirror)``; shear is dropped (the
     caller measures the residual). Degenerate cells return a zero placement.
     """
-    import math
     lt, rt, lb, rb = positions[0], positions[1], positions[2], positions[3]
     _, _, w, h = src_rect
     if w <= 0 or h <= 0:
@@ -257,7 +320,6 @@ def decompose_quad(q: NormalQuad) -> Placement:
     Uses the top edge (RT-LT) and left edge (LB-LT) of the world parallelogram.
     Records ``skew_err`` so callers know how faithful the M1 approximation is.
     """
-    import math
     center, rotation, xscale, yscale, mirror = placement_from_corners(
         q.positions, q.src_rect)
     p = Placement(center, rotation, xscale, yscale, mirror, 0.0,
@@ -367,58 +429,39 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
     part to a similarity transform it keeps the true 4-corner world quad (so
     shear and free deform are exact) and attaches per-vertex colour. Call right
     after ``rt.get_frame_data`` for the same frame — the SoA buffers are
-    transient.
+    transient. ``uvs`` are texture-pixel; normalize with :func:`normalize_uvs`
+    and sample with REPEAT wrap (the runtime bakes UV scale/rotation in).
     """
-    wm, _ = rt.world_matrices()
-    lv, _ = rt.local_vertices()
-    uv, _ = rt.local_uvs()
-    cm, _ = rt.cell_meta()
-    if not wm or not lv:
-        return []
-
     out = []
-    for b in range(fd.DrawBatchesLength()):
-        batch = fd.DrawBatches(b)
-        if batch.Kind() != KIND_NORMAL:
-            continue
-        fb_blend = batch.BlendType()
-        thash = batch.TextureHash()
-        mask = bool(batch.Flags() & MASK_INFLUENCE)
-        start, count = batch.StartRank(), batch.Count()
-        for k in range(count):
-            p = fd.DrawOrder(start + k)
-            ps = fd.Parts(p)
-            if ps is None or ps.Hide():
-                continue
-            mo, vo, co = p * 16, p * 10, p * 6
-            mat = wm[mo:mo + 16]
-            cblend, corners = part_colors(fd, ps)
+    for part in _iter_visible_normal_parts(rt, fd):
+        ps = part.ps
+        cblend, corners = part_colors(fd, ps)
 
-            positions = [_transform(mat, lv[vo + j * 2], lv[vo + j * 2 + 1])
-                         for j in range(4)]               # LT, RT, LB, RB
-            uvs = [(uv[vo + j * 2], uv[vo + j * 2 + 1]) for j in range(4)]
-            colors = [c.rgba for c in corners]
-            rates = [c.rate for c in corners]
-            has_pc = any(r > 0.0 for r in rates)
+        positions = list(part.positions[:4])             # LT, RT, LB, RB
+        uvs = list(part.uvs[:4])
+        colors = [c.rgba for c in corners]
+        rates = [c.rate for c in corners]
+        has_pc = any(r > 0.0 for r in rates)
 
-            use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
-            if use_center:
-                # Centre vertex (index 4) — fan for smooth deform / gradient.
-                positions.append(_transform(mat, lv[vo + 8], lv[vo + 9]))
-                uvs.append((uv[vo + 8], uv[vo + 9]))
-                colors.append(tuple(_avg(c[i] for c in colors) for i in range(4)))
-                rates.append(_avg(rates))
-                # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
-                tris = [(4, 0, 1), (4, 1, 3), (4, 3, 2), (4, 2, 0)]
-            else:
-                tris = [(0, 1, 2), (1, 3, 2)]   # LT,RT,LB and RT,RB,LB
+        use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
+        if use_center:
+            # Centre vertex (index 4) — fan for smooth deform / gradient.
+            positions.append(part.positions[CENTER])
+            uvs.append(part.uvs[CENTER])
+            colors.append(tuple(_avg(c[i] for c in colors) for i in range(4)))
+            rates.append(_avg(rates))
+            # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
+            tris = [(CENTER, LT, RT), (CENTER, RT, RB),
+                    (CENTER, RB, LB), (CENTER, LB, LT)]
+        else:
+            tris = [(LT, RT, LB), (RT, RB, LB)]
 
-            out.append(MeshPart(
-                part_index=p, texture_hash=thash, blend_type=fb_blend,
-                color_blend=cblend, positions=positions, uvs=uvs, colors=colors,
-                rates=rates, triangles=tris, src_rect=(cm[co + 4], cm[co + 5],
-                                                       cm[co + 2], cm[co + 3]),
-                mask_influence=mask, use_center=use_center, has_partcolor=has_pc))
+        out.append(MeshPart(
+            part_index=part.part_index, texture_hash=part.texture_hash,
+            blend_type=part.blend_type, color_blend=cblend, positions=positions,
+            uvs=uvs, colors=colors, rates=rates, triangles=tris,
+            src_rect=part.src_rect, mask_influence=part.mask_influence,
+            use_center=use_center, has_partcolor=has_pc))
     return out
 
 

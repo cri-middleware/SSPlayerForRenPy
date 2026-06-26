@@ -55,11 +55,18 @@ init -10 python:
     #       M1: framebuffer blend modes and uniform parts_color tint. Drops
     #       shear/free-deform back to the M1 similarity fit and renders
     #       per-vertex colour *gradients* as a flat (averaged) tint.
-    #   "mesh" — model-based mesh + custom shader. True shear/free-deform and
-    #       per-vertex gradients, all PartColor modes. Requires the Ren'Py mesh
-    #       API spike (cold-start §3.2); on any error it falls back per-part to
-    #       the transform backend, so enabling it can never blank the screen.
-    SS_RENDER_BACKEND = "transform"
+    #   "mesh" (default) — model-based per-vertex mesh (renpy.gl2 Mesh2) + custom
+    #       shader. The only backend that reproduces shear / free-deform and the
+    #       baked UV transforms (UvScale/UvTranslation/UvRotation) by sampling the
+    #       full atlas with gl_texture_wrap = REPEAT. Mirrors the Godot/Web/Unity
+    #       renderers. On any error it falls back per-part to the transform
+    #       backend, so it can never blank the screen.
+    #
+    # The transform backend CANNOT represent UV scale/rotation (it crops the cell
+    # rect), so parts like Basic.ssab's UvScale=2 render wrong there — hence mesh
+    # is the default. Set "transform" only if the mesh backend misbehaves on your
+    # GPU/Ren'Py build.
+    SS_RENDER_BACKEND = "mesh"
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
@@ -100,6 +107,25 @@ init -10 python:
             )
         except Exception as e:
             renpy.log("ss: register_shader(ss.partcolor) failed: %r" % (e,))
+
+    # Model-based mesh backend dependencies (Ren'Py gl2). `Mesh2` is Ren'Py's
+    # built-in 2D mesh (vs Mesh3 = 3D); we build one per part with explicit
+    # per-vertex position + UV. Imported defensively so an older Ren'Py without
+    # these simply disables the mesh backend (the transform backend still works).
+    try:
+        from renpy.gl2.gl2mesh2 import Mesh2 as _SS_Mesh2
+        from renpy.gl2.gl2mesh import TEXTURE_LAYOUT as _SS_TEXTURE_LAYOUT
+    except Exception as e:
+        _SS_Mesh2 = None
+        _SS_TEXTURE_LAYOUT = None
+        renpy.log("ss: gl2 Mesh2 unavailable (%r); mesh backend disabled" % (e,))
+    # REPEAT wrap so UVs the runtime baked past the atlas edge (UvScale/translate/
+    # rotate) sample correctly — the analogue of every reference player's wrap.
+    try:
+        from renpy.uguu import GL_REPEAT as _SS_GL_REPEAT
+        _SS_TEXTURE_WRAP = (_SS_GL_REPEAT, _SS_GL_REPEAT)
+    except Exception:
+        _SS_TEXTURE_WRAP = None
 
     def _ss_blend_property(blend_type):
         """Return a (key, value) for Render.add_property('gl_blend_func', …) or None."""
@@ -262,6 +288,16 @@ init -10 python:
                                 "part %d free-deform; transform backend "
                                 "approximates, use SS_RENDER_BACKEND='mesh'"
                                 % mp.part_index)
+            # The transform backend crops the cell rect, so it cannot represent a
+            # baked UV scale/translation (the UV span no longer matches the cell).
+            us = [u for (u, v) in mp.uvs]
+            vs = [v for (u, v) in mp.uvs]
+            if (abs((max(us) - min(us)) - mp.src_rect[2]) > 0.5
+                    or abs((max(vs) - min(vs)) - mp.src_rect[3]) > 0.5):
+                self._warn_once(("uvscale", mp.part_index),
+                                "part %d has a UV scale/transform the transform "
+                                "backend can't represent; use "
+                                "SS_RENDER_BACKEND='mesh'" % mp.part_index)
 
             xzoom, yzoom = xscale, yscale
             if mirror:
@@ -308,51 +344,64 @@ init -10 python:
                                 "drawn as normal" % framedata.BLEND_NAMES.get(
                                     mp.blend_type, mp.blend_type))
 
-        # -- mesh backend (opt-in, requires the cold-start §3.2 spike) ------
+        # -- mesh backend (default): true per-vertex Mesh2 ------------------
         def _draw_mesh(self, r, mp, ox, oy, st, at, width, height):
-            """True model-based mesh draw. Returns True on success.
+            """Draw one part as a per-vertex model mesh. Returns True on success.
 
-            This is the documented #1 technical risk: building an arbitrary
-            textured mesh from the CPU. It is wired to the `ss.partcolor` shader
-            (uniform colour/rate per part) and uses the world quad via the
-            built-in mesh path. Until the spike confirms the Mesh2 / Render.mesh
-            API on the target Ren'Py version, it returns False so the caller
-            falls back to the transform backend (never blanks the screen).
+            Builds a ``renpy.gl2.gl2mesh2.Mesh2`` from the part's world-space
+            corners (``mp.positions``) and its texture-pixel UVs normalized by the
+            atlas size (``framedata.normalize_uvs``), textures it with the FULL
+            atlas, and sets ``gl_texture_wrap = REPEAT`` so UVs the runtime baked
+            past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
+            clamping. This is the only backend that is shear / free-deform exact
+            and honours the UV transforms — the Ren'Py-native form of what the
+            Godot/Web/Unity players do. ``parts_color`` is applied per-part
+            (uniform) via the ``ss.partcolor`` shader.
+
+            On any error returns False so the caller falls back to the transform
+            backend (never blanks the screen).
             """
+            if _SS_Mesh2 is None:
+                return False
             try:
                 tex = self._texture_path(mp.texture_hash)
                 if not tex:
                     return False
-                l, t, w, h = (int(round(v)) for v in mp.src_rect)
-                if w <= 0 or h <= 0:
+                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                tw, th = cr.get_size()        # atlas pixel size (for UV normalize)
+                if tw <= 0 or th <= 0:
                     return False
-                child = Transform(self._base_image(tex), crop=(l, t, w, h))
-                cr = renpy.render(child, width, height, st, at)
 
-                rv = renpy.Render(w, h)
-                rv.blit(cr, (0, 0))
-                rv.mesh = True
+                pts = mp.positions            # 4 corners, or 5 with centre fan
+                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
+                tris = mp.triangles
+
+                mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, len(pts), len(tris))
+                geometry = []
+                for (x, y) in pts:
+                    geometry += [ox + x, oy + y]          # SS world -> screen px
+                mesh.set_geometry_data(geometry)
+                attributes = []
+                for (u, v) in nuv:
+                    attributes += [u, v]                  # a_tex_coord (may be >1)
+                mesh.set_attribute_data(attributes)
+                indices = []
+                for tri in tris:
+                    indices += [tri[0], tri[1], tri[2]]
+                mesh.set_triangle_data(indices)
+
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))                       # supplies tex0 (atlas)
+                rv.mesh = mesh
+                if _SS_TEXTURE_WRAP is not None:
+                    rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
                 rv.add_shader("ss.partcolor")
                 avg = _ss_avg_color(mp.colors)
                 vx, vy, vz = framedata.partcolor_varg(mp.color_blend, _ss_avg_rate(mp))
                 rv.add_uniform("u_ss_color", (avg[0], avg[1], avg[2], avg[3]))
                 rv.add_uniform("u_ss_varg", (vx, vy, vz))
                 self._apply_blend(rv, mp)
-
-                # Place the unit quad onto the world corners. A pure parallelo-
-                # gram (the common case) is an affine map from the LT corner;
-                # this is where free-deform / Mesh2 vertex placement would go.
-                center, rot, xscale, yscale, mirror = \
-                    framedata.placement_from_corners(mp.positions, mp.src_rect)
-                xz, yz = xscale, yscale
-                if mirror:
-                    yz = -yz
-                placed = Transform(rv, rotate=rot * SS_ROTATE_SIGN,
-                                   xzoom=xz, yzoom=yz, subpixel=True)
-                pr = renpy.render(placed, width, height, st, at)
-                cw, ch = pr.get_size()
-                r.blit(pr, (int(round(ox + center[0] - cw / 2.0)),
-                            int(round(oy + center[1] - ch / 2.0))))
+                r.blit(rv, (0, 0))            # mesh positions are already screen-space
                 return True
             except Exception as e:
                 self._warn_once("mesh-backend",

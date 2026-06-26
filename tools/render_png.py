@@ -49,13 +49,40 @@ def load_atlases(meta: SsabMeta, base: str) -> dict:
     return tex
 
 
+def _wrap_atlas(atlas: Image.Image, x0: int, y0: int, w: int, h: int) -> Image.Image:
+    """Crop a ``w×h`` region from ``atlas`` at ``(x0, y0)`` with REPEAT wrap.
+
+    Unlike ``Image.crop`` (which pads out-of-bounds with transparent), this tiles
+    the atlas so UVs that exceed the texture wrap around — the software analogue
+    of GL ``GL_REPEAT``. Needed for parts with ``UvScale``/``UvTranslation`` (the
+    runtime bakes those into the UVs, so the sampled rect can run off the atlas;
+    e.g. Basic.ssab part 20 has UvScale=2). For an in-bounds rect this is a plain
+    single-tile copy, identical to ``crop``.
+    """
+    tw, th = atlas.size
+    out = Image.new("RGBA", (w, h))
+    x = 0
+    while x < w:
+        sx = (x0 + x) % tw
+        cw = min(tw - sx, w - x)
+        y = 0
+        while y < h:
+            sy = (y0 + y) % th
+            ch = min(th - sy, h - y)
+            out.paste(atlas.crop((sx, sy, sx + cw, sy + ch)), (x, y))
+            y += ch
+        x += cw
+    return out
+
+
 def warp_quad(atlas: Image.Image, quad, canvas_size, off) -> Image.Image | None:
     """Warp one Normal quad's cell crop onto its world parallelogram.
 
     Returns a canvas-sized RGBA layer (transparent outside the part), or None
-    for degenerate geometry. Uses the UVs to crop + flip-correct, then a single
-    affine maps the rectangular cell onto the destination parallelogram (Normal
-    parts are affine, so 4 corners form a parallelogram).
+    for degenerate geometry. Uses the UVs to crop (with REPEAT wrap, so UV-scaled
+    parts sample correctly instead of running off the atlas) + flip-correct, then
+    a single affine maps the rectangular cell onto the destination parallelogram
+    (Normal parts are affine, so 4 corners form a parallelogram).
     """
     us = [u for (u, v) in quad.uvs]
     vs = [v for (u, v) in quad.uvs]
@@ -65,8 +92,7 @@ def warp_quad(atlas: Image.Image, quad, canvas_size, off) -> Image.Image | None:
     h = int(round(v1 - v0))
     if w <= 0 or h <= 0:
         return None
-    crop = atlas.crop((int(round(u0)), int(round(v0)),
-                       int(round(u0)) + w, int(round(v0)) + h))
+    crop = _wrap_atlas(atlas, int(round(u0)), int(round(v0)), w, h)
 
     # Flip so crop pixel (0,0) is the LT corner's texel.
     if quad.uvs[0][0] > quad.uvs[1][0]:   # LT.u > RT.u -> horizontally flipped

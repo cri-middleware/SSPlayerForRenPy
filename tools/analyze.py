@@ -119,7 +119,7 @@ def audit_pack(lib, path: str) -> dict:
 
         # --- geometry sanity on the sample frame's Normal quads ---
         if sample_quads:
-            bad_pos = bad_uv = bad_rect = 0
+            bad_pos = uv_wrap = bad_rect = 0
             hashes = set()
             for q in sample_quads:
                 hashes.add(q.texture_hash)
@@ -133,12 +133,16 @@ def audit_pack(lib, path: str) -> dict:
                     l, t, w, h = q.src_rect
                     if l < -0.5 or t < -0.5 or l + w > tw + 0.5 or t + h > th + 0.5:
                         bad_rect += 1
+                    # UVs outside the atlas are NOT a defect: the runtime bakes
+                    # UvScale/UvTranslation/UvRotation into the UVs, so a
+                    # UV-animated part legitimately samples beyond the texture and
+                    # is rendered with REPEAT wrap. Count them as informational.
                     for (u, v) in q.uvs:
                         if u < -0.5 or v < -0.5 or u > tw + 0.5 or v > th + 0.5:
-                            bad_uv += 1
+                            uv_wrap += 1
             unresolved = [h for h in hashes if h not in tex]
             g = (f"{len(sample_quads)} Normal quads @frame{sample_frame}: "
-                 f"pos_bad={bad_pos} uv_oob={bad_uv} rect_oob={bad_rect}")
+                 f"pos_bad={bad_pos} uv_wrap={uv_wrap} rect_oob={bad_rect}")
             if unresolved:
                 g += f" UNRESOLVED_TEX={len(unresolved)}"
             result["geom"] = g
