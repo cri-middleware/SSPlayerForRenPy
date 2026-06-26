@@ -403,6 +403,7 @@ init -10 python:
             rt.play()
             self._rt = rt
             self._anim = anim
+            self.animation = anim
             self._evt = events.EventResolver(data, anim)
             self._was_playing = True
             self._build_rigs()

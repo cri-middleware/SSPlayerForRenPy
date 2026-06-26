@@ -6,6 +6,8 @@
 
 style default:
     font "SourceHanSansLite.ttf"
+style text:
+    font "SourceHanSansLite.ttf"
 
 init python:
     # Sample packs. Basic exercises alpha / local-alpha; Effect and Instance
@@ -39,6 +41,21 @@ init python:
     def ss_switch(delta):
         store.ss_index = (store.ss_index + delta) % len(SS_DEMO_PACKS)
         store.ss_current = ss_make(SS_DEMO_PACKS[store.ss_index])
+        store.ss_event_log = []
+        renpy.restart_interaction()
+
+    def ss_switch_anim(delta):
+        player = store.ss_current
+        names = player.ss_animation_names()
+        if not names:
+            return
+        curr = player.ss_get_animation()
+        try:
+            idx = names.index(curr)
+        except ValueError:
+            idx = 0
+        new_idx = (idx + delta) % len(names)
+        player.ss_play(names[new_idx])
         store.ss_event_log = []
         renpy.restart_interaction()
 
@@ -89,7 +106,7 @@ screen ss_demo():
     add Solid("#2a2e36")
     add ss_current:
         xalign 0.5
-        yalign 0.5
+        yalign (0.75 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
 
     # Drain timeline events from the displayable's poll queue a few times a
     # second; the screen re-renders each tick to show the latest log.
@@ -114,9 +131,11 @@ screen ss_demo():
         padding (16, 8)
         hbox:
             spacing 18
-            text "[SS_DEMO_PACKS[ss_index][1]]" size 20 color "#ffffff"
-            text "←/→ switch · Esc quit" size 16 color "#9aa0ab" yalign 0.5
+            text "[SS_DEMO_PACKS[ss_index][1]] : [ss_current.animation]" size 20 color "#ffffff"
+            text "←/→ pack · ↑/↓ anim · Esc quit" size 16 color "#9aa0ab" yalign 0.5
 
     key "K_RIGHT" action Function(ss_switch, 1)
     key "K_LEFT" action Function(ss_switch, -1)
+    key "K_UP" action Function(ss_switch_anim, -1)
+    key "K_DOWN" action Function(ss_switch_anim, 1)
     key "K_ESCAPE" action Return()
