@@ -11,6 +11,12 @@
 # PartColor blend modes (Mix/Mul/Add/Sub). Mesh / Effect / Mask / Shape /
 # Instance / Text / NineSlice batch kinds are still skipped (M3/M4).
 #
+# Timeline events (roadmap Step 4) are surfaced independently of rendering:
+# UserData / Signal / Audio markers are decoded by `ss_renpy.events` and
+# delivered via the optional on_* callbacks and the ss_poll_events() queue;
+# finished / looped derive from runtime state. (Playing audio is the host's
+# job — the Player only reports the trigger, per docs/00_limitations.)
+#
 # ─────────────────────────────────────────────────────────────────────────
 # VERIFICATION STATUS — READ THIS
 # The engine-independent render core (geometry + colour + blend math) is
@@ -38,7 +44,7 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata
+    from ss_renpy import ssruntime, framedata, events
     from ss_renpy.ssab_meta import SsabMeta
 
     # Load the native library once, from spritestudio/libs/<platform-arch>/.
@@ -71,6 +77,13 @@ init -10 python:
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
     SS_USE_MATRIX_TRANSFORM = False  # transform backend: true shear via 4x4
+
+    # Timeline events (UserData / Signal / Audio). The decoder is pure-Python and
+    # headless-verified (tools/verify_events.py); collecting into the poll queue
+    # is cheap and always on when enabled. Optional callbacks (see the
+    # displayable constructor) run *inside* render() — keep them light; for
+    # control flow (jumps, sound) prefer draining ss_poll_events() from a screen.
+    SS_ENABLE_EVENTS = True
 
     # SS framebuffer BlendType -> Ren'Py config.gl_blend_func key. Mix == normal
     # (no override). Only the keys Ren'Py ships by default are mapped; the rest
@@ -184,16 +197,32 @@ init -10 python:
         """
 
         def __init__(self, ssab, animation=None, sprites_subdir="sprites",
-                     loop=-1, speed=1.0, **kwargs):
+                     loop=-1, speed=1.0,
+                     on_user_data=None, on_signal=None, on_audio=None,
+                     on_finished=None, on_looped=None, **kwargs):
             super(SpriteStudioDisplayable, self).__init__(**kwargs)
             self.ssab = ssab
             self.animation = animation
             self.sprites_subdir = sprites_subdir
             self.loop = loop
             self.speed = speed
+            # Optional event callbacks (docs/06 §4 recommended Player API). Each
+            # is invoked as cb(self, frame_index, event) for the per-part events
+            # and cb(self) for finished/looped, guarded so a raising callback can
+            # never break rendering. Prefer module-level functions / store
+            # methods (lambdas/locals defeat rollback pickling).
+            self.on_user_data = on_user_data
+            self.on_signal = on_signal
+            self.on_audio = on_audio
+            self.on_finished = on_finished
+            self.on_looped = on_looped
             # runtime state (built lazily on first render)
             self._rt = None
             self._anim = None
+            self._ssab_data = None  # retained for per-animation EventResolver rebuilds
+            self._evt = None        # ss_renpy.events.EventResolver for self._anim
+            self._event_queue = []  # FrameEvents awaiting ss_poll_events()
+            self._was_playing = False
             self._texmap = {}
             self._texpath = {}     # texture_hash -> "sprites/foo.png"
             self._base = {}        # path -> Image()
@@ -207,6 +236,7 @@ init -10 python:
             path = os.path.join(self._SS_dir(), self.ssab)
             with open(path, "rb") as fh:
                 data = fh.read()
+            self._ssab_data = data
             meta = SsabMeta(data)
             self._texmap = meta.texture_hash_map()
             rt = ssruntime.SSRuntime(_SS_LIB)
@@ -226,6 +256,8 @@ init -10 python:
             rt.play()
             self._rt = rt
             self._anim = anim
+            self._evt = events.EventResolver(data, anim)
+            self._was_playing = True
 
         def _SS_dir(self):
             return os.path.join(renpy.config.gamedir, self.sprites_subdir)
@@ -250,12 +282,72 @@ init -10 python:
                 self._warned.add(key)
                 renpy.log("ss: " + msg)
 
+        # -- timeline events (UserData / Signal / Audio) -------------------
+        def _pump_events(self):
+            """Collect the events this update passed through; never raises.
+
+            Called once per render, immediately after ``update``. Resolved
+            FrameEvents are appended to the poll queue (drained by
+            :meth:`ss_poll_events`) and dispatched to any callbacks. The
+            finished / looped notifications are derived from runtime state:
+            ``finished`` fires once on the ``is_playing`` True→False edge (works
+            for finite loops *and* play-once; never fires for ``loop=-1``);
+            ``looped`` fires on the per-update ``is_looped`` wrap flag.
+            """
+            if not SS_ENABLE_EVENTS:
+                return
+            try:
+                if self._evt is not None and self._evt.available:
+                    for fe in self._evt.collect(self._rt):
+                        self._event_queue.append(fe)
+                        self._dispatch_frame_events(fe)
+                if self._rt.is_looped:
+                    self._call_cb(self.on_looped)
+                playing = self._rt.is_playing
+                if self._was_playing and not playing:
+                    self._call_cb(self.on_finished)
+                self._was_playing = playing
+            except Exception as e:
+                self._warn_once("event-pump",
+                                "event pump failed (%r); events disabled this "
+                                "frame" % (e,))
+
+        def _dispatch_frame_events(self, fe):
+            for u in fe.users:
+                self._call_cb(self.on_user_data, fe.frame_index, u)
+            for s in fe.signals:
+                self._call_cb(self.on_signal, fe.frame_index, s)
+            for a in fe.audios:
+                self._call_cb(self.on_audio, fe.frame_index, a)
+
+        def _call_cb(self, cb, *args):
+            if cb is None:
+                return
+            try:
+                cb(self, *args)
+            except Exception as e:
+                self._warn_once(("cb", id(cb)),
+                                "event callback raised: %r" % (e,))
+
+        def ss_poll_events(self):
+            """Drain and return the events collected since the last poll.
+
+            Returns a list of :class:`ss_renpy.events.FrameEvents` (each with
+            ``.frame_index`` and ``.users`` / ``.signals`` / ``.audios``). This is
+            the rollback-safe, render-thread-safe way to consume events from a
+            screen / interaction (vs the callbacks, which fire inside render()).
+            """
+            q = self._event_queue
+            self._event_queue = []
+            return q
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
             dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
             self._last_st = st
             frame_no = self._rt.update(dt)           # seconds -> ms internally
+            self._pump_events()                      # collect events this update
             fb = self._rt.get_frame_data(frame_no)
 
             r = renpy.Render(width, height)
@@ -418,8 +510,11 @@ init -10 python:
             if animation and animation != self._anim:
                 self._rt.setup_animation(animation)
                 self._anim = animation
+                # Events are indexed per-animation: rebuild the resolver.
+                self._evt = events.EventResolver(self._ssab_data, animation)
             self._rt.set_loop(loop)
             self._rt.play()
+            self._was_playing = True
             renpy.redraw(self, 0)
 
         def ss_pause(self):

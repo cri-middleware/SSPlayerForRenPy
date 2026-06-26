@@ -362,8 +362,37 @@ class SSRuntime:
         return bool(self._lib.ss_runtime_is_end_frame_reached(self._ctx))
 
     @property
+    def is_looped(self) -> bool:
+        """True if the last :meth:`update` crossed a loop boundary (per-update)."""
+        return bool(self._lib.ss_runtime_is_looped(self._ctx))
+
+    @property
     def fps(self) -> int:
         return int(self._lib.ss_runtime_get_fps(self._ctx))
+
+    @property
+    def start_frame(self) -> int:
+        return int(self._lib.ss_runtime_get_start_frame(self._ctx))
+
+    @property
+    def end_frame(self) -> int:
+        return int(self._lib.ss_runtime_get_end_frame(self._ctx))
+
+    @property
+    def remain_loops(self) -> int:
+        return int(self._lib.ss_runtime_get_remain_loops(self._ctx))
+
+    # -- events (see ss_renpy.events) -------------------------------------
+    def passed_event_count(self) -> int:
+        """Number of timeline events the last :meth:`update` passed through."""
+        return int(self._lib.ss_runtime_get_passed_event_count(self._ctx))
+
+    def passed_event_index(self, i: int) -> int:
+        """Index of the ``i``-th passed event into the animation's events vector.
+
+        Resolve it with :class:`ss_renpy.events.EventResolver`.
+        """
+        return int(self._lib.ss_runtime_get_passed_event_index(self._ctx, i))
 
     # -- frame data -------------------------------------------------------
     def get_frame_data(self, frame_no: float) -> bytes:

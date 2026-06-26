@@ -73,6 +73,8 @@ build artifacts regenerated from the SDK by `scripts/`.
 | Build native runtime | `scripts/build-runtime.sh` (POSIX) / `scripts\build-runtime.ps1` (Win) |
 | Convert demo playback data | `scripts/deploy-examples.sh` / `scripts\deploy-examples.ps1` |
 | M0 wiring smoke test | `python3 tools/m0_smoke.py` (expects `draw_batches > 0`) |
+| M2 render-core check | `python3 tools/verify_m2.py` (geometry/colour/blend math) |
+| Timeline events check | `python3 tools/verify_events.py` (UserData/Signal/Audio decode + finished/looped) |
 | Displayability audit | `python3 tools/analyze.py` |
 | Software-render a pack | `./.venv/bin/python tools/render_png.py <anim.ssab>` → `out/` |
 | In Ren'Py (visual) | The Ren'Py SDK is not in this repo and renders to a GUI; **ask the user to launch the project** to verify on-screen behavior. |
