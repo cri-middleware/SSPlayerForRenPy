@@ -705,5 +705,5 @@ class SSRuntime:
     def __del__(self):
         try:
             self.close()
-        except Exception:
+        except:
             pass

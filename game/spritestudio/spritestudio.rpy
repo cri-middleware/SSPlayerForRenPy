@@ -331,16 +331,29 @@ init -10 python:
         def __init__(self, ssab, animation=None, sprites_subdir="sprites",
                      loop=-1, speed=1.0, sub_frame=False,
                      on_user_data=None, on_signal=None, on_audio=None,
-                     on_finished=None, on_looped=None, on_started=None, **kwargs):
+                     on_finished=None, on_looped=None, on_started=None,
+                     aliases=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
             self.ssab = ssab
-            self.animation = animation
+            self.kwargs = kwargs
+            self.aliases = aliases or {}
+            self._duplicatable = True
+            self._available_animations = None
+            
+            if isinstance(animation, (list, tuple)) and len(animation) > 0:
+                self._anim_queue = list(animation)
+                self.animation = self._anim_queue.pop(0)
+                self.loop = 1 if self._anim_queue else loop
+            else:
+                self._anim_queue = []
+                self.animation = animation
+                self.loop = loop
+
             self.sprites_subdir = sprites_subdir
-            self.loop = loop
             self.speed = speed
             # Sub-frame interpolation: when off (the default) the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (docs/06 §サブフレーム).
+            # head stays a raw float either way (docs/06).
             self._sub_frame = bool(sub_frame)
             # Optional event callbacks (docs/06 §4 recommended Player API). Each
             # is invoked as cb(self, frame_index, event) for the per-part events
@@ -387,6 +400,59 @@ init -10 python:
             state["_last_wm"] = []
             state["_warned"] = set()
             return state
+
+        # -- image attributes (_duplicate, _list_attributes) ---------------
+        def _get_available_animations(self):
+            if self._available_animations is None:
+                path = os.path.join(self._SS_dir(), self.ssab)
+                try:
+                    with open(path, "rb") as fh:
+                        data = fh.read()
+                    meta = SsabMeta(data)
+                    self._available_animations = meta.animation_names()
+                except Exception:
+                    self._available_animations = []
+            return self._available_animations
+
+        def _list_attributes(self, tag, attributes):
+            """Tell Ren'Py what attributes (animations/aliases) this displayable accepts."""
+            available = set(self._get_available_animations())
+            available.update(self.aliases.keys())
+            return list(available)
+
+        def _duplicate(self, args):
+            """Spawn a new SSPlayer instance for `show ssplayer [attributes]`."""
+            if not getattr(self, "_duplicatable", True):
+                return self
+            if not args or not getattr(args, "args", None):
+                return self
+
+            target_anim = self.animation
+            for attr in args.args:
+                if attr in self.aliases:
+                    target_anim = self.aliases[attr]
+                elif attr in self._get_available_animations():
+                    target_anim = attr
+
+            # Return a copy configured for the new animation.
+            rv = SSPlayer(
+                self.ssab,
+                animation=target_anim,
+                sprites_subdir=self.sprites_subdir,
+                loop=self.loop,
+                speed=self.speed,
+                sub_frame=self._sub_frame,
+                on_user_data=self.on_user_data,
+                on_signal=self.on_signal,
+                on_audio=self.on_audio,
+                on_finished=self.on_finished,
+                on_looped=self.on_looped,
+                on_started=self.on_started,
+                aliases=self.aliases,
+                **self.kwargs
+            )
+            rv._duplicatable = False
+            return rv
 
         # -- lazy native setup ---------------------------------------------
         def _ensure(self):
@@ -526,7 +592,13 @@ init -10 python:
                     self._call_cb(self.on_looped)
                 playing = self._rt.is_playing
                 if self._was_playing and not playing:
-                    self._call_cb(self.on_finished)
+                    if self._anim_queue:
+                        next_anim = self._anim_queue.pop(0)
+                        # Play once if queue has more, otherwise use the original loop setting
+                        next_loop = 1 if self._anim_queue else self.kwargs.get("loop", -1)
+                        self.ss_play(next_anim, loop=next_loop)
+                    else:
+                        self._call_cb(self.on_finished)
                 self._was_playing = playing
             except Exception as e:
                 self._warn_once("event-pump",
