@@ -87,8 +87,25 @@ _CENTER_FLAGS = (UpdateAttributeFlags.AttributeVertex
                  | UpdateAttributeFlags.AttributePartColor)
 
 
-def parse(fb: bytes) -> FrameData:
+def parse(fb) -> FrameData:
     return FrameData.GetRootAs(fb, 0)
+
+
+def hidden_parts(fd: FrameData) -> set:
+    """Owned set of part indices hidden on ``fd`` (for the part-query API).
+
+    A tiny snapshot so callers can answer "is part N hidden?" *after* the
+    FrameData buffer is gone — the analogue of the ``_last_wm`` matrix snapshot.
+    Must run while ``fd``'s buffer is still valid (right after :func:`parse`,
+    before any slot step), since a zero-copy ``get_frame_data_view`` buffer is
+    invalidated by the instance/effect steps that follow.
+    """
+    hidden = set()
+    for i in range(fd.PartsLength()):
+        ps = fd.Parts(i)
+        if ps is None or ps.Hide():
+            hidden.add(i)
+    return hidden
 
 
 def clamp_pc_blend(blend_type: int) -> int:

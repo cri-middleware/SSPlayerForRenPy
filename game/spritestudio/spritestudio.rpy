@@ -386,15 +386,15 @@ init -10 python:
             self._base = {}        # path -> Image()
             self._last_st = None
             self._last_wm = []      # snapshot of root world matrices (part query)
-            self._last_fb = None    # last frame's FrameData bytes (part query)
+            self._last_hidden = None  # snapshot of hidden part indices (part query)
             self._warned = set()
 
         def __getstate__(self):
             """Drop native pointers and reconstructible caches for pickling/saves."""
             state = self.__dict__.copy()
-            for k in ("_rt", "_anim", "_ssab_data", "_meta", "_evt", 
+            for k in ("_rt", "_anim", "_ssab_data", "_meta", "_evt",
                       "_instances", "_effects", "_loader", "_base",
-                      "_last_st", "_last_fb"):
+                      "_last_st", "_last_hidden"):
                 state[k] = None
             state["_event_queue"] = []
             state["_part_index"] = {}
@@ -659,8 +659,10 @@ init -10 python:
             # Sub-frame off (default) floors the *display* frame; the head stays
             # a raw float (docs/06). The slot steps below get the raw frame_no.
             disp = frame_no if self._sub_frame else math.floor(frame_no)
-            fb = self._rt.get_frame_data(disp)
-            self._last_fb = fb
+            # Zero-copy view over the Brain's FrameData buffer (no per-frame copy).
+            # Valid only until the slot steps below; we snapshot what the part-
+            # query API needs (matrices + hidden flags) before then.
+            fb = self._rt.get_frame_data_view(disp)
             # Snapshot the root world matrices for the part-query API now (the
             # SoA pointer is transient; instance/effect steps below reuse it).
             wm, wn = self._rt.world_matrices()
@@ -669,6 +671,10 @@ init -10 python:
             r = renpy.Render(width, height)
             if fb:
                 fd = framedata.parse(fb)
+                # Owned hidden-part snapshot for ss_is_part_hidden — taken while
+                # the view is still valid (collect_ordered's slot steps below
+                # invalidate this context's FrameData buffer).
+                self._last_hidden = framedata.hidden_parts(fd)
                 ox, oy = width / 2.0, height / 2.0   # SS center -> screen center
                 # Walk Normal / Instance / Effect parts in true draw order.
                 try:
@@ -678,9 +684,17 @@ init -10 python:
                 except Exception as e:
                     self._warn_once("collect", "draw-plan walk failed (%r); "
                                     "Normal-only this frame" % (e,))
-                    items = [("mesh", mp)
-                             for mp in framedata.build_mesh_parts(self._rt, fd)]
+                    # collect_ordered may have stepped slots and invalidated the
+                    # zero-copy view + SoA buffers; re-evaluate the frame so the
+                    # Normal-only fallback reads a clean, valid snapshot.
+                    fb = self._rt.get_frame_data_view(disp)
+                    items = ([("mesh", mp)
+                              for mp in framedata.build_mesh_parts(
+                                  self._rt, framedata.parse(fb))]
+                             if fb else [])
                 self._draw_items(r, items, ox, oy, st, at, width, height)
+            else:
+                self._last_hidden = None    # no frame this tick (part query: hidden)
             renpy.redraw(self, 0)                    # keep animating
             return r
 
@@ -1194,13 +1208,9 @@ init -10 python:
         def ss_is_part_hidden(self, name):
             """Whether ``name`` is hidden on the last rendered frame."""
             i = self.ss_part_index(name)
-            if i < 0 or not self._last_fb:
+            if i < 0 or self._last_hidden is None:
                 return True
-            try:
-                ps = framedata.parse(self._last_fb).Parts(i)
-                return bool(ps is None or ps.Hide())
-            except Exception:
-                return True
+            return i in self._last_hidden
 
     # Back-compat alias for the pre-rename class name (README / older scripts).
     SpriteStudioDisplayable = SSPlayer

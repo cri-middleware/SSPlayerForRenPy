@@ -17,6 +17,21 @@ Lifetime rules (see ``docs/00_limitations``):
   * SoA buffers (world matrices, local vertices, ...) are only valid until the
     next Brain call. Never retain the raw pointers across frames; copy out
     (or build a numpy view and consume it) within the same frame.
+  * The FrameData / EffectDrawPlan FlatBuffers can be consumed two ways:
+    ``get_frame_data``/``effect_slot_step`` copy them into owned ``bytes`` (safe
+    to retain), while ``get_frame_data_view``/``effect_slot_step_view`` return a
+    zero-copy read-only ``memoryview`` over the Brain's own buffer. The view is
+    the hot path (it mirrors SSPlayerForUnity's zero-copy ``ByteBuffer`` over the
+    native pointer): it is valid only until the next invalidating Brain call on
+    the same context/slot, so parse + materialize the geometry before then and
+    never stash the view across frames. ``get_frame_data`` is per-context — a
+    *child* runtime's call writes a different buffer and does not invalidate the
+    parent's (so the recursive instance walk is safe).
+  * The ``.ssab`` resource is created with ``ss_resource_create_borrow`` by
+    default: the Brain reads from our ``bytes`` for the resource's whole life, so
+    we keep an owned, immutable reference alive (CPython never relocates a
+    ``bytes`` object — that reference is the equivalent of Unity's
+    ``GCHandle.Pinned``) and tear the resource down before dropping it.
 """
 
 from __future__ import annotations
@@ -367,6 +382,26 @@ def _install_log_callback(lib: C.CDLL) -> None:
     lib.ss_runtime_set_log_callback(_log_cb_ref)
 
 
+def _readonly_view(ptr, n):
+    """Read-only ``memoryview`` over a Brain-owned buffer — **no copy**.
+
+    The Python analogue of SSPlayerForUnity's zero-copy path (a ``ByteBuffer``
+    pointed straight at the native pointer). ``ptr`` is a ctypes pointer, ``n``
+    the byte length. The view aliases the Brain's memory and is valid only until
+    the next invalidating Brain call (see the module-level lifetime rules) — the
+    caller MUST finish parsing/materializing before then and must not retain it.
+    Returns an owned empty view for a NULL/empty buffer (kept truthy-false).
+    """
+    if not ptr or n <= 0:
+        return memoryview(b"")
+    arr = (C.c_ubyte * n).from_address(C.cast(ptr, C.c_void_p).value)
+    mv = memoryview(arr)
+    try:
+        return mv.toreadonly()        # Py 3.8+ (Ren'Py 8 / modern CPython)
+    except AttributeError:            # pragma: no cover - legacy interpreters
+        return mv
+
+
 class SSRuntime:
     """One animation context bound to one resource (.ssab).
 
@@ -396,15 +431,39 @@ class SSRuntime:
         L.ss_context_set_unit(ctx, unit)
         return self
 
-    def load_ssab_bytes(self, data: bytes):
-        """Create a *copy* resource from ``data`` and bind it to the context."""
+    def load_ssab_bytes(self, data: bytes, *, borrow: bool = True):
+        """Bind ``data`` to the context as the animation resource.
+
+        ``borrow=True`` (default) uses ``ss_resource_create_borrow``: the Brain
+        keeps a pointer into ``data`` and reads from it for the resource's whole
+        lifetime (zero-copy, mirroring SSPlayerForUnity's pinned-``byte[]``
+        borrow). ``data`` therefore becomes the backing store — we keep an owned,
+        immutable reference (``self._ssab_bytes``) alive until the resource is
+        destroyed, and the bytes must never be mutated. CPython does not relocate
+        a ``bytes`` object, so holding the reference is the equivalent of Unity's
+        ``GCHandle.Pinned``; no explicit pin is required. ``borrow=False`` falls
+        back to ``ss_resource_create_copy`` (the Brain owns its own copy).
+
+        Safe re-load: the *previous* resource is destroyed only **after** the new
+        one is bound, so the old borrow source is never freed while still
+        referenced — the single-threaded analogue of Unity's
+        ``destroy resource → free pin`` ordering.
+        """
         L = self._lib
-        self._ssab_bytes = data  # retain (copy resource doesn't need it, but cheap)
-        self._res = L.ss_resource_create_copy(data, len(data))
+        data = bytes(data)  # ensure an owned, immutable buffer (stable address)
+        prev_res, prev_bytes = self._res, self._ssab_bytes
+        self._ssab_bytes = data  # retain: this IS the borrow's backing store
+        create = (L.ss_resource_create_borrow if borrow
+                  else L.ss_resource_create_copy)
+        self._res = create(data, len(data))
         if not self._res:
-            raise RuntimeError("ss_resource_create_copy failed")
+            self._res, self._ssab_bytes = prev_res, prev_bytes  # restore
+            raise RuntimeError("ss_resource_create failed")
         if not L.ss_runtime_bind_resource(self._ctx, self._res):
             raise RuntimeError("ss_runtime_bind_resource failed")
+        # New resource is bound and live; only now release the old borrow source.
+        if prev_res:
+            L.ss_resource_destroy(prev_res)
         return self
 
     def load_ssab_file(self, path: str):
@@ -523,19 +582,47 @@ class SSRuntime:
         return int(self._lib.ss_runtime_get_passed_event_index(self._ctx, i))
 
     # -- frame data -------------------------------------------------------
-    def get_frame_data(self, frame_no: float) -> bytes:
-        """Return the FrameData FlatBuffer for ``frame_no`` as a fresh bytes.
+    def _frame_data_ptr(self, frame_no):
+        """Evaluate ``frame_no`` and return ``(ptr, len)`` for its FrameData FB.
 
-        The Brain returns a pointer valid only until the next call; we copy it
-        out immediately so the caller can parse at leisure.
+        Side effect: also (re)populates this context's SoA buffers (world
+        matrices, vertices, UVs, cell meta) — they share the same snapshot
+        (ssruntime.h: "written by ss_runtime_get_frame_data"). The returned
+        pointer is valid only until the next ``get_frame_data``/``update`` on
+        this context; pure SoA getters do not invalidate it.
         """
         ptr = C.POINTER(C.c_ubyte)()
         length = C.c_size_t()
         self._lib.ss_runtime_get_frame_data(
             self._ctx, frame_no, C.byref(ptr), C.byref(length))
-        if not ptr or length.value == 0:
+        return ptr, length.value
+
+    def get_frame_data(self, frame_no: float) -> bytes:
+        """Return the FrameData FlatBuffer for ``frame_no`` as a fresh bytes.
+
+        The Brain returns a pointer valid only until the next call; we copy it
+        out immediately so the caller can parse and retain it at leisure. On the
+        per-frame render path prefer :meth:`get_frame_data_view` to skip the copy.
+        """
+        ptr, n = self._frame_data_ptr(frame_no)
+        if not ptr or n == 0:
             return b""
-        return C.string_at(ptr, length.value)
+        return C.string_at(ptr, n)
+
+    def get_frame_data_view(self, frame_no: float):
+        """Zero-copy read-only ``memoryview`` of the FrameData FlatBuffer.
+
+        Valid only until the next invalidating Brain call on **this** context
+        (next ``get_frame_data``/``update``/slot-step). Parse and materialize the
+        draw plan (``framedata.iter_draw_plan`` / ``build_*``) before then, and
+        do NOT retain it across frames — copy out (``bytes(view)`` or a small
+        snapshot) anything a later query needs. A *child* runtime's
+        ``get_frame_data`` writes a separate buffer and does not invalidate this
+        one, so the recursive instance walk is safe. Mirrors SSPlayerForUnity's
+        zero-copy ``ConsumeFrameData``.
+        """
+        ptr, n = self._frame_data_ptr(frame_no)
+        return _readonly_view(ptr, n)
 
     def _soa_float(self, getter):
         ptr = C.POINTER(C.c_float)()
@@ -658,6 +745,12 @@ class SSRuntime:
         if slot:
             self._lib.ss_effect_slot_reset(slot)
 
+    def _effect_slot_step_raw(self, slot, ev, parent_frame, delta_seconds, fps,
+                              parent_looped, y_flip, vert_stride):
+        return self._lib.ss_effect_slot_step(
+            slot, ev, float(parent_frame), float(delta_seconds), float(fps),
+            bool(parent_looped), bool(y_flip), int(vert_stride))
+
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
                          parent_looped, y_flip=True, vert_stride=2):
         """Advance one effect slot (docs/08 §2).
@@ -667,13 +760,30 @@ class SSRuntime:
         until the next call on this slot). ``ev`` is an
         :class:`ss_effect_event_info` from :meth:`active_effect_event`.
         ``y_flip=True`` / ``vert_stride=2`` suit a 2D Y-down host (Ren'Py).
+        Prefer :meth:`effect_slot_step_view` on the hot path to skip the copy.
         """
-        r = self._lib.ss_effect_slot_step(
-            slot, ev, float(parent_frame), float(delta_seconds), float(fps),
-            bool(parent_looped), bool(y_flip), int(vert_stride))
+        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
+                                       fps, parent_looped, y_flip, vert_stride)
         if not r.visible or not r.draw_plan_buf or r.draw_plan_len == 0:
             return (bool(r.visible), b"")
         return (True, C.string_at(r.draw_plan_buf, r.draw_plan_len))
+
+    def effect_slot_step_view(self, slot, ev, parent_frame, delta_seconds, fps,
+                              parent_looped, y_flip=True, vert_stride=2):
+        """Like :meth:`effect_slot_step` but returns a zero-copy view.
+
+        ``(visible, draw_plan_view)`` where ``draw_plan_view`` is a read-only
+        ``memoryview`` aliasing the slot's internal buffer — valid only until the
+        next ``step`` on the **same** slot (ssruntime.h §27-37).
+        ``effectplan.build_effect_batches`` drains it into Python lists in a
+        single pass, so per-call use is safe; never retain the view past that
+        call. Mirrors SSPlayerForUnity's zero-copy effect ``Append``.
+        """
+        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
+                                       fps, parent_looped, y_flip, vert_stride)
+        if not r.visible or not r.draw_plan_buf or r.draw_plan_len == 0:
+            return (bool(r.visible), memoryview(b""))
+        return (True, _readonly_view(r.draw_plan_buf, r.draw_plan_len))
 
     def effect_slot_is_independent(self, slot):
         return bool(self._lib.ss_effect_slot_is_independent(slot))
@@ -694,6 +804,9 @@ class SSRuntime:
         if self._res:
             self._lib.ss_resource_destroy(self._res)
             self._res = None
+        # Release the borrow's backing bytes only after the context and resource
+        # that borrow it are gone (Unity frees the pin last, in its `finally`).
+        self._ssab_bytes = None
 
     def __enter__(self):
         return self

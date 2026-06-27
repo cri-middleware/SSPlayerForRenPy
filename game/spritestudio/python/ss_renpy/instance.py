@@ -218,7 +218,11 @@ class SubPlayer:
 
     def collect(self, frame_no, looped, dt, sub_frame):
         """Renderables (child world space) at ``frame_no`` for this child."""
-        fb = self._rt.get_frame_data(display_frame(frame_no, sub_frame))
+        # Zero-copy view: collect_ordered materializes the plan (list(...)) before
+        # stepping any child/effect slot, so the view is fully consumed while still
+        # valid. The child runs on its own context, so this does not touch the
+        # parent's already-materialized FrameData buffer.
+        fb = self._rt.get_frame_data_view(display_frame(frame_no, sub_frame))
         if not fb:
             return []
         fd = framedata.parse(fb)

@@ -23,8 +23,10 @@ Each ``EffectDrawCommand`` carries ``cellmap_hash`` (texture key, same space as
 ``DrawBatch.texture_hash``), ``blend`` (0=Mix, 1=Add — the raw
 ``EmitterState.blend_type``), ``quad_count`` and ``particle_offset`` (in quads).
 
-Lifetime: the plan bytes must be copied out of the slot before the next step
-(``SSRuntime.effect_slot_step`` already does this); parsing here is on the copy.
+Lifetime: ``build_effect_batches`` drains the plan into Python lists in a single
+pass and never retains the input, so it accepts either an owned ``bytes``
+(``SSRuntime.effect_slot_step``) or a transient zero-copy ``memoryview``
+(``SSRuntime.effect_slot_step_view``) — the latter being the hot path.
 """
 
 from __future__ import annotations
@@ -64,7 +66,7 @@ class EffectBatch:
     triangles: list   # [(i, j, k)]
 
 
-def parse(buf: bytes) -> EffectDrawPlan:
+def parse(buf) -> EffectDrawPlan:
     return EffectDrawPlan.GetRootAs(buf, 0)
 
 
@@ -97,7 +99,7 @@ def _apply(m, x, y):
             m[1] * x + m[5] * y + m[13])
 
 
-def build_effect_batches(buf: bytes, matrix=None, alpha: float = 1.0,
+def build_effect_batches(buf, matrix=None, alpha: float = 1.0,
                          merge: bool = True) -> list:
     """Decode an ``EffectDrawPlan`` buffer into world-space :class:`EffectBatch`.
 
