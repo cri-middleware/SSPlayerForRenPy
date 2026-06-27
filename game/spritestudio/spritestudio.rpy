@@ -1014,7 +1014,16 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            return []
+            try:
+                self._ensure()
+                imgs = []
+                for h in self._texmap:
+                    path = self._texture_path(h)
+                    if path:
+                        imgs.append(self._base_image(path))
+                return imgs
+            except Exception:
+                return []
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic playback / control surface.
