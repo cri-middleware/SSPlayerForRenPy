@@ -11,10 +11,10 @@ A Ren'Py integration for SpriteStudio 7. `libssruntime` (Rust, from the `SpriteS
 
 👉 **When implementing playback, render behavior, or using the C-API, YOU MUST READ the Player Porting Document:**
 `SpriteStudio-SDK/libs/ssruntime/docs/` (Read the README and the indexed docs).
-*Note: Do not rely on the `renpy-cold-start.ja.md` in the repo root as a primary reference, as it contains some inaccuracies.*
+*Note: For integration instructions, usage, limitations, and build steps, refer to the `docs/` directory (`setup.md`, `usage.md`, `import.md`, `build.md`, `limitations.md`).*
 
 ## 3. Hard Constraints
-- **Two scripts, two jobs:** `scripts/build-runtime.*` builds ONLY native binaries. `scripts/deploy-examples.*` builds ONLY playback data.
+- **Scripts have specific roles:** `scripts/build-runtime.*` builds native binaries, `scripts/download-sdk.*` downloads prebuilt binaries, and `scripts/deploy-examples.*` builds ONLY playback data.
 - **Engine-independent Python:** Code under `game/spritestudio/python/` must run in plain CPython (no `renpy` import) to support headless testing.
 - **Coordinate handling:** Use the Context API (`ss_context_set_coordinate_system`) for coordinate systems. Do not hand-roll a second Y-flip.
 

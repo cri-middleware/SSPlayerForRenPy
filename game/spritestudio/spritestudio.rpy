@@ -340,6 +340,9 @@ init -10 python:
             self._duplicatable = True
             self._available_animations = None
             
+            self._initial_animation = animation
+            self._initial_loop = loop
+
             if isinstance(animation, (list, tuple)) and len(animation) > 0:
                 self._anim_queue = list(animation)
                 self.animation = self._anim_queue.pop(0)
@@ -637,6 +640,17 @@ init -10 python:
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
+            
+            # Detect re-show (time went backwards)
+            if self._last_st is not None and st < self._last_st:
+                if isinstance(self._initial_animation, (list, tuple)) and len(self._initial_animation) > 0:
+                    self._anim_queue = list(self._initial_animation)
+                    next_anim = self._anim_queue.pop(0)
+                    next_loop = 1 if self._anim_queue else self._initial_loop
+                    self.ss_play(animation=next_anim, loop=next_loop, start_frame=0)
+                else:
+                    self.ss_play(animation=self._initial_animation, loop=self._initial_loop, start_frame=0)
+
             dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
             self._last_st = st
             frame_no = self._rt.update(dt)           # seconds -> ms internally
