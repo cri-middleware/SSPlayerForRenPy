@@ -8,12 +8,12 @@ Ren'Pyのスクリプト(`script.rpy`など)から、SpriteStudioのアニメー
 ```renpy
 screen demo():
     # 画面の中央に配置
-    add SSPlayer("Basic.ssab", sprites_subdir="sprites") xalign 0.5 yalign 0.5
+    add SSPlayer("Hero/Hero.ssab") xalign 0.5 yalign 0.5
 ```
 
 ### パラメータ解説
-- **第1引数 (`"Basic.ssab"`)**: 再生するアニメーションのファイル名。
-- **`sprites_subdir`**: ゲームの `game/` フォルダ直下から見た、`.ssab` ファイルが置かれているサブディレクトリのパス。
+- **第1引数 (`"Hero/Hero.ssab"`)**: 再生するアニメーションのファイル名。デフォルトのベースフォルダからの相対パスで指定します。
+- **`sprites_subdir` (省略可能)**: `.ssab` が置かれているベースフォルダのパス。**デフォルトは `"ss_assets"` です。** オートインポーターを利用して `game/ss_assets/` 以下に出力されている場合、この引数は省略できます。
 
 ## 画面への表示と非表示
 スクリーンを使って表示・非表示を切り替えるのが基本となります。
