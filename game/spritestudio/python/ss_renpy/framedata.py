@@ -26,9 +26,11 @@ retain the raw buffers.
 from __future__ import annotations
 
 import math
+import struct
 from dataclasses import dataclass
 
 from ss.runtime.FrameData import FrameData
+from ss.runtime.PartState import PartState
 from ss.runtime.SsAttributePartColorKeyValueColor import (
     SsAttributePartColorKeyValueColor,
 )
@@ -91,6 +93,71 @@ def parse(fb) -> FrameData:
     return FrameData.GetRootAs(fb, 0)
 
 
+# --- Bulk struct reads (mirror SSPlayerForUnity's RawPartState* / command casts)
+# PartState and EffectDrawCommand are fixed-layout FlatBuffers *structs* stored in
+# contiguous vectors, so the whole array decodes in ONE struct call instead of
+# N × the per-element FlatBuffers accessor chain (Offset→Get→unpack→enforce), which
+# the profiler showed was ~31% of frame CPU. The field offsets below MIRROR the
+# generated PartState.py (regenerate via scripts/generate-runtime-code if the
+# schema changes); the vector *base* is taken from the generated accessor so only
+# the intra-struct layout is duplicated, and a one-time self-check vs the accessor
+# disables the fast path automatically if it ever drifts.
+_PS_SIZE = 144
+# UpdateFlag u64@0, Alpha f32@48, PartColor i16@128, Hide bool@138 (little-endian).
+_PS_REC = struct.Struct('<Q40xf76xh8x?5x')
+_ps_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
+
+
+class _PartLite:
+    """Pre-decoded PartState fields for the render hot path.
+
+    Exposes the same method names the draw-plan walk calls on a ``PartState`` so
+    callers are unchanged, but the values come from one bulk ``struct`` decode
+    rather than four-to-six per-part FlatBuffers accessor calls.
+    """
+    __slots__ = ('_uf', '_a', '_pc', '_hide')
+
+    def __init__(self, uf, a, pc, hide):
+        self._uf = uf
+        self._a = a
+        self._pc = pc
+        self._hide = hide
+
+    def UpdateFlag(self): return self._uf
+    def Alpha(self): return self._a
+    def PartColor(self): return self._pc
+    def Hide(self): return self._hide
+
+
+def bulk_part_states(fd: FrameData):
+    """All PartStates decoded in one pass → ``list[_PartLite]``, or ``None``.
+
+    ``None`` means "use ``fd.Parts(p)``": no parts, the struct size changed, or
+    the one-time layout self-check failed (schema drift → safe fallback).
+    """
+    global _ps_fastpath
+    if _ps_fastpath is False:
+        return None
+    n = fd.PartsLength()
+    if n == 0 or PartState.SizeOf() != _PS_SIZE:
+        return None
+    p0 = fd.Parts(0)
+    if p0 is None:
+        return None
+    base = p0._tab.Pos
+    blob = p0._tab.Bytes[base:base + n * _PS_SIZE]
+    lite = [_PartLite(uf, a, pc, hide)
+            for (uf, a, pc, hide) in _PS_REC.iter_unpack(blob)]
+    if _ps_fastpath is None:
+        l0 = lite[0]
+        if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
+                or l0._pc != p0.PartColor() or abs(l0._a - p0.Alpha()) > 1e-6):
+            _ps_fastpath = False
+            return None
+        _ps_fastpath = True
+    return lite
+
+
 def hidden_parts(fd: FrameData) -> set:
     """Owned set of part indices hidden on ``fd`` (for the part-query API).
 
@@ -100,6 +167,9 @@ def hidden_parts(fd: FrameData) -> set:
     before any slot step), since a zero-copy ``get_frame_data_view`` buffer is
     invalidated by the instance/effect steps that follow.
     """
+    parts = bulk_part_states(fd)
+    if parts is not None:
+        return {i for i, ps in enumerate(parts) if ps.Hide()}
     hidden = set()
     for i in range(fd.PartsLength()):
         ps = fd.Parts(i)
@@ -239,12 +309,18 @@ def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
     if i1 <= i0 or (i1 - i0) % 3 != 0 or i1 > ni:
         return None
     n = v1 - v0
-    positions = [(mvx[v0 + k], mvy[v0 + k]) for k in range(n)]   # world
-    uvs = [(muv[(v0 + k) * 2], muv[(v0 + k) * 2 + 1]) for k in range(n)]  # tex px
+    # Bulk-slice the ctypes SoA pointers once (one C-level copy each) rather than
+    # indexing per element — per-element ctypes access dominated this function.
+    xs = mvx[v0:v1]
+    ys = mvy[v0:v1]
+    us = muv[v0 * 2:v1 * 2]                       # interleaved u, v
+    idx = midx[i0:i1]
+    positions = [(xs[k], ys[k]) for k in range(n)]                  # world
+    uvs = [(us[k * 2], us[k * 2 + 1]) for k in range(n)]            # tex px
     alpha = max(0.0, min(1.0, ps.Alpha()))
     colors = [(1.0, 1.0, 1.0, alpha)] * n
     rates = [0.0] * n
-    tris = [(midx[t], midx[t + 1], midx[t + 2]) for t in range(i0, i1, 3)]
+    tris = [(idx[t], idx[t + 1], idx[t + 2]) for t in range(0, i1 - i0, 3)]
     return MeshPart(
         part_index=p, texture_hash=thash, blend_type=blend,
         color_blend=PC_BLEND_MIX, positions=positions, uvs=uvs, colors=colors,
@@ -268,6 +344,7 @@ def _iter_visible_normal_parts(rt, fd: FrameData):
     if not wm or not lv:
         return
 
+    parts = bulk_part_states(fd)
     for b in range(fd.DrawBatchesLength()):
         batch = fd.DrawBatches(b)
         if batch.Kind() != KIND_NORMAL:
@@ -278,7 +355,7 @@ def _iter_visible_normal_parts(rt, fd: FrameData):
         start, count = batch.StartRank(), batch.Count()
         for k in range(count):
             p = fd.DrawOrder(start + k)
-            ps = fd.Parts(p)
+            ps = parts[p] if parts is not None else fd.Parts(p)
             if ps is None or ps.Hide():
                 continue
             yield _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask)
@@ -563,6 +640,7 @@ def iter_draw_plan(rt, fd: FrameData):
     mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
                 rt.mesh_indices(), rt.mesh_vertex_offsets(),
                 rt.mesh_index_offsets())
+    parts = bulk_part_states(fd)
     for b in range(fd.DrawBatchesLength()):
         batch = fd.DrawBatches(b)
         kind = batch.Kind()
@@ -572,7 +650,7 @@ def iter_draw_plan(rt, fd: FrameData):
         start, count = batch.StartRank(), batch.Count()
         for k in range(count):
             p = fd.DrawOrder(start + k)
-            ps = fd.Parts(p)
+            ps = parts[p] if parts is not None else fd.Parts(p)
             hidden = ps is None or ps.Hide()
             if kind == KIND_NORMAL:
                 if not have_soa or hidden:

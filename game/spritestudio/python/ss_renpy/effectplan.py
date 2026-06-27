@@ -34,6 +34,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from ss.runtime.EffectDrawCommand import EffectDrawCommand
 from ss.runtime.EffectDrawPlan import EffectDrawPlan
 
 # EmitterState.blend_type values carried on EffectDrawCommand.blend.
@@ -68,6 +69,39 @@ class EffectBatch:
 
 def parse(buf) -> EffectDrawPlan:
     return EffectDrawPlan.GetRootAs(buf, 0)
+
+
+# EffectDrawCommand is a 16-byte fixed-layout FlatBuffers *struct* (CellmapHash
+# u32@0, QuadCount u32@4, ParticleOffset u32@8, Blend u8@12) in a contiguous
+# vector — decode them all in one struct call rather than per-command accessors
+# (mirrors framedata.bulk_part_states / SSPlayerForUnity's command-pointer read).
+_FX_CMD_SIZE = 16
+_FX_CMD = struct.Struct('<IIIB3x')
+_fx_fastpath = None   # None = unvalidated, True = OK, False = disabled
+
+
+def _bulk_commands(plan):
+    """All EffectDrawCommands as ``[(cellmap_hash, quad_count, particle_offset,
+    blend), ...]``, or ``None`` (caller falls back to ``plan.Commands(c)``)."""
+    global _fx_fastpath
+    if _fx_fastpath is False:
+        return None
+    n = plan.CommandsLength()
+    if n == 0 or EffectDrawCommand.SizeOf() != _FX_CMD_SIZE:
+        return None
+    c0 = plan.Commands(0)
+    if c0 is None:
+        return None
+    base = c0._tab.Pos
+    cmds = list(_FX_CMD.iter_unpack(c0._tab.Bytes[base:base + n * _FX_CMD_SIZE]))
+    if _fx_fastpath is None:
+        ch, qc, po, bl = cmds[0]
+        if (ch != c0.CellmapHash() or qc != c0.QuadCount()
+                or po != c0.ParticleOffset() or bl != c0.Blend()):
+            _fx_fastpath = False
+            return None
+        _fx_fastpath = True
+    return cmds
 
 
 def _bulk_floats(plan: EffectDrawPlan, vtable_off: int, n: int) -> list:
@@ -125,38 +159,51 @@ def build_effect_batches(buf, matrix=None, alpha: float = 1.0,
     colors = _bulk_floats(plan, _OFF_COLORS, plan.ColorsLength())
     indices = _bulk_ints(plan, _OFF_INDICES, plan.IndicesLength())
     a_mul = max(0.0, min(1.0, alpha))
+    cmds = _bulk_commands(plan)   # one struct decode for all commands (or None)
 
     batches: list[EffectBatch] = []
     for c in range(ncmd):
-        cmd = plan.Commands(c)
-        if cmd is None:
-            continue
-        quad_count = cmd.QuadCount()
+        if cmds is not None:
+            cellmap_hash, quad_count, poff, blend = cmds[c]
+        else:
+            cmd = plan.Commands(c)
+            if cmd is None:
+                continue
+            cellmap_hash, quad_count = cmd.CellmapHash(), cmd.QuadCount()
+            poff, blend = cmd.ParticleOffset(), cmd.Blend()
         if quad_count == 0:
             continue
-        poff = cmd.ParticleOffset()
         nverts = quad_count * 4
         v_off = poff * 4 * stride
         u_off = poff * 4 * 2
         c_off = poff * 4 * 4
         i_off = poff * 6
 
-        positions = []
-        for i in range(nverts):
-            base = v_off + i * stride
-            positions.append(_apply(matrix, verts[base], verts[base + 1]))
+        # One pass per vertex with the matrix inlined and invariants hoisted out
+        # of the loop (was three passes plus a per-vertex _apply call — this is
+        # the effect hot loop, hundreds of verts × every slot × every frame).
+        if matrix is None:
+            positions = [(verts[v_off + i * stride], verts[v_off + i * stride + 1])
+                         for i in range(nverts)]
+        else:
+            m0, m1, m4, m5, m12, m13 = (matrix[0], matrix[1], matrix[4],
+                                        matrix[5], matrix[12], matrix[13])
+            positions = []
+            ap = positions.append
+            b = v_off
+            for _ in range(nverts):
+                x = verts[b]; y = verts[b + 1]; b += stride
+                ap((m0 * x + m4 * y + m12, m1 * x + m5 * y + m13))
         uv = [(uvs[u_off + i * 2], uvs[u_off + i * 2 + 1]) for i in range(nverts)]
-        col = []
-        for i in range(nverts):
-            b = c_off + i * 4
-            col.append((colors[b], colors[b + 1], colors[b + 2],
-                        colors[b + 3] * a_mul))
+        col = [(colors[c_off + i * 4], colors[c_off + i * 4 + 1],
+                colors[c_off + i * 4 + 2], colors[c_off + i * 4 + 3] * a_mul)
+               for i in range(nverts)]
         flat_idx = indices[i_off:i_off + quad_count * 6]
         tris = [(flat_idx[t], flat_idx[t + 1], flat_idx[t + 2])
                 for t in range(0, len(flat_idx) - 2, 3)]
 
         batch = EffectBatch(
-            cellmap_hash=cmd.CellmapHash(), blend=cmd.Blend(),
+            cellmap_hash=cellmap_hash, blend=blend,
             positions=positions, uvs=uv, colors=col, triangles=tris)
 
         if (merge and batches
