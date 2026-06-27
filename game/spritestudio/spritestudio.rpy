@@ -329,7 +329,7 @@ init -10 python:
         """
 
         def __init__(self, ssab, animation=None, sprites_subdir="ss_assets",
-                     loop=-1, speed=1.0, sub_frame=False,
+                     loop=-1, speed=1.0, sub_frame=True,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, **kwargs):
@@ -354,9 +354,9 @@ init -10 python:
 
             self.sprites_subdir = sprites_subdir
             self.speed = speed
-            # Sub-frame interpolation: when off (the default) the frame handed
+            # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (docs/06).
+            # head stays a raw float either way (docs/06). By default, it is now on.
             self._sub_frame = bool(sub_frame)
             # Optional event callbacks (docs/06 §4 recommended Player API). Each
             # is invoked as cb(self, frame_index, event) for the per-part events
@@ -1151,7 +1151,7 @@ init -10 python:
             return self._rt.fps if self._rt else 0
 
         def ss_set_sub_frame_enabled(self, enabled):
-            """Toggle sub-frame interpolation (default off)."""
+            """Toggle sub-frame interpolation (default on)."""
             self._sub_frame = bool(enabled)
             renpy.redraw(self, 0)
 
