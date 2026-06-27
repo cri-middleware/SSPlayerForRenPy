@@ -9,6 +9,28 @@ style default:
 style text:
     font "SourceHanSansLite.ttf"
 
+# デモ用の簡易セリフ枠（screens.rpy が存在しないため、最低限のダイアログウィンドウを定義）
+screen say(who, what):
+    frame:
+        id "window"
+        background Solid("#000000c0")
+        xfill True
+        yalign 1.0
+        yminimum 200
+        padding (40, 40)
+        
+        vbox:
+            spacing 10
+            if who is not None:
+                text who:
+                    id "who"
+                    color "#ffcc00"
+                    size 28
+
+            text what:
+                id "what"
+                size 28
+
 init python:
     import os
 
@@ -17,23 +39,24 @@ init python:
     # character (its Normal parts render; its Mesh-deform parts are not drawn
     # yet). The event packs carry UserData / Signal / Audio timeline events.
     SS_DEMO_PACKS = [
-        ("sprites/overall", "Basic.ssab"),                  # alpha / local-alpha
-        ("sprites/overall", "Effect.ssab"),                 # particle effects
-        ("sprites/overall", "Instance.ssab"),               # nested instances
-        ("sprites/overall", "PartsColor.ssab"),             # per-vertex part colour
-        ("sprites/overall", "BlendMode.ssab"),              # framebuffer blends
-        ("sprites/overall", "Interpolation_Easing_v1.ssab"),
-        ("sprites/overall", "UserData.ssab"),
-        ("sprites/overall", "Signal.ssab"),
-        ("sprites/overall", "Sound.ssab"),
-        ("sprites/Ringo",   "Ringo.ssab"),                  # character (Mesh gap)
+        ("ss_assets/overall", "Basic.ssab"),                  # alpha / local-alpha
+        ("ss_assets/overall", "Effect.ssab"),                 # particle effects
+        ("ss_assets/overall", "Instance.ssab"),               # nested instances
+        ("ss_assets/overall", "PartsColor.ssab"),             # per-vertex part colour
+        ("ss_assets/overall", "BlendMode.ssab"),              # framebuffer blends
+        ("ss_assets/overall", "Interpolation_Easing_v1.ssab"),
+        ("ss_assets/overall", "UserData.ssab"),
+        ("ss_assets/overall", "Signal.ssab"),
+        ("ss_assets/overall", "Sound.ssab"),
+        ("ss_assets/Ringo",   "Ringo.ssab"),                  # character (Mesh gap)
+        ("ss_assets/Ringo",   "Ringo_tyu.ssab"),              # companion
     ]
 
-    _fx_dir = os.path.join(renpy.config.gamedir, "sprites", "ParticleEffect")
+    _fx_dir = os.path.join(renpy.config.gamedir, "ss_assets", "ParticleEffect")
     if os.path.isdir(_fx_dir):
         for f in sorted(os.listdir(_fx_dir)):
             if f.endswith(".ssab"):
-                SS_DEMO_PACKS.append(("sprites/ParticleEffect", f))
+                SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
 
     def ss_make(entry):
         # entry is (sprites_subdir, pack). The event-log overlay consumes events
@@ -105,7 +128,7 @@ init python:
 
 image ringo = SSPlayer(
     "Ringo.ssab", 
-    sprites_subdir="sprites/Ringo", 
+    sprites_subdir="ss_assets/Ringo", 
     aliases={
         "idle": "wait1",
         "happy": "joy",
@@ -114,13 +137,23 @@ image ringo = SSPlayer(
     }
 )
 
+image ringo_tyu = SSPlayer(
+    "Ringo_tyu.ssab", 
+    sprites_subdir="ss_assets/Ringo"
+)
+
 define r = Character(_("Ringo"), image="ringo")
 
 image hit_effect = SSPlayer(
     "e038.ssab", 
-    sprites_subdir="sprites/ParticleEffect", 
+    sprites_subdir="ss_assets/ParticleEffect", 
     animation="hit", 
     loop=1 # エフェクトなので1回再生で終了させる
+)
+
+image effect_e040b = SSPlayer(
+    "e040b.ssab",
+    sprites_subdir="ss_assets/ParticleEffect"
 )
 
 label start:
@@ -139,9 +172,11 @@ label start:
 
 label ringo_demo:
     scene bg room
+    window show  # セリフ枠を常時表示（レイヤー確認のテスト用）
 
     show ringo idle:
         yoffset 200
+
     "Ringo has appeared." id ringo_msg1
 
     r happy "I can change my motion just by changing my attributes, su!" id ringo_msg2
@@ -169,6 +204,16 @@ label ringo_demo:
     r "Ei! (When the attack finishes, I automatically return to the idle motion, su.)" id ringo_msg6
 
     r idle "Furthermore, by linking with the Character's 'image' argument, you can control expressions and motions just with say statements like this, su!" id ringo_msg7
+
+    hide ringo
+    with dissolve
+
+    # Show Ringo_tyu and e040b together as a test case
+    show ringo_tyu:
+        xoffset 0 yoffset 150
+    show effect_e040b:
+        xoffset 0 yoffset 150
+    "As a bonus, here's my companion Ringo_tyu, along with a cool particle effect (e040b) playing at the same time!" id ringo_msg8
 
     return
 

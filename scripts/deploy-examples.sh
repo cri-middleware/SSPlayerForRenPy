@@ -38,17 +38,27 @@ if [ -z "$SDK_DIR" ] || [ ! -f "$SDK_DIR/Cargo.toml" ]; then
   echo "deploy-examples.sh: SpriteStudio-SDK not found (init the submodule or set SSSDK)" >&2
   exit 1
 fi
-command -v cargo >/dev/null || { echo "deploy-examples.sh: cargo (Rust) not on PATH" >&2; exit 1; }
-CARGO_FLAGS="--release"; [ "$MODE" = "debug" ] && CARGO_FLAGS=""
+command -v python3 >/dev/null || { echo "deploy-examples.sh: python3 not on PATH" >&2; exit 1; }
 
-# --- convert test projects -> game/sprites/<project> ----------------------
-convert () { # <sspj-relative-to-sdk> <dest-abs>
-  local sspj="$1" dest="$2"
-  echo ">> converting $sspj -> ${dest#$ROOT_DIR/}"
+# --- convert test projects -> SpriteStudio_Source/ -> game/ss_assets/<project> ---
+SOURCE_DIR="$ROOT_DIR/SpriteStudio_Source"
+mkdir -p "$SOURCE_DIR"
+
+convert () { # <test-folder-relative-to-sdk> <project-name> <dest-abs>
+  local test_folder="$1" project_name="$2" dest="$3"
+  echo ">> copying $test_folder to SpriteStudio_Source/$project_name and converting..."
+  
+  local src_dir="$SDK_DIR/$test_folder"
+  local work_dir="$SOURCE_DIR/$project_name"
+  
+  rm -rf "$work_dir"; mkdir -p "$work_dir"
+  cp -R "$src_dir/"* "$work_dir/"
+  
   rm -rf "$dest"; mkdir -p "$dest"
-  ( cd "$SDK_DIR" && cargo run $CARGO_FLAGS -q -p ssconverter-cli -- "$sspj" -o "$dest" )
+  python3 "$ROOT_DIR/tools/cli_convert.py" "$work_dir/$project_name.sspj" "$dest"
 }
-convert "tests/overall/overall.sspj" "$GAME_DIR/sprites/overall"
-convert "tests/Ringo/Ringo.sspj"     "$GAME_DIR/sprites/Ringo"
-convert "tests/ParticleEffect/ParticleEffect.sspj" "$GAME_DIR/sprites/ParticleEffect"
-echo "deploy-examples.sh: done -> game/sprites/{overall,Ringo,ParticleEffect}/"
+
+convert "tests/overall" "overall" "$GAME_DIR/ss_assets/overall"
+convert "tests/Ringo" "Ringo" "$GAME_DIR/ss_assets/Ringo"
+convert "tests/ParticleEffect" "ParticleEffect" "$GAME_DIR/ss_assets/ParticleEffect"
+echo "deploy-examples.sh: done -> game/ss_assets/{overall,Ringo,ParticleEffect}/"

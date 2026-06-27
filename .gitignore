@@ -850,6 +850,8 @@ __marimo__/
 # --- SSPlayer for Ren'Py: deploy artifacts (regenerate via scripts/deploy-examples.* and build-runtime.*) ---
 /game/spritestudio/libs/
 /game/sprites/
+/game/ss_assets/
+/SpriteStudio_Source/
 # (the submodule's own build output is ignored inside the submodule)
 
 # Ren'Py SDK fetched on demand by scripts/fetch-renpy-sdk.* (for launching the project)

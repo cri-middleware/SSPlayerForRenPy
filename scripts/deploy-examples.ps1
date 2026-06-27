@@ -31,18 +31,30 @@ if (-not $SdkDir) {
 if (-not $SdkDir -or -not (Test-Path (Join-Path $SdkDir "Cargo.toml"))) {
     Write-Error "SpriteStudio-SDK not found (init the submodule or set `$env:SSSDK)"
 }
-if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { Write-Error "cargo (Rust) not on PATH" }
-$CargoFlags = if ($Mode -eq "debug") { @() } else { @("--release") }
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) { Write-Error "python not on PATH" }
 
-# --- convert test projects -> game\sprites\<project> ----------------------
-function Convert-Project([string]$Sspj, [string]$Dest) {
-    Write-Host ">> converting $Sspj -> $Dest"
+# --- convert test projects -> SpriteStudio_Source/ -> game\ss_assets\<project> ---
+$SourceDir = Join-Path $RootDir "SpriteStudio_Source"
+New-Item -ItemType Directory -Force -Path $SourceDir | Out-Null
+
+function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Dest) {
+    Write-Host ">> copying $TestFolder to SpriteStudio_Source\$ProjectName and converting..."
+    
+    $srcDir = Join-Path $SdkDir $TestFolder
+    $workDir = Join-Path $SourceDir $ProjectName
+    
+    if (Test-Path $workDir) { Remove-Item -Recurse -Force $workDir }
+    New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+    Copy-Item -Recurse -Force "$srcDir\*" "$workDir\"
+    
     if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-    Push-Location $SdkDir
-    try { cargo run $CargoFlags -q -p ssconverter-cli -- $Sspj -o $Dest } finally { Pop-Location }
+    
+    $sspjPath = Join-Path $workDir "$ProjectName.sspj"
+    python (Join-Path $RootDir "tools\cli_convert.py") $sspjPath $Dest
 }
-Convert-Project "tests/overall/overall.sspj" (Join-Path $GameDir "sprites\overall")
-Convert-Project "tests/Ringo/Ringo.sspj"     (Join-Path $GameDir "sprites\Ringo")
-Convert-Project "tests/ParticleEffect/ParticleEffect.sspj" (Join-Path $GameDir "sprites\ParticleEffect")
-Write-Host "deploy-examples.ps1: done -> game\sprites\{overall,Ringo,ParticleEffect}\"
+
+Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")
+Convert-Project "tests/Ringo" "Ringo"     (Join-Path $GameDir "ss_assets\Ringo")
+Convert-Project "tests/ParticleEffect" "ParticleEffect" (Join-Path $GameDir "ss_assets\ParticleEffect")
+Write-Host "deploy-examples.ps1: done -> game\ss_assets\{overall,Ringo,ParticleEffect}\"

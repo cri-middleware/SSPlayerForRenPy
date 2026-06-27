@@ -37,3 +37,6 @@ translate japanese ringo_msg6:
 
 translate japanese ringo_msg7:
     r idle "さらに Character の image 引数と連携すれば、こんな風に say ステートメントだけで表情やモーションを操作できまス"
+
+translate japanese ringo_msg8:
+    "おまけに、コンパニオンの Ringo_tyu と、クールなパーティクルエフェクト（e040b）の同時再生テストでス！"

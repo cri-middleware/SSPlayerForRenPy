@@ -328,7 +328,7 @@ init -10 python:
         a small ``ss_*`` playback / control / query API.
         """
 
-        def __init__(self, ssab, animation=None, sprites_subdir="sprites",
+        def __init__(self, ssab, animation=None, sprites_subdir="ss_assets",
                      loop=-1, speed=1.0, sub_frame=False,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,

@@ -69,8 +69,9 @@ fi
 echo "Building for $PLATFORM ($ARCH) in $BUILD_MODE mode (host build: $IS_HOST_BUILD)"
 CARGO_FLAGS=""; [ "$BUILD_MODE" = "release" ] && CARGO_FLAGS="--release"
 
-# build the feature-enabled ssruntime cdylib (optionally for a --target triple)
+# build the feature-enabled ssruntime and ssconverter cdylib
 build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime --features libc_alloc,panic-handler ); }
+build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter ); }
 place() { mkdir -p "$LIB_ROOT/$1"; cp "$2" "$LIB_ROOT/$1/${3:-$(basename "$2")}"; echo "   -> game/spritestudio/libs/$1/${3:-$(basename "$2")}"; }
 
 # licenses (mirror Unity)
@@ -84,28 +85,48 @@ case "$PLATFORM" in
   macos)
     if [ "$IS_HOST_BUILD" = true ]; then
       build_ss
+      build_converter
       place macos "$T/$BUILD_MODE/libssruntime.dylib"
+      place macos "$T/$BUILD_MODE/libssconverter.dylib"
       echo "   (host-arch debug build; use build=release for a universal dylib)"
     else
-      # universal: build each arch's ssruntime once, then lipo (2 compiles)
+      # universal: build each arch's libraries once, then lipo (2 compiles)
       build_ss --target aarch64-apple-darwin
       build_ss --target x86_64-apple-darwin
+      build_converter --target aarch64-apple-darwin
+      build_converter --target x86_64-apple-darwin
       mkdir -p "$LIB_ROOT/macos"
       lipo -create "$T/aarch64-apple-darwin/$BUILD_MODE/libssruntime.dylib" \
                    "$T/x86_64-apple-darwin/$BUILD_MODE/libssruntime.dylib" \
                    -output "$LIB_ROOT/macos/libssruntime.dylib"
+      lipo -create "$T/aarch64-apple-darwin/$BUILD_MODE/libssconverter.dylib" \
+                   "$T/x86_64-apple-darwin/$BUILD_MODE/libssconverter.dylib" \
+                   -output "$LIB_ROOT/macos/libssconverter.dylib"
       echo "   -> game/spritestudio/libs/macos/libssruntime.dylib (universal arm64+x86_64)"
+      echo "   -> game/spritestudio/libs/macos/libssconverter.dylib (universal arm64+x86_64)"
     fi ;;
   linux)
-    if [ "$IS_HOST_BUILD" = true ]; then build_ss; src="$T/$BUILD_MODE/libssruntime.so"
-    else triple=$([ "$ARCH" = x86_64 ] && echo x86_64-unknown-linux-gnu || echo aarch64-unknown-linux-gnu)
-         build_ss --target "$triple"; src="$T/$triple/$BUILD_MODE/libssruntime.so"; fi
-    place "linux/$ARCH" "$src" ;;
+    if [ "$IS_HOST_BUILD" = true ]; then 
+        build_ss; src_rt="$T/$BUILD_MODE/libssruntime.so"
+        build_converter; src_cv="$T/$BUILD_MODE/libssconverter.so"
+    else 
+        triple=$([ "$ARCH" = x86_64 ] && echo x86_64-unknown-linux-gnu || echo aarch64-unknown-linux-gnu)
+        build_ss --target "$triple"; src_rt="$T/$triple/$BUILD_MODE/libssruntime.so"
+        build_converter --target "$triple"; src_cv="$T/$triple/$BUILD_MODE/libssconverter.so"
+    fi
+    place "linux/$ARCH" "$src_rt"
+    place "linux/$ARCH" "$src_cv" ;;
   windows)
-    if [ "$IS_HOST_BUILD" = true ]; then build_ss; src="$T/$BUILD_MODE/ssruntime.dll"
-    else triple=$([ "$ARCH" = arm64 ] && echo aarch64-pc-windows-msvc || echo x86_64-pc-windows-msvc)
-         build_ss --target "$triple"; src="$T/$triple/$BUILD_MODE/ssruntime.dll"; fi
-    place "windows/$ARCH" "$src" ;;
+    if [ "$IS_HOST_BUILD" = true ]; then 
+        build_ss; src_rt="$T/$BUILD_MODE/ssruntime.dll"
+        build_converter; src_cv="$T/$BUILD_MODE/ssconverter.dll"
+    else 
+        triple=$([ "$ARCH" = arm64 ] && echo aarch64-pc-windows-msvc || echo x86_64-pc-windows-msvc)
+        build_ss --target "$triple"; src_rt="$T/$triple/$BUILD_MODE/ssruntime.dll"
+        build_converter --target "$triple"; src_cv="$T/$triple/$BUILD_MODE/ssconverter.dll"
+    fi
+    place "windows/$ARCH" "$src_rt"
+    place "windows/$ARCH" "$src_cv" ;;
 
   # --- toolchain-heavy cross builds: delegate to the SDK release scripts ---
   android)

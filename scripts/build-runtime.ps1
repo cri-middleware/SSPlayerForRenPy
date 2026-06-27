@@ -66,6 +66,7 @@ Push-Location $SdkDir
 try {
     if ($IS_HOST_BUILD) {
         cargo build $CargoFlags -p ssruntime --features libc_alloc,panic-handler
+        cargo build $CargoFlags -p ssconverter
         $SrcDir = "target/$BUILD_MODE"
     } else {
         switch ($PLATFORM) {
@@ -113,16 +114,25 @@ switch ($PLATFORM) {
     }
     default {
         switch ($PLATFORM) {
-            "web"   { $sub = "web";              $name = "libssruntime.a" }
-            "macos" { $sub = "macos";            $name = "libssruntime.dylib" }
-            "linux" { $sub = "linux/$ARCH";      $name = "libssruntime.so" }
-            "windows" { $sub = "windows/$ARCH";  $name = "ssruntime.dll" }
+            "web"   { $sub = "web";              $name = "libssruntime.a";     $cname = "" }
+            "macos" { $sub = "macos";            $name = "libssruntime.dylib"; $cname = "libssconverter.dylib" }
+            "linux" { $sub = "linux/$ARCH";      $name = "libssruntime.so";    $cname = "libssconverter.so" }
+            "windows" { $sub = "windows/$ARCH";  $name = "ssruntime.dll";      $cname = "ssconverter.dll" }
         }
         $dest = Join-Path $LibRoot $sub; New-Item -ItemType Directory -Force -Path $dest | Out-Null
         $src = Join-Path $SdkDir "$SrcDir/$name"
         if (-not (Test-Path $src) -and $PLATFORM -eq "windows") { $src = Join-Path $SdkDir "$SrcDir/libssruntime.dll" }
         Copy-Item $src (Join-Path $dest $name) -Force
         Write-Host "   -> game\spritestudio\libs\$sub\$name"
+        
+        if ($cname -ne "") {
+            $csrc = Join-Path $SdkDir "$SrcDir/$cname"
+            if (-not (Test-Path $csrc) -and $PLATFORM -eq "windows") { $csrc = Join-Path $SdkDir "$SrcDir/libssconverter.dll" }
+            if (Test-Path $csrc) {
+                Copy-Item $csrc (Join-Path $dest $cname) -Force
+                Write-Host "   -> game\spritestudio\libs\$sub\$cname"
+            }
+        }
     }
 }
 Write-Host "build-runtime.ps1: done."
