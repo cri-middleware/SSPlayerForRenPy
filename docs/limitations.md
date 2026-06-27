@@ -1,6 +1,6 @@
 # 仕様と制約事項 (Limitations & Scope)
 
-現在提供されている SSPlayer for Ren'Py における、サポート機能と制限事項の一覧です。
+現在提供されている SpriteStudio Player for Ren'Py における、サポート機能と制限事項の一覧です。
 
 ## 現在のステータス
 

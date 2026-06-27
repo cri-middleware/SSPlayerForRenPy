@@ -1,4 +1,4 @@
-# SSPlayer for Ren'Py — demo entry point.
+# SpriteStudio Player for Ren'Py — demo entry point.
 #
 # Replaces the template's `label start`. Shows a .ssab animation centered, with
 # keys to cycle through the bundled sample packs. Each entry is

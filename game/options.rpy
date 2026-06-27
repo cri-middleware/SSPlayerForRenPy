@@ -1,4 +1,4 @@
-# SSPlayer for Ren'Py — demo project configuration.
+# SpriteStudio Player for Ren'Py — demo project configuration.
 #
 # This is part of the DEMO, not the library (see CLAUDE.md). It exists so the
 # project runs as a standalone Ren'Py app via `renpy-sdk/renpy.sh .`.
@@ -9,10 +9,10 @@
 #   AttributeError: 'Layout' object has no attribute 'yesno_prompt'
 # because the layout system was never initialized.
 
-define config.name = _("SSPlayer for Ren'Py — Demo")
+define config.name = _("SpriteStudio Player for Ren'Py — Demo")
 define config.version = "demo"
 define config.save_directory = "SSPlayerForRenPy-demo"
-define config.window_title = "SSPlayer for Ren'Py — Demo"
+define config.window_title = "SpriteStudio Player for Ren'Py — Demo"
 define config.has_autosave = False
 define config.has_quicksave = False
 

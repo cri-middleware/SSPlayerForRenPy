@@ -1,6 +1,6 @@
 # 導入ガイド (Setup Guide)
 
-SSPlayer for Ren'Py をご自身のゲームプロジェクトに導入する手順を解説します。
+SpriteStudio Player for Ren'Py をご自身のゲームプロジェクトに導入する手順を解説します。
 
 ## 1. 必要環境
 - **Ren'Py**: バージョン 8.x 系 (Python 3 ベース) が必要です。

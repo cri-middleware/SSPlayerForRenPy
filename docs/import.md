@@ -1,6 +1,6 @@
 # アニメーションデータのコンバート (Import)
 
-SSPlayer for Ren'Py では、SpriteStudio のプロジェクトファイル (`.sspj`) を Ren'Py 用のバイナリ形式 (`.ssab`) に変換して利用します。プロジェクトの規模やワークフローに合わせて、2つのコンバート方法を提供しています。
+SpriteStudio Player for Ren'Py では、SpriteStudio のプロジェクトファイル (`.sspj`) を Ren'Py 用のバイナリ形式 (`.ssab`) に変換して利用します。プロジェクトの規模やワークフローに合わせて、2つのコンバート方法を提供しています。
 
 ---
 
