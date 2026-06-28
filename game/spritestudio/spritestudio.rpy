@@ -434,6 +434,7 @@ init -10 python:
 
         def __init__(self, ssab, animation=None, sprites_subdir=None,
                      loop=-1, speed=1.0, sub_frame=True, size=None,
+                     attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, **kwargs):
@@ -487,6 +488,10 @@ init -10 python:
                 self._size = (int(size), int(size))
             else:
                 self._size = (int(size[0]), int(size[1]))
+            # Optional attachments: {part_name: displayable}. Drawn at each named
+            # part's current position every frame (e.g. a speech bubble on the
+            # head, an item in the hand). v1 is translation-only.
+            self._attachments = dict(attachments) if attachments else None
             # Optional event callbacks (docs/06 §4 recommended Player API). Each
             # is invoked as cb(self, frame_index, event) for the per-part events
             # and cb(self) for started/finished/looped, guarded so a raising
@@ -557,6 +562,7 @@ init -10 python:
                 speed=self.speed,
                 sub_frame=self._sub_frame,
                 size=self._size,
+                attachments=self._attachments,
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
@@ -576,7 +582,13 @@ init -10 python:
             # Read the .ssab through Ren'Py's loader so it works loose or in a
             # .rpa archive. `self.ssab` is the gamedir-relative path the caller
             # passed (e.g. "ss_assets/Ringo/Ringo.ssab").
-            data = _ss_open_bytes(self._ssab_relpath)
+            try:
+                data = _ss_open_bytes(self._ssab_relpath)
+            except Exception as e:
+                raise Exception(
+                    "ss: cannot load .ssab %r — check the path (gamedir-relative, "
+                    "e.g. \"ss_assets/Ringo/Ringo.ssab\") and that the file ships "
+                    "with the game. [%s]" % (self.ssab, e))
             # Build the engine-independent core; the RenPyResourceManager we hand
             # it backs texture loading with Ren'Py's image cache (set_animation
             # acquires this pack's textures), and the pack_reader resolves external
@@ -735,12 +747,28 @@ init -10 python:
             # normal image; otherwise fill the whole offered area (legacy).
             rw, rh = self._size if self._size else (width, height)
             r = renpy.Render(rw, rh)
+            ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
             if plan.items:
-                ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 self._draw_items(r, plan.items, ox, oy, st, at, rw, rh)
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
+
+            # Attachments: draw each {part_name: displayable} at that part's
+            # current position (v1 = translation only). Guarded so it can never
+            # break rendering; nudge with the child's own offset if needed.
+            if self._attachments:
+                for _pname, _child in self._attachments.items():
+                    try:
+                        _t = core.part_transform(_pname)
+                        if _t is None:
+                            continue
+                        _cr = renpy.render(_child, rw, rh, st, at)
+                        _cw, _ch = _cr.get_size()
+                        r.blit(_cr, (int(ox + _t["x"] - _cw / 2.0),
+                                     int(oy + _t["y"] - _ch / 2.0)))
+                    except Exception:
+                        pass
 
             # Keep requesting redraws only while something is actually moving; an
             # idle sprite (paused / stopped / play-once finished, no live rigs)
