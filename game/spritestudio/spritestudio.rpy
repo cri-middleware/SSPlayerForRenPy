@@ -49,7 +49,7 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resource, resolver
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver
     from ss_renpy.effect import EffectRig
     from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
@@ -342,33 +342,52 @@ init -10 python:
         except Exception:
             return None
 
-    # --- Zero-config short-name resolution --------------------------------
-    # `SSPlayer("Ringo")` resolves against the .ssab files under the asset roots
-    # (default ["ss_assets"], override via `define ss_asset_dirs = [...]`). The
-    # index keys off the output packs, so it covers both auto-imported and hand-
-    # dropped .ssab. Built lazily and cached; rebuilt each dev reload because the
-    # whole library lives in one init block that re-runs on Shift+R.
+    # --- Asset loading (archive / .rpa aware) + dev discovery -------------
+    # .ssab packs and their external-instance packs are read through Ren'Py's
+    # loader, so they work whether shipped loose or inside a .rpa archive
+    # (textures already load via Image, which is archive-aware). Paths are
+    # gamedir-relative, e.g. "ss_assets/Ringo/Ringo.ssab".
+    def _ss_open_bytes(rel):
+        """Read a gamedir-relative file as bytes via Ren'Py's loader (.rpa-safe)."""
+        f = renpy.loader.load(rel)
+        try:
+            return f.read()
+        finally:
+            f.close()
+
+    def _ss_renpy_pack_reader(base_rel):
+        """Reader for external-instance packs: <base_rel>/<pack>.ssab via loader."""
+        def read(pack_name):
+            rel = (base_rel + "/" + pack_name + ".ssab") if base_rel \
+                else (pack_name + ".ssab")
+            try:
+                return _ss_open_bytes(rel)
+            except Exception:
+                return b""
+        return read
+
+    # The dev asset browser (ss_browser.rpy) discovers packs through this index;
+    # it enumerates via renpy.list_files so archived packs are listed too.
+    # Override the scanned roots with `define ss_asset_dirs = [...]`. Built lazily
+    # and cached; rebuilt each dev reload (the library lives in one init block).
     _SS_INDEX = None
 
     def _ss_get_index():
         global _SS_INDEX
         if _SS_INDEX is None:
-            roots = getattr(store, "ss_asset_dirs", None) or ["ss_assets"]
-            _SS_INDEX = resolver.build_index(renpy.config.gamedir, roots)
+            roots = [r.replace("\\", "/").strip("/")
+                     for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+            rels = []
+            for p in renpy.list_files():
+                rp = p.replace("\\", "/")
+                if rp.endswith(".ssab") and any(
+                        rp == r or rp.startswith(r + "/") for r in roots):
+                    rels.append(rp)
+            _SS_INDEX = resolver.build_index(rels, _ss_open_bytes)
         return _SS_INDEX
 
-    def _ss_resolve_name(name, animation=None):
-        """Bare short name -> gamedir-relative .ssab path; validates animation.
-
-        Raises ss_renpy.resolver.SSResolveError (unknown / ambiguous / bad
-        animation) so a typo fails loudly at definition time, not silently."""
-        idx = _ss_get_index()
-        rec = idx.find(name)
-        idx.validate_animation(rec, animation)
-        return rec.rel_path
-
     def ss_list_assets():
-        """Dev/discovery helper: {short_name: [animation, ...]} for each pack."""
+        """Dev/discovery helper: {pack_name: [animation, ...]} for each pack."""
         idx = _ss_get_index()
         return {r.stem: list(r.anim_names)
                 for r in idx.records() if r.is_primary}
@@ -419,13 +438,6 @@ init -10 python:
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
-            # Zero-config: a bare short name ("Ringo" — no "/", no ".ssab", and no
-            # legacy sprites_subdir) is resolved to its full gamedir-relative path
-            # via the asset index. Explicit paths are used verbatim, so existing
-            # code is unaffected and pays no scan cost.
-            if (ssab and sprites_subdir is None
-                    and "/" not in ssab and not ssab.endswith(".ssab")):
-                ssab = _ss_resolve_name(ssab, animation)
             self.ssab = ssab
             self.kwargs = kwargs
             self.aliases = aliases or {}
@@ -497,11 +509,8 @@ init -10 python:
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):
             if self._available_animations is None:
-                path = os.path.join(self._SS_dir(), self._ssab_name)
                 try:
-                    with open(path, "rb") as fh:
-                        data = fh.read()
-                    meta = SsabMeta(data)
+                    meta = SsabMeta(_ss_open_bytes(self._ssab_relpath))
                     self._available_animations = meta.animation_names()
                 except Exception:
                     self._available_animations = []
@@ -551,18 +560,19 @@ init -10 python:
         def _ensure(self):
             if self._core is not None:
                 return
-            path = os.path.join(self._SS_dir(), self._ssab_name)
-            with open(path, "rb") as fh:
-                data = fh.read()
+            # Read the .ssab through Ren'Py's loader so it works loose or in a
+            # .rpa archive. `self.ssab` is the gamedir-relative path the caller
+            # passed (e.g. "ss_assets/Ringo/Ringo.ssab").
+            data = _ss_open_bytes(self._ssab_relpath)
             # Build the engine-independent core; the RenPyResourceManager we hand
             # it backs texture loading with Ren'Py's image cache (set_animation
             # acquires this pack's textures), and the pack_reader resolves external
-            # instance packs co-located with the .ssab.
+            # instance packs co-located with the .ssab (also archive-aware).
             self._rm = RenPyResourceManager()
             self._core = SSInternalPlayer(
                 data, lib=_SS_LIB, base_dir=self._base_dir,
                 resource_manager=self._rm,
-                pack_reader=resource.filesystem_pack_reader(self._SS_dir()),
+                pack_reader=_ss_renpy_pack_reader(self._base_dir),
                 sub_frame=self._sub_frame,
                 enable_events=SS_ENABLE_EVENTS,
             )
@@ -599,14 +609,6 @@ init -10 python:
             else:
                 core.play()
             self.animation = core.animation
-
-        def _SS_dir(self):
-            # Directory that holds this .ssab (and, co-located, its textures and
-            # external-instance packs).
-            base = renpy.config.gamedir
-            if self._base_dir:
-                base = os.path.join(base, *self._base_dir.split("/"))
-            return base
 
         def _texture_path(self, thash):
             # Resolve via the core (which owns the cellmap → image map, merged

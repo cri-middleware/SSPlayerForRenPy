@@ -11,28 +11,18 @@ SpriteStudio Player for Ren'Py では、SpriteStudioのアニメーションをR
 
 ```renpy
 screen demo():
-    # 短名だけでOK。ss_assets 配下を走査して Ringo.ssab を解決します
-    add SSPlayer("Ringo") xalign 0.5 yalign 0.5
+    # 第1引数は .ssab のパス（game/ からの相対パス）
+    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
 ```
 
-### `.ssab` の指定方法
-| 指定方法 | 例 | 動作 |
-|---|---|---|
-| **短名（推奨）** | `SSPlayer("Ringo")` | `ss_assets` 配下を走査し、ファイル名が一致する `.ssab` を解決します。オートインポート・手動配置のどちらの `.ssab` でも動作します |
-| **相対パス（明示）** | `SSPlayer("ss_assets/Ringo/Ringo.ssab")` | 走査せず `game/` からの相対パスをそのまま使用します |
-
-- 短名とは **`/` も `.ssab` も含まない** 名前のことです（`"Ringo"`）。いずれかを含む場合は相対パスとして扱われます。
-- 走査ルートの既定は `ss_assets` です。別のフォルダにも `.ssab` を置く場合は、先に `define ss_asset_dirs = ["ss_assets", "my_packs"]` のように上書きできます。
-- 名前が複数フォルダで衝突する場合や、見つからない場合は **定義時に候補付きのエラー** になります（タイポにすぐ気づけます）。
-- 収録されている全パックとアニメーション名は `ss_list_assets()`（`{短名: [アニメ名, ...]}` を返す）で確認できます。
-
 ### 基本パラメータ
-- **第1引数**: 再生する `.ssab` の短名（または相対パス）。
-- **`animation` (省略可能)**: 初期状態で再生するアニメーション名。省略時はデータ内の最初のアニメーションが再生されます。**存在しない名前を渡すとエラー**（有効なアニメーション名の一覧と「もしかして」候補つき）になります。短名指定なら定義時に、相対パス指定なら初回表示時に検知されます。
+- **第1引数**: 再生する `.ssab` のパス（`game/` からの相対、例 `"ss_assets/Ringo/Ringo.ssab"`）。`.ssab` とそのテクスチャ・外部インスタンスパックは同居しているので、これだけで関連リソースも解決されます。**`.rpa` アーカイブ内の `.ssab` も読み込めます**（Ren'Py のローダ経由）。
+- **`animation` (省略可能)**: 初期状態で再生するアニメーション名。省略時はデータ内の最初のアニメーションが再生されます。**存在しない名前を渡すと初回表示時にエラー**（有効なアニメーション名の一覧つき）になります。
 - **`loop` (省略可能)**: 再生回数。`-1`（既定）で無限ループ、`1` で1回再生、`N` でN回再生。
 - **`speed` (省略可能)**: 再生速度の倍率（既定 `1.0`）。
 
-> 旧 `sprites_subdir` 引数は後方互換のために残っていますが、上記の同居仕様により **不要**（非推奨）です。
+> どんな `.ssab` パックが入っているか分からないときは、開発者モードで **Shift+B**（アセットブラウザ）を開くと、一覧・ライブプレビュー・スニペット生成ができます。
+> 旧 `sprites_subdir` 引数は後方互換のために残っていますが、パス指定で不要（非推奨）です。
 
 ---
 
@@ -40,9 +30,9 @@ screen demo():
 Ren'Pyの `image` ステートメントと組み合わせることで、ノベルゲームにおける**キャラクターの立ち絵**として強力に機能します。`aliases` 引数を使うと、Ren'Pyのアトリビュート名とSpriteStudio内のモーション名を紐付けることができます。
 
 ```renpy
-# キャラクターの定義（短名で .ssab を解決）
+# キャラクターの定義（.ssab パスを指定）
 image ringo = SSPlayer(
-    "Ringo",
+    "ss_assets/Ringo/Ringo.ssab",
     aliases={
         "idle": "wait1",    # 'idle' が呼ばれたら 'wait1' モーションを再生
         "happy": "joy",
@@ -75,7 +65,7 @@ label start:
 
 ```renpy
 image hit_effect = SSPlayer(
-    "e038",
+    "ss_assets/ParticleEffect/e038.ssab",
     animation="hit",
     loop=1 # 1回再生したら終了して画面から消える（または最後のフレームで止まる）
 )
@@ -93,7 +83,7 @@ label battle:
 ゲーム中の処理に応じてPython（スクリプト）から直接アニメーションを切り替えたり、情報を取得したりすることも可能です。
 
 ```renpy
-$ player = SSPlayer("Hero")
+$ player = SSPlayer("ss_assets/Hero/Hero.ssab")
 
 # 収録されているすべてのアニメーション名リストを取得
 $ anim_names = player.ss_animation_names()
@@ -128,7 +118,7 @@ init python:
 ```renpy
 # コールバックを登録して再生
 image boss = SSPlayer(
-    "Boss",
+    "ss_assets/Boss/Boss.ssab",
     on_signal=my_signal_handler,
     on_finished=my_finish_handler
 )

@@ -101,19 +101,46 @@ def _posix_relpath(path: str, start: str) -> str:
     return os.path.relpath(path, start).replace("\\", "/")
 
 
-def build_index(gamedir: str, roots) -> AssetIndex:
-    """Scan ``roots`` (gamedir-relative dirs) for ``.ssab`` files -> AssetIndex.
+def build_index(rel_paths, reader) -> AssetIndex:
+    """Build an :class:`AssetIndex` from gamedir-relative ``.ssab`` paths.
 
-    Reads each pack's animation names + external-instance refs via
-    :class:`SsabMeta`. Per-file read/parse errors are swallowed (that pack gets
-    empty ``anim_names`` but is still path-resolvable). Import here so the module
-    has no hard dependency until an index is actually built.
+    ``reader(rel_path)`` returns that file's bytes — engine-agnostic, so the host
+    chooses the source: the filesystem for headless tools, or ``renpy.open_file``
+    in-engine (which reads ``.rpa`` archives transparently). Reads each pack's
+    animation names + external-instance refs via :class:`SsabMeta`; per-file
+    errors are swallowed (that pack gets empty ``anim_names`` but is still
+    path-resolvable). A pack referenced as another's external instance is marked
+    non-primary so it doesn't shadow the 'main' pack.
     """
     from ss_renpy.ssab_meta import SsabMeta
 
     raw = []                # (rel_path, stem, anim_names)
     referenced: set = set()  # pack names used as external instances
     seen: set = set()
+    for rel in rel_paths:
+        rel = rel.replace("\\", "/")
+        if not rel.endswith(".ssab") or rel in seen:
+            continue
+        seen.add(rel)
+        anims = ()
+        try:
+            meta = SsabMeta(reader(rel))
+            anims = tuple(meta.animation_names())
+            for e in meta.external_instances():
+                if e.anime_pack_name:
+                    referenced.add(e.anime_pack_name)
+        except Exception:
+            pass
+        raw.append((rel, rel.rsplit("/", 1)[-1][:-len(".ssab")], anims))
+
+    records = [AssetRecord(rel_path=rel, stem=stem, anim_names=anims,
+                           is_primary=(stem not in referenced))
+               for (rel, stem, anims) in raw]
+    return AssetIndex(records)
+
+
+def scan_filesystem(gamedir: str, roots):
+    """Yield gamedir-relative ``.ssab`` paths under ``roots`` (filesystem)."""
     for root in roots:
         parts = [p for p in root.replace("\\", "/").split("/") if p]
         root_abs = os.path.join(gamedir, *parts) if parts else gamedir
@@ -121,26 +148,13 @@ def build_index(gamedir: str, roots) -> AssetIndex:
             continue
         for dirpath, _, files in os.walk(root_abs):
             for f in files:
-                if not f.endswith(".ssab") or f.startswith("."):
-                    continue
-                full = os.path.join(dirpath, f)
-                rel = _posix_relpath(full, gamedir)
-                if rel in seen:
-                    continue
-                seen.add(rel)
-                anims = ()
-                try:
-                    with open(full, "rb") as fh:
-                        meta = SsabMeta(fh.read())
-                    anims = tuple(meta.animation_names())
-                    for e in meta.external_instances():
-                        if e.anime_pack_name:
-                            referenced.add(e.anime_pack_name)
-                except Exception:
-                    pass
-                raw.append((rel, f[:-len(".ssab")], anims))
+                if f.endswith(".ssab") and not f.startswith("."):
+                    yield _posix_relpath(os.path.join(dirpath, f), gamedir)
 
-    records = [AssetRecord(rel_path=rel, stem=stem, anim_names=anims,
-                           is_primary=(stem not in referenced))
-               for (rel, stem, anims) in raw]
-    return AssetIndex(records)
+
+def build_index_fs(gamedir: str, roots) -> AssetIndex:
+    """Filesystem-backed :class:`AssetIndex` (headless convenience / tools)."""
+    def reader(rel):
+        with open(os.path.join(gamedir, *rel.split("/")), "rb") as fh:
+            return fh.read()
+    return build_index(scan_filesystem(gamedir, roots), reader)

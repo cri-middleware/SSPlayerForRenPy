@@ -44,7 +44,7 @@ def expect_raises(label, fn):
 
 
 def main() -> int:
-    idx = resolver.build_index(_GAME, ["ss_assets"])
+    idx = resolver.build_index_fs(_GAME, ["ss_assets"])
     print("== resolver verification ==\n")
     print(f"### real index over game/ss_assets  ({len(idx.records())} packs)")
 

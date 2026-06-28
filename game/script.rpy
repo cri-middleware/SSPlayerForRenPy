@@ -128,7 +128,7 @@ init python:
             del store.ss_event_log[:-10]
 
 image ringo = SSPlayer(
-    "Ringo",   # short name is enough: the asset index resolves it to Ringo.ssab under ss_assets
+    "ss_assets/Ringo/Ringo.ssab",   # the .ssab path (gamedir-relative)
     aliases={
         "idle": "wait1",
         "happy": "joy",
@@ -137,17 +137,17 @@ image ringo = SSPlayer(
     }
 )
 
-image ringo_tyu = SSPlayer("Ringo_tyu")
+image ringo_tyu = SSPlayer("ss_assets/Ringo/Ringo_tyu.ssab")
 
 define r = Character(_("Ringo"), image="ringo")
 
 image hit_effect = SSPlayer(
-    "e038",          # resolved by short name; a bad animation name errors at definition time
+    "ss_assets/ParticleEffect/e038.ssab",
     animation="hit",
     loop=1 # an effect: play once, then stop
 )
 
-image effect_e040b = SSPlayer("e040b")
+image effect_e040b = SSPlayer("ss_assets/ParticleEffect/e040b.ssab")
 
 label start:
     "Please select your language. / 言語を選択してください。"
