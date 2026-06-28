@@ -566,19 +566,39 @@ init -10 python:
                 sub_frame=self._sub_frame,
                 enable_events=SS_ENABLE_EVENTS,
             )
-            self._core.set_speed(self.speed)
-            if isinstance(self._initial_animation, (list, tuple)) and self._initial_animation:
-                self._core.play_sequence(list(self._initial_animation),
-                                         loop=self._initial_loop)
+            self._start_initial()
+
+        def _start_initial(self, start_frame=-1.0):
+            """Set up + play the constructor's animation (or sequence) on the core.
+
+            The pure core plays ONE animation; *sequence* policy lives here in the
+            host: for a list we play the first now and keep the rest in
+            ``self._anim_queue``, advancing on each ``FramePlan.finished`` in
+            render(). This mirrors the SSPlayerForGodot node owning chaining over
+            its SsInternalPlayer (the core itself has no notion of a queue)."""
+            core = self._core
+            core.set_speed(self.speed)
+            anim = self._initial_animation
+            if isinstance(anim, (list, tuple)) and anim:
+                seq = list(anim)
+                first = seq.pop(0)
+                self._anim_queue = seq
+                core.set_loop(1 if seq else self._initial_loop)
+                ok = core.set_animation(first)
             else:
-                self._core.set_loop(self.loop)
-                if not self._core.set_animation(self.animation):
-                    raise Exception(
-                        "ss: animation %r not found in %s (have: %s)"
-                        % (self.animation, self.ssab,
-                           ", ".join(self._core.animation_names()) or "(none)"))
-                self._core.play()
-            self.animation = self._core.animation
+                self._anim_queue = []
+                core.set_loop(self._initial_loop)
+                ok = core.set_animation(anim)   # anim may be None -> first available
+            if not ok:
+                raise Exception(
+                    "ss: animation %r not found in %s (have: %s)"
+                    % (anim, self.ssab,
+                       ", ".join(core.animation_names()) or "(none)"))
+            if start_frame is not None and start_frame >= 0:
+                core.play(start_frame=start_frame)
+            else:
+                core.play()
+            self.animation = core.animation
 
         def _SS_dir(self):
             # Directory that holds this .ssab (and, co-located, its textures and
@@ -609,26 +629,20 @@ init -10 python:
 
         # -- timeline events (UserData / Signal / Audio) -------------------
         def _dispatch_plan(self, plan):
-            """Fan a FramePlan's events + edge notifications out to the optional
-            push callbacks; never raises.
-
-            The core already queued the events for :meth:`ss_poll_events` and
-            auto-advanced any animation sequence (``started`` marks such a jump);
-            ``looped`` fires on the per-update wrap flag and ``finished`` once on
-            the play→stop edge (never for ``loop=-1``). Each callback is guarded
-            so a raising callback can't break rendering.
+            """Fan this frame's timeline events + the ``looped`` edge out to the
+            optional push callbacks; never raises. Sequence chaining and the
+            ``finished`` callback are handled in render() (host playback policy) —
+            the core only *reports* the finished edge, it never decides what to
+            play next. Timeline events are gated by SS_ENABLE_EVENTS (the core
+            doesn't collect them when off); the playback-lifecycle callbacks are
+            not — that knob is for UserData/Signal/Audio.
             """
-            if not SS_ENABLE_EVENTS:
-                return
             try:
-                for fe in plan.events:
-                    self._dispatch_frame_events(fe)
+                if SS_ENABLE_EVENTS:
+                    for fe in plan.events:
+                        self._dispatch_frame_events(fe)
                 if plan.looped:
                     self._call_cb(self.on_looped)
-                if plan.started:
-                    self._call_cb(self.on_started)
-                if plan.finished:
-                    self._call_cb(self.on_finished)
             except Exception as e:
                 self._warn_once("event-pump",
                                 "event dispatch failed (%r); events disabled "
@@ -666,18 +680,12 @@ init -10 python:
         def render(self, width, height, st, at):
             self._ensure()
             
-            # Detect re-show (time went backwards) -> restart from the top.
+            # Detect re-show (time went backwards) -> restart from the top
+            # (resets the animation sequence too).
             core = self._core
             if self._last_st is not None and st < self._last_st:
-                if isinstance(self._initial_animation, (list, tuple)) and self._initial_animation:
-                    core.play_sequence(list(self._initial_animation),
-                                       loop=self._initial_loop)
-                else:
-                    if self._initial_animation:
-                        core.set_animation(self._initial_animation)
-                    core.play(start_frame=0)
+                self._start_initial(start_frame=0)
                 self._call_cb(self.on_started)
-                self.animation = core.animation
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
             dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
@@ -688,7 +696,23 @@ init -10 python:
             plan = core.update(dt * 1000.0)
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
-            self._dispatch_plan(plan)            # events + started/looped/finished
+            self._dispatch_plan(plan)            # timeline events + on_looped
+            # Sequence chaining is the host's playback policy: when the core
+            # reports the play->stop edge, advance to the next queued animation
+            # (e.g. an alias like ["attack1", "wait1"]) or fire on_finished. The
+            # switch happens HERE, between updates — so every frame's draw plan
+            # stays consistent with a single animation (no mid-update frame skew).
+            if plan.finished:
+                if self._anim_queue:
+                    nxt = self._anim_queue.pop(0)
+                    core.set_loop(1 if self._anim_queue else self._initial_loop)
+                    core.set_animation(nxt)
+                    core.play()
+                    self.animation = core.animation
+                    self._call_cb(self.on_started)
+                    renpy.redraw(self, 0)
+                else:
+                    self._call_cb(self.on_finished)
 
             _draw = 0.0
             r = renpy.Render(width, height)

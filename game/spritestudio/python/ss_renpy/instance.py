@@ -25,10 +25,8 @@ from __future__ import annotations
 
 import math
 
-from ss_renpy import framedata, ssruntime
-from ss_renpy.effect import EffectRig
+from ss_renpy import framedata
 from ss_renpy.effectplan import transform_effect_batch
-from ss_renpy.ssab_meta import SsabMeta
 
 # Hard cap on instance nesting (defends against pathological / cyclic refs).
 MAX_DEPTH = 8
@@ -50,7 +48,8 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
     order, all in ``rt``'s world space. Normal parts come straight from the draw
     plan; Instance parts recurse and are composed by the instance part's matrix;
-    Effect parts are stepped. Shared by the root player and :class:`SubPlayer`.
+    Effect parts are stepped. Shared by the root player and Instance-child
+    players (both ``SSInternalPlayer``, via :meth:`SSInternalPlayer.render_at`).
     """
     # Materialize first: this fully drains the transient SoA buffers into copied
     # MeshParts / matrices, so the child/effect Brain calls below are safe.
@@ -86,13 +85,14 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     return out
 
 
-def build_subplayer(parent_rt, part, parent_meta, loader, lib, depth):
-    """Create a :class:`SubPlayer` for one instance ``part`` (or ``None``).
+def build_subplayer(owner, part, depth):
+    """Build a parent-driven :class:`SSInternalPlayer` for one Instance ``part``.
 
-    Resolves the referenced pack: *internal* (same ``.ssab`` — re-binds the
-    parent's bytes to a fresh context) or *external* (``loader(pack_name)`` per
-    ``external_instances``). Returns ``None`` if the pack/animation can't be
-    resolved, so the caller skips that instance gracefully.
+    Resolves the referenced pack — *internal* (same ``.ssab``, another animation)
+    or *external* (``owner._loader(pack_name)`` per ``external_instances``, which
+    also merges that pack's textures into the shared map) — then spins up a child
+    player that shares the owner's lib / rm / loader / texmap / base_dir. Returns
+    ``None`` (so the caller skips the slot) when the pack/animation can't resolve.
     """
     if depth > MAX_DEPTH:
         return None
@@ -101,25 +101,28 @@ def build_subplayer(parent_rt, part, parent_meta, loader, lib, depth):
     if not ref_anim:
         return None
 
-    if ref_pack and ref_pack != parent_meta.name and loader is not None:
-        child_data = loader(ref_pack)        # external pack
+    if ref_pack and ref_pack != owner._meta.name and owner._loader is not None:
+        child_data = owner._loader(ref_pack)     # external pack (merges textures)
     else:
-        child_data = parent_meta.data        # internal (same pack, other anim)
+        child_data = owner._meta.data            # internal (same pack, other anim)
     if not child_data:
         return None
 
+    # Lazy import breaks the player <-> instance module import cycle: player
+    # imports InstanceRig at load time; we only need SSInternalPlayer at runtime.
+    from ss_renpy.player import SSInternalPlayer
     try:
-        child_meta = SsabMeta(child_data)
-        child_rt = ssruntime.SSRuntime(lib)
-        child_rt.configure(coordinate_system=ssruntime.COORD_Y_DOWN,
-                           origin=ssruntime.ORIGIN_CENTER)
-        child_rt.load_ssab_bytes(child_data)
-        if not child_rt.setup_animation(ref_anim):
-            child_rt.close()
+        child = SSInternalPlayer(
+            child_data, lib=owner._lib, base_dir=owner.base_dir,
+            resource_manager=owner._rm, sub_frame=owner.sub_frame,
+            enable_events=False, parent_driven=True,
+            loader=owner._loader, texmap=owner._texmap, depth=depth)
+        if not child.set_animation(ref_anim):
+            child.close()
             return None
     except Exception:
         return None
-    return SubPlayer(child_rt, child_meta, loader, lib, depth)
+    return child
 
 
 class _Child:
@@ -132,18 +135,20 @@ class _Child:
 
 
 class InstanceRig:
-    """One InstanceSlot + child :class:`SubPlayer` per Instance part of ``rt``."""
+    """One InstanceSlot + a parent-driven child :class:`SSInternalPlayer` per
+    Instance part of ``owner`` (the owning player). Recurses via the children's
+    own rigs, so nesting is fully recursive (capped at ``MAX_DEPTH``)."""
 
-    def __init__(self, rt, meta, loader, lib, depth=0):
-        self._rt = rt
+    def __init__(self, owner, depth=0):
+        self._rt = owner._rt
         self._children = {}   # part_index -> _Child
         if depth > MAX_DEPTH:
             return
-        for p in meta.instance_parts():
-            sub = build_subplayer(rt, p, meta, loader, lib, depth + 1)
+        for p in owner._meta.instance_parts():
+            sub = build_subplayer(owner, p, depth + 1)
             if sub is None:
                 continue
-            slot = rt.instance_slot_create()
+            slot = self._rt.instance_slot_create()
             if not slot:
                 sub.close()
                 continue
@@ -177,59 +182,10 @@ class InstanceRig:
             ch.sub.play()
         if not r.visible:
             return []
-        return ch.sub.collect(r.child_frame_no, r.child_looped, dt, sub_frame)
+        return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame)
 
     def close(self):
         for ch in self._children.values():
             self._rt.instance_slot_destroy(ch.slot)
             ch.sub.close()
         self._children.clear()
-
-
-class SubPlayer:
-    """A child animation driven by a parent Instance slot (docs/08 §1).
-
-    Owns a child runtime plus its *own* Instance/Effect rigs, so nesting is
-    fully recursive. Its frame head is advanced by the parent's
-    ``ss_instance_slot_step`` (not by an internal clock); :meth:`collect`
-    renders it at a given (already-stepped) frame.
-    """
-
-    def __init__(self, rt, meta, loader, lib, depth):
-        self._rt = rt
-        self._meta = meta
-        self.instances = InstanceRig(rt, meta, loader, lib, depth)
-        self.effects = EffectRig(rt, meta)
-
-    @property
-    def ctx(self):
-        return self._rt.ctx
-
-    @property
-    def frame_no(self) -> float:
-        return self._rt.frame_no
-
-    def play(self):
-        self._rt.play()
-
-    def reset_slots(self):
-        self.instances.reset()
-        self.effects.reset()
-
-    def collect(self, frame_no, looped, dt, sub_frame):
-        """Renderables (child world space) at ``frame_no`` for this child."""
-        # Zero-copy view: collect_ordered materializes the plan (list(...)) before
-        # stepping any child/effect slot, so the view is fully consumed while still
-        # valid. The child runs on its own context, so this does not touch the
-        # parent's already-materialized FrameData buffer.
-        fb = self._rt.get_frame_data_view(display_frame(frame_no, sub_frame))
-        if not fb:
-            return []
-        fd = framedata.parse(fb)
-        return collect_ordered(self._rt, fd, self.instances, self.effects,
-                               frame_no, dt, looped, sub_frame)
-
-    def close(self):
-        self.instances.close()
-        self.effects.close()
-        self._rt.close()

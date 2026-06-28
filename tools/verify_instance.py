@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Headless check for Instance-part playback (roadmap "Instance/Effect").
+"""Headless check for Instance-part playback via the unified SSInternalPlayer.
 
-Drives ``Instance.ssab`` (whose parts each embed the external pack
-``Instance_SourceAnime``) through every frame via :func:`ss_renpy.instance.
-collect_ordered`, and validates the recursively-composed child geometry: that
-instance children actually render, that every child texture hash resolves
-against the merged (root + external) cellmap map, and that positions are finite.
+Instance children are now parent-driven ``SSInternalPlayer`` instances (not a
+bespoke SubPlayer). Drives ``Instance.ssab`` (whose parts embed the external
+pack ``Instance_SourceAnime``) through every frame and validates that:
+  * instance children actually render (mesh geometry appears),
+  * every child texture hash resolves against the shared (root + external)
+    texture map (proving external-pack textures merged), and
+  * all positions are finite.
 Plain CPython — no Ren'Py.
 
-Usage:  python tools/verify_instance.py [pack.ssab ...]   (default: Instance.ssab)
+Usage:  python tools/verify_instance.py [pack.ssab ...]
 """
 
 from __future__ import annotations
@@ -24,32 +26,10 @@ sys.path.insert(0, os.path.join(_GAME, "spritestudio", "python"))
 import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 
-from ss_renpy import ssruntime, instance  # noqa: E402
-from ss_renpy.effect import EffectRig  # noqa: E402
-from ss_renpy.instance import InstanceRig, collect_ordered, display_frame  # noqa: E402
-from ss_renpy import framedata  # noqa: E402
+from ss_renpy import ssruntime  # noqa: E402
+from ss_renpy.player import SSInternalPlayer  # noqa: E402
+from ss_renpy.resource import RecordingResourceManager, filesystem_pack_reader  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
-
-
-def make_loader(base_dir, texmap):
-    """Loader(pack_name)->bytes that caches, and merges the pack's texture map.
-
-    Mirrors what the Ren'Py player must do: external instance packs contribute
-    their cellmap → image-path entries to a single lookup so child parts resolve.
-    """
-    cache = {}
-
-    def load(pack_name):
-        if pack_name in cache:
-            return cache[pack_name]
-        path = os.path.join(base_dir, pack_name + ".ssab")
-        data = open(path, "rb").read() if os.path.exists(path) else b""
-        cache[pack_name] = data
-        if data:
-            texmap.update(SsabMeta(data).texture_hash_map())
-        return data
-
-    return load
 
 
 def check_pack(lib, path: str) -> bool:
@@ -63,92 +43,65 @@ def check_pack(lib, path: str) -> bool:
     if not inst_parts:
         print("    (no instance parts — nothing to verify)")
         return True
-    anims = meta.animations()
+    anims = meta.animation_names()
     if not anims:
-        print("    FAIL: no animations")
-        return False
+        print("    FAIL: no animations"); return False
 
-    texmap = dict(meta.texture_hash_map())
-    loader = make_loader(base, texmap)
-    rt = ssruntime.SSRuntime(lib)
-    instances = effects = None
-    ok = True
+    base_dir = os.path.relpath(base, _GAME).replace("\\", "/")
+    p = SSInternalPlayer(data, lib=lib, base_dir=base_dir,
+                         resource_manager=RecordingResourceManager(),
+                         pack_reader=filesystem_pack_reader(base))
+    a0 = anims[0]
+    if not p.set_animation(a0):
+        print(f"    FAIL: set_animation({a0!r})"); p.close(); return False
+    # Children are built during set_animation (recursively, as SSInternalPlayer).
+    if not (p._instances and p._instances.has()):
+        print("    FAIL: no instance children built (loader/refs?)")
+        p.close(); return False
+    p.play()
+
+    fps = p.fps or 30
+    dt_ms = 1000.0 / fps
+    total = max(1, p.total_frames)
+    frames_with_geom = max_mesh = total_fx = bad = 0
+    unresolved = set()
     try:
-        rt.configure(coordinate_system=ssruntime.COORD_Y_DOWN,
-                     origin=ssruntime.ORIGIN_CENTER)
-        rt.load_ssab_bytes(data)
-        a0 = anims[0]
-        if not rt.setup_animation(a0.name):
-            print(f"    FAIL: setup_animation({a0.name!r})")
-            return False
-        rt.set_loop(-1)
-        rt.play()
-
-        instances = InstanceRig(rt, meta, loader, lib)
-        effects = EffectRig(rt, meta)
-        print(f"    instance children built: {len(instances._children)}"
-              f"/{len(inst_parts)}")
-        if not instances.has():
-            print("    FAIL: no instance children could be built (loader/refs?)")
-            return False
-
-        fps = rt.fps or a0.fps or 30
-        dt = 1.0 / fps
-        total = max(1, a0.total_frame)
-        frames_with_geom = 0
-        max_mesh = 0
-        total_fx = 0
-        bad = 0
-        unresolved = set()
-        for fr in range(total + 2):
-            frame_no = rt.update(dt)
-            looped = rt.is_looped
-            fb = rt.get_frame_data(display_frame(frame_no, False))
-            if not fb:
-                continue
-            fd = framedata.parse(fb)
-            items = collect_ordered(rt, fd, instances, effects, frame_no, dt,
-                                    looped, sub_frame=False)
-            meshes = [p for (t, p) in items if t == "mesh"]
-            fx = [p for (t, p) in items if t == "fx"]
+        for _ in range(total + 2):
+            plan = p.update(dt_ms)
+            meshes = [pl for (t, pl) in plan.items if t == "mesh"]
+            fx = [pl for (t, pl) in plan.items if t == "fx"]
             if meshes or fx:
                 frames_with_geom += 1
             max_mesh = max(max_mesh, len(meshes))
             total_fx += len(fx)
             for mp in meshes:
-                if mp.texture_hash not in texmap:
+                if not p.texture_path(mp.texture_hash):   # resolves via shared texmap
                     unresolved.add(mp.texture_hash)
                 for (x, y) in mp.positions:
                     if not (math.isfinite(x) and math.isfinite(y)):
                         bad += 1
-
-        print(f"    frames with geometry: {frames_with_geom}/{total + 2}"
-              f"   max child meshes/frame = {max_mesh}   fx renderables = {total_fx}")
-        print(f"    non-finite positions: {bad}"
-              + (f"   UNRESOLVED child textures={sorted(unresolved)}"
-                 if unresolved else "   all child textures resolved"))
-        if bad:
-            print("    FAIL: non-finite child geometry")
-            ok = False
-        if frames_with_geom == 0 or max_mesh == 0:
-            print("    FAIL: instance children produced no geometry")
-            ok = False
-        if unresolved:
-            print("    FAIL: unresolved child textures (merge external cellmaps)")
-            ok = False
-        return ok
     finally:
-        if instances:
-            instances.close()
-        if effects:
-            effects.close()
-        rt.close()
+        p.close()
+
+    print(f"    frames with geometry: {frames_with_geom}/{total + 2}   "
+          f"max child meshes/frame = {max_mesh}   fx renderables = {total_fx}")
+    ok = True
+    if bad:
+        print(f"    FAIL: {bad} non-finite positions"); ok = False
+    if unresolved:
+        print(f"    FAIL: unresolved child textures {sorted(unresolved)} "
+              "(external cellmaps not merged into the shared texmap)"); ok = False
+    if frames_with_geom == 0 or max_mesh == 0:
+        print("    FAIL: instance children produced no geometry"); ok = False
+    if ok:
+        print("    -> PASS (child geometry finite; all child textures resolved)")
+    return ok
 
 
 def main(argv) -> int:
     targets = argv[1:] or [os.path.join(_GAME, "ss_assets", "overall", "Instance.ssab")]
     lib = ssruntime.load_library()
-    print("== Instance playback verification ==\n")
+    print("== Instance playback verification (unified SSInternalPlayer) ==\n")
     allok = True
     for t in targets:
         allok &= check_pack(lib, t)

@@ -136,38 +136,49 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     return ok
 
 
-def check_sequence(lib) -> bool:
-    """play_sequence auto-advances through the queue and flags `started`."""
+def check_finished_edge(lib) -> bool:
+    """The pure core reports the play->stop edge via ``FramePlan.finished``; the
+    HOST advances the sequence. The core itself has no queue. We act as the host:
+    play 'attack1' once, and on the finished edge switch to 'wait1' and confirm
+    it renders cleanly from a fresh head (no mid-update frame skew)."""
     rel = "ss_assets/Ringo/Ringo.ssab"
     abs_ssab = os.path.join(_GAME, rel)
     if not os.path.exists(abs_ssab):
-        print("### sequence  SKIP (Ringo not found)"); return True
+        print("### finished-edge  SKIP (Ringo not found)"); return True
     data = open(abs_ssab, "rb").read()
     p = SSInternalPlayer(data, lib=lib, base_dir="ss_assets/Ringo",
                          resource_manager=RecordingResourceManager(),
                          pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
-    seq = ["attack1", "wait1"]
-    print(f"### sequence  play_sequence({seq})")
-    p.play_sequence(seq, loop=-1)
-    started_edges = 0
+    print("### finished-edge  play 'attack1' once -> host advances to 'wait1'")
+    p.set_loop(1)            # play once so it finishes
+    p.set_animation("attack1")
+    p.play()
     fps = p.fps or 30
     dt_ms = 1000.0 / fps
-    ended_on = None
+    finished_seen = False
+    advanced_to = None
+    advanced_ok = False
     try:
         for _ in range(400):
             plan = p.update(dt_ms)
-            if plan.started:
-                started_edges += 1
-            if p.animation == "wait1":
-                ended_on = "wait1"
+            if plan.finished:
+                finished_seen = True
+                # Host policy (what SSPlayer.render does on plan.finished):
+                p.set_loop(-1)
+                p.set_animation("wait1")
+                p.play()
+                nxt = p.update(dt_ms)            # the frame after the switch
+                advanced_to = p.animation
+                advanced_ok = (advanced_to == "wait1" and bool(nxt.items)
+                               and nxt.frame_no >= 0)
                 break
     finally:
         p.close()
-    ok = (ended_on == "wait1" and started_edges >= 1)
-    print(f"    advanced_to={p.animation!r}  started_edges={started_edges}  "
+    ok = finished_seen and advanced_ok
+    print(f"    finished_edge={finished_seen}  advanced_to={advanced_to!r}  "
           f"-> {'PASS' if ok else 'FAIL'}")
     if not ok:
-        print("    FAIL: sequence did not auto-advance attack1 -> wait1")
+        print("    FAIL: core did not report a clean finished edge / host advance")
     return ok
 
 
@@ -184,7 +195,7 @@ def main() -> int:
     for rel, base, anim, kind in targets:
         allok &= check(lib, rel, base, anim, kind)
         print()
-    allok &= check_sequence(lib)
+    allok &= check_finished_edge(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1

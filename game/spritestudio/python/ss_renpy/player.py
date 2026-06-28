@@ -41,16 +41,16 @@ class FramePlan:
     ``items`` are ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw order,
     in world space (raw, un-normalised UVs). ``events`` are the FrameEvents that
     elapsed this update (also queued for :meth:`SSInternalPlayer.poll_events`).
-    ``started`` / ``looped`` / ``finished`` are edge notifications for the host
-    to map onto callbacks. ``world_matrices`` / ``hidden_parts`` snapshot the
-    state the part-query API reads (taken before child/effect slots step, which
-    invalidate the transient buffers).
+    ``looped`` / ``finished`` are pure edge *observations* (``finished`` is the
+    play->stop edge); the core takes no action on them — the host reads them and
+    decides its policy (advance a sequence, fire a callback). ``world_matrices``
+    / ``hidden_parts`` snapshot the state the part-query API reads (taken before
+    child/effect slots step, which invalidate the transient buffers).
     """
     items: list = field(default_factory=list)
     frame_no: float = 0.0
     disp: float = 0.0
     looped: bool = False
-    started: bool = False
     finished: bool = False
     events: list = field(default_factory=list)
     world_matrices: list = field(default_factory=list)
@@ -58,7 +58,14 @@ class FramePlan:
 
 
 class SSInternalPlayer:
-    """Imperative, engine-independent player for one ``.ssab`` pack."""
+    """Pure, engine-independent playback of ONE animation from a ``.ssab`` pack.
+
+    Plays a single animation at a time (``set_animation`` / ``play`` / ``update``)
+    and reports edges (``FramePlan.finished`` / ``looped``) as observations — it
+    has no notion of animation *sequences* or what to play next; that policy
+    belongs to the host (the ``SSPlayer`` displayable). Keeping it to one
+    animation makes it the reusable building block for Instance-part children
+    too (the canonical SS Player layering: ``ssruntime`` -> this -> host node)."""
 
     def __init__(self, ssab_data: bytes, *, lib,
                  base_dir: str = "",
@@ -67,7 +74,9 @@ class SSInternalPlayer:
                  sub_frame: bool = True,
                  enable_events: bool = True,
                  coordinate_system: int = ssruntime.COORD_Y_DOWN,
-                 origin: int = ssruntime.ORIGIN_CENTER):
+                 origin: int = ssruntime.ORIGIN_CENTER,
+                 loader=None, texmap=None, parent_driven: bool = False,
+                 depth: int = 0):
         self._data = ssab_data
         self._lib = lib
         # ``base_dir`` is the host-relative dir used only to build texture
@@ -78,9 +87,24 @@ class SSInternalPlayer:
         self._pack_reader = pack_reader
 
         self._meta = SsabMeta(ssab_data)
-        self._texmap = dict(self._meta.texture_hash_map())
+        # Texture hash -> image path. Shared across an Instance tree (the root
+        # creates it; children receive the same dict) so the root resolves every
+        # part's texture_hash, including those from external instance packs.
+        self._texmap = texmap if texmap is not None else {}
+        self._texmap.update(self._meta.texture_hash_map())
+        # This pack's own cellmap images, acquired on set_animation. External
+        # packs' images are acquired by the loader as they are loaded.
+        self._own_images = [c.image_path for c in self._meta.cellmaps()
+                            if c.image_path]
         self._part_index = {p.name: p.index for p in self._meta.parts()}
-        self._loader = self._make_loader()
+        # External-instance pack loader (merges into the shared texmap and
+        # acquires via the shared rm). The root builds one; children share it so
+        # an external pack is read + registered once for the whole tree.
+        self._loader = loader if loader is not None else self._make_loader()
+        # Instance nesting depth (capped in InstanceRig) and parent-driven flag:
+        # a child's own per-tick update() is a no-op — the parent seeks it.
+        self._depth = depth
+        self._parent_driven = bool(parent_driven)
 
         self._rt = ssruntime.SSRuntime(lib)
         self._rt.configure(coordinate_system=coordinate_system, origin=origin)
@@ -92,8 +116,6 @@ class SSInternalPlayer:
         self.animation: Optional[str] = None
         self.loop = -1
         self.speed = 1.0
-        self._base_loop = -1          # loop applied to the final queued animation
-        self._anim_queue: List[str] = []
 
         # rigs / events (built lazily on first set_animation)
         self._instances: Optional[InstanceRig] = None
@@ -155,8 +177,9 @@ class SSInternalPlayer:
         animation changes only reset slot state). Each is guarded so a failure
         disables only that feature."""
         try:
-            self._instances = InstanceRig(self._rt, self._meta, self._loader,
-                                          self._lib)
+            # Children are parent-driven SSInternalPlayers, built by the rig
+            # from this owner (it shares lib / rm / loader / texmap / base_dir).
+            self._instances = InstanceRig(self, self._depth)
         except Exception:
             self._instances = None
         try:
@@ -237,8 +260,9 @@ class SSInternalPlayer:
         self._rt.set_loop(self.loop)
         if self.speed != 1.0:
             self._rt.set_animation_speed(self.speed)
-        # Textures for this pack (set_animation owns texture loading).
-        self._acquire_textures(self._texmap.values())
+        # Textures for this pack (set_animation owns texture loading). External
+        # instance packs' textures are acquired by the loader as they load.
+        self._acquire_textures(self._own_images)
         # Timeline events are per-animation; rebuild the resolver.
         if self._enable_events:
             try:
@@ -263,19 +287,39 @@ class SSInternalPlayer:
             self._rt.play()
         self._was_playing = True
 
-    def play_sequence(self, names, loop: int = -1) -> None:
-        """Play ``names`` in order; each but the last plays once, the last uses
-        ``loop``. ``names`` may be a single name or a list."""
-        if isinstance(names, str):
-            names = [names]
-        names = [n for n in names if n]
-        if not names:
-            return
-        self._base_loop = loop
-        self._anim_queue = list(names[1:])
-        self.loop = 1 if self._anim_queue else loop
-        self.set_animation(names[0])
-        self.play()
+    # -- instance-child support (parent-driven mode) -------------------
+    @property
+    def ctx(self):
+        """Native runtime context handle (the parent's instance slot steps it)."""
+        return self._rt.ctx if self._rt else None
+
+    def reset_slots(self) -> None:
+        """Re-arm this player's Instance/Effect slots (parent calls on replay)."""
+        self._reset_slots()
+
+    def render_at(self, frame_no, looped, dt_s, sub_frame=None):
+        """Pose to an externally-stepped ``frame_no`` (no head advance) and return
+        this player's z-ordered, world-space draw items.
+
+        Used when this player is an Instance child: the parent's instance slot
+        already computed ``frame_no``; we evaluate that frame and recurse into
+        this child's own Instance/Effect parts. Never raises; on a draw-plan
+        failure it returns Normal/Mesh-only."""
+        rt = self._rt
+        sf = self.sub_frame if sub_frame is None else sub_frame
+        disp = frame_no if sf else math.floor(frame_no)
+        fb = rt.get_frame_data_view(disp)
+        if not fb:
+            return []
+        fd = framedata.parse(fb)
+        try:
+            return collect_ordered(rt, fd, self._instances, self._effects,
+                                   frame_no, dt_s, looped, sf)
+        except Exception:
+            fb2 = rt.get_frame_data_view(disp)
+            return ([("mesh", mp)
+                     for mp in framedata.build_mesh_parts(rt, framedata.parse(fb2))]
+                    if fb2 else [])
 
     def pause(self) -> None:
         if self._rt and not self._rt.is_pausing:
@@ -323,20 +367,23 @@ class SSInternalPlayer:
     def update(self, dt_ms: float) -> FramePlan:
         """Advance by ``dt_ms`` milliseconds and return this frame's plan.
 
-        Mirrors the host displayable's per-frame core: advance the Brain, pump
-        timeline events + finished/looped edges (auto-advancing a queued
-        sequence), then materialise the z-ordered, world-space draw plan. Never
-        raises; on a draw-plan failure it falls back to Normal/Mesh-only.
+        Pure single-animation playback: advance the Brain, collect timeline
+        events, observe the looped / finished edges, then materialise the
+        z-ordered world-space draw plan. It does NOT decide what to play next —
+        sequence chaining is the host's policy (it reads ``FramePlan.finished``
+        and calls ``set_animation`` itself). Never raises; on a draw-plan failure
+        it falls back to Normal/Mesh-only.
         """
+        if self._parent_driven:
+            # An Instance child is seeked by its parent via render_at(); its own
+            # per-tick update is a no-op (mirrors Godot's setParentDriven).
+            return FramePlan()
         rt = self._rt
         dt_s = dt_ms / 1000.0
         frame_no = rt.update_ms(dt_ms)
         looped = rt.is_looped
 
-        # --- events + play-state edges (engine-agnostic part of _pump_events)
         events_out: list = []
-        started = False
-        finished = False
         if self._enable_events and self._evt is not None and self._evt.available:
             try:
                 for fe in self._evt.collect(rt):
@@ -344,17 +391,9 @@ class SSInternalPlayer:
                     events_out.append(fe)
             except Exception:
                 pass
+        # The play->stop edge — a pure observation the host maps to its policy.
         playing = rt.is_playing
-        if self._was_playing and not playing:
-            if self._anim_queue:
-                nxt = self._anim_queue.pop(0)
-                self.loop = 1 if self._anim_queue else self._base_loop
-                self.set_animation(nxt)
-                self.play()
-                started = True
-                playing = rt.is_playing
-            else:
-                finished = True
+        finished = self._was_playing and not playing
         self._was_playing = playing
 
         # --- draw plan (sub-frame off floors the *display* frame only)
@@ -381,9 +420,8 @@ class SSInternalPlayer:
         self._last_hidden = hidden
 
         return FramePlan(items=items, frame_no=frame_no, disp=disp,
-                         looped=looped, started=started, finished=finished,
-                         events=events_out, world_matrices=self._last_world,
-                         hidden_parts=hidden)
+                         looped=looped, finished=finished, events=events_out,
+                         world_matrices=self._last_world, hidden_parts=hidden)
 
     # -- timeline events -----------------------------------------------
     def poll_events(self) -> list:
