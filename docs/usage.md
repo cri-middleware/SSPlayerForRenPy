@@ -2,6 +2,8 @@
 
 SpriteStudio Player for Ren'Py では、SpriteStudioのアニメーションをRen'Py上で非常に柔軟に制御できます。画面への単純な描画から、キャラクターの立ち絵としての統合、イベントコールバックまで、目的に応じた使い方を解説します。
 
+> 「やりたいこと別」のコピペできる最小レシピは **[cookbook.md](cookbook.md)** にまとめてあります（喋るキャラ・一発エフェクト・配置・効果音など）。
+
 > **`.ssab` の置き場所について**: コンバート済みの `.ssab` とそのテクスチャ（`.png`）、および参照する外部インスタンスパックは、すべて **同じフォルダに同居** します（オートインポーターは `game/ss_assets/<プロジェクト名>/` に出力します）。プレイヤーは関連リソースを `.ssab` と同じフォルダから解決するため、テクスチャ用のフォルダを別途指定する必要はありません。
 
 ---
@@ -63,6 +65,27 @@ label start:
 
     r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
 ```
+
+### もっと簡単に：喋るキャラ (`SSCharacter`)
+`SSCharacter` を使うと、**台詞を喋っている間は talk、止まれば idle に自動で切り替わる**“生きたキャラ”を1行で定義できます。`image` 宣言と `Character` の準備、しゃべりへの同期がまとめて行われ、行ごとの Python は不要です。
+
+```renpy
+# 画像登録 + Character + 口パク連動をまとめて定義（タグは .ssab の stem = "ringo"）
+define ringo = SSCharacter(
+    "ss_assets/Ringo/Ringo.ssab",
+    talk="talk",     # 喋っている間に再生するアニメ名
+    idle="wait1",    # 無音時のアニメ名
+)
+
+label start:
+    show ringo            # タグ "ringo" で表示
+    ringo "やあ。喋っている間は talk、終わると idle に戻るよ。"
+```
+
+- 画像タグは `.ssab` のファイル名 stem を小文字化したもの（例 `"ringo"`）。`tag=` で上書き可。
+- `aliases=`（感情など）や `size=`（`xalign` を効かせる箱サイズ）も渡せます。
+- 口パクの開始/終了タイミングは `start` / `stop`（Character のコールバックイベント名）で調整可能。
+- **v1の制限**: 喋っている間は talk/idle が属性を置き換えるため、`show ringo happy` のような感情属性は talk 中は反映されず、終了後 `idle` に戻ります（感情別の talk は今後対応）。
 
 ---
 
