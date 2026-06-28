@@ -146,7 +146,7 @@ def check_pack(lib, path: str) -> bool:
 
 
 def main(argv) -> int:
-    targets = argv[1:] or [os.path.join(_GAME, "sprites", "overall", "Instance.ssab")]
+    targets = argv[1:] or [os.path.join(_GAME, "ss_assets", "overall", "Instance.ssab")]
     lib = ssruntime.load_library()
     print("== Instance playback verification ==\n")
     allok = True

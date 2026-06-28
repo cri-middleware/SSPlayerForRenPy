@@ -36,7 +36,7 @@
 # ─────────────────────────────────────────────────────────────────────────
 
 init -10 python:
-    import os, sys, math
+    import os, sys, math, time
 
     # This library lives at <gamedir>/spritestudio/ by convention. If you drop
     # it somewhere else, set `store.spritestudio_root` in an earlier init block
@@ -49,13 +49,38 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events, instance, effectplan
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resource, resolver
     from ss_renpy.effect import EffectRig
     from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
+    from ss_renpy.player import SSInternalPlayer
+    from ss_renpy.resource import ResourceManager
 
     # Load the native library once, from spritestudio/libs/<platform-arch>/.
     _SS_LIB = ssruntime.load_library(base_dir=os.path.join(_SS_ROOT, "libs"))
+
+    # --- Opt-in render profiler (in-engine) --------------------------------
+    # Run the game with env SS_PROFILE=1 to log the per-frame split between the
+    # engine-independent geometry build (collect_ordered) and the Ren'Py draw
+    # path (_draw_items: Mesh2 build + blit + shader). Headless tools can't time
+    # the GPU/Mesh2 side, so this is the way to see whether geometry or drawing
+    # dominates a real frame. Zero overhead when off (a couple of bool checks).
+    SS_PROFILE = os.environ.get("SS_PROFILE", "") not in ("", "0", "false", "False")
+    _ss_prof = {"n": 0, "geom": 0.0, "draw": 0.0, "total": 0.0, "drawn": 0}
+
+    def _ss_prof_tick(geom, draw, total, drew):
+        p = _ss_prof
+        p["n"] += 1
+        p["geom"] += geom
+        p["draw"] += draw
+        p["total"] += total
+        p["drawn"] += 1 if drew else 0
+        if p["n"] >= 120:
+            n = p["n"]
+            print("[SSPlayer] %d frames | geom %.3fms | draw %.3fms | total "
+                  "%.3fms | rebuilt %d/%d" % (n, p["geom"] / n * 1000.0,
+                  p["draw"] / n * 1000.0, p["total"] / n * 1000.0, p["drawn"], n))
+            p.update(n=0, geom=0.0, draw=0.0, total=0.0, drawn=0)
 
     # --- Tuning knobs (set before first render) ----------------------------
     # I could not run Ren'Py to confirm its rendering conventions, so these let
@@ -317,10 +342,70 @@ init -10 python:
         except Exception:
             return None
 
+    # --- Zero-config short-name resolution --------------------------------
+    # `SSPlayer("Ringo")` resolves against the .ssab files under the asset roots
+    # (default ["ss_assets"], override via `define ss_asset_dirs = [...]`). The
+    # index keys off the output packs, so it covers both auto-imported and hand-
+    # dropped .ssab. Built lazily and cached; rebuilt each dev reload because the
+    # whole library lives in one init block that re-runs on Shift+R.
+    _SS_INDEX = None
+
+    def _ss_get_index():
+        global _SS_INDEX
+        if _SS_INDEX is None:
+            roots = getattr(store, "ss_asset_dirs", None) or ["ss_assets"]
+            _SS_INDEX = resolver.build_index(renpy.config.gamedir, roots)
+        return _SS_INDEX
+
+    def _ss_resolve_name(name, animation=None):
+        """Bare short name -> gamedir-relative .ssab path; validates animation.
+
+        Raises ss_renpy.resolver.SSResolveError (unknown / ambiguous / bad
+        animation) so a typo fails loudly at definition time, not silently."""
+        idx = _ss_get_index()
+        rec = idx.find(name)
+        idx.validate_animation(rec, animation)
+        return rec.rel_path
+
+    def ss_list_assets():
+        """Dev/discovery helper: {short_name: [animation, ...]} for each pack."""
+        idx = _ss_get_index()
+        return {r.stem: list(r.anim_names)
+                for r in idx.records() if r.is_primary}
+
+    class RenPyResourceManager(ResourceManager):
+        """Ren'Py-backed texture cache injected into ``SSInternalPlayer``.
+
+        The core asks us to ``acquire`` each texture path (gamedir-relative) an
+        animation needs; we back that with Ren'Py ``Image`` displayables, which
+        Ren'Py's own image / texture cache then loads and predicts. ``images()``
+        feeds the displayable's ``visit`` so textures are preloaded (no first-
+        playback stutter). The core never frees anything — Ren'Py owns lifetime.
+        """
+        def __init__(self):
+            self._cache = {}    # path -> Image
+
+        def acquire(self, path):
+            if path and path not in self._cache:
+                self._cache[path] = Image(path)
+
+        def get(self, path):
+            return self._cache.get(path)
+
+        def image(self, path):
+            d = self._cache.get(path)
+            if d is None:
+                d = Image(path)
+                self._cache[path] = d
+            return d
+
+        def images(self):
+            return list(self._cache.values())
+
     class SSPlayer(renpy.Displayable):
         """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
 
-            add SSPlayer("Basic.ssab") xalign 0.5 yalign 0.5
+            add SSPlayer("ss_assets/overall/Basic.ssab") xalign 0.5 yalign 0.5
 
         One instance plays one .ssab; select an animation in it by name
         (constructor ``animation=`` or :meth:`ss_set_animation`). Renders Normal,
@@ -328,12 +413,19 @@ init -10 python:
         a small ``ss_*`` playback / control / query API.
         """
 
-        def __init__(self, ssab, animation=None, sprites_subdir="ss_assets",
+        def __init__(self, ssab, animation=None, sprites_subdir=None,
                      loop=-1, speed=1.0, sub_frame=True,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
+            # Zero-config: a bare short name ("Ringo" — no "/", no ".ssab", and no
+            # legacy sprites_subdir) is resolved to its full gamedir-relative path
+            # via the asset index. Explicit paths are used verbatim, so existing
+            # code is unaffected and pays no scan cost.
+            if (ssab and sprites_subdir is None
+                    and "/" not in ssab and not ssab.endswith(".ssab")):
+                ssab = _ss_resolve_name(ssab, animation)
             self.ssab = ssab
             self.kwargs = kwargs
             self.aliases = aliases or {}
@@ -353,6 +445,19 @@ init -10 python:
                 self.loop = loop
 
             self.sprites_subdir = sprites_subdir
+            # Textures and external-instance packs are exported co-located with
+            # the .ssab, so the directory that holds the .ssab is the single base
+            # for all of them — the caller does not need a separate sprites_subdir.
+            # `sprites_subdir`, when given, is just a legacy prefix kept for
+            # backwards compatibility; the base is always re-derived from the
+            # resolved .ssab path below.
+            _relpath = (sprites_subdir.rstrip("/\\") + "/" + ssab) if sprites_subdir else ssab
+            _relpath = _relpath.replace("\\", "/").lstrip("/")
+            self._ssab_relpath = _relpath
+            if "/" in _relpath:
+                self._base_dir, self._ssab_name = _relpath.rsplit("/", 1)
+            else:
+                self._base_dir, self._ssab_name = "", _relpath
             self.speed = speed
             # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
@@ -369,45 +474,30 @@ init -10 python:
             self.on_finished = on_finished
             self.on_looped = on_looped
             self.on_started = on_started
-            # runtime state (built lazily on first render)
-            self._rt = None
-            self._anim = None
-            self._ssab_data = None  # retained for per-animation EventResolver rebuilds
-            self._meta = None
-            self._evt = None        # ss_renpy.events.EventResolver for self._anim
-            self._event_queue = []  # FrameEvents awaiting ss_poll_events()
-            self._was_playing = False
-            self._instances = None  # ss_renpy.instance.InstanceRig (instance parts)
-            self._effects = None    # ss_renpy.effect.EffectRig (effect parts)
-            self._loader = None     # pack_name -> bytes, for external instance .ssab
-            self._part_index = {}   # part name -> index (for the part-query API)
-            self._texmap = {}
-            self._texpath = {}     # texture_hash -> "sprites/foo.png"
-            self._base = {}        # path -> Image()
+            # Delegation: the engine-independent playback core (built lazily on
+            # first render) owns the runtime, metadata, rigs and timeline events.
+            # This displayable is the Ren'Py adapter around it.
+            self._core = None       # ss_renpy.player.SSInternalPlayer
+            self._rm = None         # RenPyResourceManager (Ren'Py texture cache)
+            self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
             self._last_st = None
-            self._last_wm = []      # snapshot of root world matrices (part query)
-            self._last_hidden = None  # snapshot of hidden part indices (part query)
             self._warned = set()
 
         def __getstate__(self):
-            """Drop native pointers and reconstructible caches for pickling/saves."""
+            """Drop the native-backed core + caches for pickling/saves; they are
+            rebuilt lazily on the next render (re-applying the animation)."""
             state = self.__dict__.copy()
-            for k in ("_rt", "_anim", "_ssab_data", "_meta", "_evt",
-                      "_instances", "_effects", "_loader", "_base",
-                      "_last_st", "_last_hidden"):
-                state[k] = None
-            state["_event_queue"] = []
-            state["_part_index"] = {}
-            state["_texmap"] = {}
+            state["_core"] = None
+            state["_rm"] = None
             state["_texpath"] = {}
-            state["_last_wm"] = []
+            state["_last_st"] = None
             state["_warned"] = set()
             return state
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):
             if self._available_animations is None:
-                path = os.path.join(self._SS_dir(), self.ssab)
+                path = os.path.join(self._SS_dir(), self._ssab_name)
                 try:
                     with open(path, "rb") as fh:
                         data = fh.read()
@@ -459,113 +549,58 @@ init -10 python:
 
         # -- lazy native setup ---------------------------------------------
         def _ensure(self):
-            if self._rt is not None:
+            if self._core is not None:
                 return
-            path = os.path.join(self._SS_dir(), self.ssab)
+            path = os.path.join(self._SS_dir(), self._ssab_name)
             with open(path, "rb") as fh:
                 data = fh.read()
-            self._ssab_data = data
-            meta = SsabMeta(data)
-            self._meta = meta
-            self._texmap = meta.texture_hash_map()
-            self._part_index = {p.name: p.index for p in meta.parts()}
-            self._loader = self._make_loader()
-            rt = ssruntime.SSRuntime(_SS_LIB)
-            rt.configure(coordinate_system=ssruntime.COORD_Y_DOWN,
-                         origin=ssruntime.ORIGIN_CENTER)
-            rt.load_ssab_bytes(data)
-            anim = self.animation
-            if not anim:
-                names = meta.animation_names()
-                anim = names[0] if names else None
-            if not anim or not rt.setup_animation(anim):
-                raise Exception("ss: setup_animation(%r) failed in %s"
-                                % (anim, self.ssab))
-            rt.set_loop(self.loop)
-            if self.speed != 1.0:
-                rt.set_animation_speed(self.speed)
-            rt.play()
-            self._rt = rt
-            self._anim = anim
-            self.animation = anim
-            self._evt = events.EventResolver(data, anim)
-            self._was_playing = True
-            self._build_rigs()
-
-        def _make_loader(self):
-            """Loader(pack_name)->bytes for external instance packs (docs/08 §1).
-
-            Caches bytes and merges each loaded pack's cellmap → image-path map
-            into ``self._texmap`` so child-part texture hashes resolve to PNGs in
-            the same sprites dir.
-            """
-            cache = {}
-
-            def load(pack_name):
-                if pack_name in cache:
-                    return cache[pack_name]
-                p = os.path.join(self._SS_dir(), pack_name + ".ssab")
-                data = b""
-                try:
-                    with open(p, "rb") as fh:
-                        data = fh.read()
-                except OSError:
-                    self._warn_once(("ext", pack_name),
-                                    "external instance pack %r not found "
-                                    "next to %s" % (pack_name, self.ssab))
-                cache[pack_name] = data
-                if data:
-                    try:
-                        self._texmap.update(SsabMeta(data).texture_hash_map())
-                    except Exception:
-                        pass
-                return data
-
-            return load
-
-        def _build_rigs(self):
-            """Build the Instance/Effect rigs once for this pack (parts are
-            pack-static; animation changes only reset slot state, see
-            :meth:`_reset_slots`). Each is guarded so a failure disables only
-            that feature, never rendering."""
-            try:
-                self._instances = InstanceRig(self._rt, self._meta,
-                                              self._loader, _SS_LIB)
-            except Exception as e:
-                self._instances = None
-                self._warn_once("inst-rig", "instance rig build failed: %r" % (e,))
-            try:
-                self._effects = EffectRig(self._rt, self._meta)
-            except Exception as e:
-                self._effects = None
-                self._warn_once("fx-rig", "effect rig build failed: %r" % (e,))
-
-        def _reset_slots(self):
-            """Re-arm Instance/Effect slots (on replay / animation change)."""
-            for rig in (self._instances, self._effects):
-                if rig is not None:
-                    try:
-                        rig.reset()
-                    except Exception:
-                        pass
+            # Build the engine-independent core; the RenPyResourceManager we hand
+            # it backs texture loading with Ren'Py's image cache (set_animation
+            # acquires this pack's textures), and the pack_reader resolves external
+            # instance packs co-located with the .ssab.
+            self._rm = RenPyResourceManager()
+            self._core = SSInternalPlayer(
+                data, lib=_SS_LIB, base_dir=self._base_dir,
+                resource_manager=self._rm,
+                pack_reader=resource.filesystem_pack_reader(self._SS_dir()),
+                sub_frame=self._sub_frame,
+                enable_events=SS_ENABLE_EVENTS,
+            )
+            self._core.set_speed(self.speed)
+            if isinstance(self._initial_animation, (list, tuple)) and self._initial_animation:
+                self._core.play_sequence(list(self._initial_animation),
+                                         loop=self._initial_loop)
+            else:
+                self._core.set_loop(self.loop)
+                if not self._core.set_animation(self.animation):
+                    raise Exception(
+                        "ss: animation %r not found in %s (have: %s)"
+                        % (self.animation, self.ssab,
+                           ", ".join(self._core.animation_names()) or "(none)"))
+                self._core.play()
+            self.animation = self._core.animation
 
         def _SS_dir(self):
-            return os.path.join(renpy.config.gamedir, self.sprites_subdir)
+            # Directory that holds this .ssab (and, co-located, its textures and
+            # external-instance packs).
+            base = renpy.config.gamedir
+            if self._base_dir:
+                base = os.path.join(base, *self._base_dir.split("/"))
+            return base
 
         def _texture_path(self, thash):
+            # Resolve via the core (which owns the cellmap → image map, merged
+            # with any external instance packs). Cached per displayable for the
+            # per-part hot path.
             path = self._texpath.get(thash)
             if path is None:
-                img = self._texmap.get(thash, "")
-                path = (self.sprites_subdir + "/" + img) if img else ""
+                path = self._core.texture_path(thash) if self._core else ""
                 self._texpath[thash] = path
             return path
 
         def _base_image(self, tex_path):
-            d = self._base.get(tex_path)
-            if d is None:
-                d = Image(tex_path)
-                self._base[tex_path] = d
-            return d
+            # Image lifetime is owned by the RenPyResourceManager (Ren'Py cache).
+            return self._rm.image(tex_path)
 
         def _warn_once(self, key, msg):
             if key not in self._warned:
@@ -573,40 +608,31 @@ init -10 python:
                 renpy.log("ss: " + msg)
 
         # -- timeline events (UserData / Signal / Audio) -------------------
-        def _pump_events(self):
-            """Collect the events this update passed through; never raises.
+        def _dispatch_plan(self, plan):
+            """Fan a FramePlan's events + edge notifications out to the optional
+            push callbacks; never raises.
 
-            Called once per render, immediately after ``update``. Resolved
-            FrameEvents are appended to the poll queue (drained by
-            :meth:`ss_poll_events`) and dispatched to any callbacks. The
-            finished / looped notifications are derived from runtime state:
-            ``finished`` fires once on the ``is_playing`` True→False edge (works
-            for finite loops *and* play-once; never fires for ``loop=-1``);
-            ``looped`` fires on the per-update ``is_looped`` wrap flag.
+            The core already queued the events for :meth:`ss_poll_events` and
+            auto-advanced any animation sequence (``started`` marks such a jump);
+            ``looped`` fires on the per-update wrap flag and ``finished`` once on
+            the play→stop edge (never for ``loop=-1``). Each callback is guarded
+            so a raising callback can't break rendering.
             """
             if not SS_ENABLE_EVENTS:
                 return
             try:
-                if self._evt is not None and self._evt.available:
-                    for fe in self._evt.collect(self._rt):
-                        self._event_queue.append(fe)
-                        self._dispatch_frame_events(fe)
-                if self._rt.is_looped:
+                for fe in plan.events:
+                    self._dispatch_frame_events(fe)
+                if plan.looped:
                     self._call_cb(self.on_looped)
-                playing = self._rt.is_playing
-                if self._was_playing and not playing:
-                    if self._anim_queue:
-                        next_anim = self._anim_queue.pop(0)
-                        # Play once if queue has more, otherwise use the original loop setting
-                        next_loop = 1 if self._anim_queue else self.kwargs.get("loop", -1)
-                        self.ss_play(next_anim, loop=next_loop)
-                    else:
-                        self._call_cb(self.on_finished)
-                self._was_playing = playing
+                if plan.started:
+                    self._call_cb(self.on_started)
+                if plan.finished:
+                    self._call_cb(self.on_finished)
             except Exception as e:
                 self._warn_once("event-pump",
-                                "event pump failed (%r); events disabled this "
-                                "frame" % (e,))
+                                "event dispatch failed (%r); events disabled "
+                                "this frame" % (e,))
 
         def _dispatch_frame_events(self, fe):
             for u in fe.users:
@@ -633,69 +659,55 @@ init -10 python:
             the rollback-safe, render-thread-safe way to consume events from a
             screen / interaction (vs the callbacks, which fire inside render()).
             """
-            q = self._event_queue
-            self._event_queue = []
-            return q
+            self._ensure()
+            return self._core.poll_events()
 
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
             
-            # Detect re-show (time went backwards)
+            # Detect re-show (time went backwards) -> restart from the top.
+            core = self._core
             if self._last_st is not None and st < self._last_st:
-                if isinstance(self._initial_animation, (list, tuple)) and len(self._initial_animation) > 0:
-                    self._anim_queue = list(self._initial_animation)
-                    next_anim = self._anim_queue.pop(0)
-                    next_loop = 1 if self._anim_queue else self._initial_loop
-                    self.ss_play(animation=next_anim, loop=next_loop, start_frame=0)
+                if isinstance(self._initial_animation, (list, tuple)) and self._initial_animation:
+                    core.play_sequence(list(self._initial_animation),
+                                       loop=self._initial_loop)
                 else:
-                    self.ss_play(animation=self._initial_animation, loop=self._initial_loop, start_frame=0)
+                    if self._initial_animation:
+                        core.set_animation(self._initial_animation)
+                    core.play(start_frame=0)
+                self._call_cb(self.on_started)
+                self.animation = core.animation
 
+            _t0 = time.perf_counter() if SS_PROFILE else 0.0
             dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
             self._last_st = st
-            frame_no = self._rt.update(dt)           # seconds -> ms internally
-            self._pump_events()                      # collect events this update
-            looped = self._rt.is_looped
-            # Sub-frame off (default) floors the *display* frame; the head stays
-            # a raw float (docs/06). The slot steps below get the raw frame_no.
-            disp = frame_no if self._sub_frame else math.floor(frame_no)
-            # Zero-copy view over the Brain's FrameData buffer (no per-frame copy).
-            # Valid only until the slot steps below; we snapshot what the part-
-            # query API needs (matrices + hidden flags) before then.
-            fb = self._rt.get_frame_data_view(disp)
-            # Snapshot the root world matrices for the part-query API now (the
-            # SoA pointer is transient; instance/effect steps below reuse it).
-            wm, wn = self._rt.world_matrices()
-            self._last_wm = list(wm[0:wn]) if (wm and wn) else []
+            # Advance the engine-independent core (it takes milliseconds) and get
+            # this frame's z-ordered, world-space draw plan.
+            _tg = time.perf_counter() if SS_PROFILE else 0.0
+            plan = core.update(dt * 1000.0)
+            _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
+            self.animation = core.animation
+            self._dispatch_plan(plan)            # events + started/looped/finished
 
+            _draw = 0.0
             r = renpy.Render(width, height)
-            if fb:
-                fd = framedata.parse(fb)
-                # Owned hidden-part snapshot for ss_is_part_hidden — taken while
-                # the view is still valid (collect_ordered's slot steps below
-                # invalidate this context's FrameData buffer).
-                self._last_hidden = framedata.hidden_parts(fd)
+            if plan.items:
                 ox, oy = width / 2.0, height / 2.0   # SS center -> screen center
-                # Walk Normal / Instance / Effect parts in true draw order.
-                try:
-                    items = collect_ordered(self._rt, fd, self._instances,
-                                            self._effects, frame_no, dt, looped,
-                                            self._sub_frame)
-                except Exception as e:
-                    self._warn_once("collect", "draw-plan walk failed (%r); "
-                                    "Normal-only this frame" % (e,))
-                    # collect_ordered may have stepped slots and invalidated the
-                    # zero-copy view + SoA buffers; re-evaluate the frame so the
-                    # Normal-only fallback reads a clean, valid snapshot.
-                    fb = self._rt.get_frame_data_view(disp)
-                    items = ([("mesh", mp)
-                              for mp in framedata.build_mesh_parts(
-                                  self._rt, framedata.parse(fb))]
-                             if fb else [])
-                self._draw_items(r, items, ox, oy, st, at, width, height)
-            else:
-                self._last_hidden = None    # no frame this tick (part query: hidden)
-            renpy.redraw(self, 0)                    # keep animating
+                _td = time.perf_counter() if SS_PROFILE else 0.0
+                self._draw_items(r, plan.items, ox, oy, st, at, width, height)
+                if SS_PROFILE:
+                    _draw = time.perf_counter() - _td
+
+            # Keep requesting redraws only while something is actually moving; an
+            # idle sprite (paused / stopped / play-once finished, no live rigs)
+            # renders an identical frame, so we let it go quiescent until a
+            # control method (ss_play/ss_resume/ss_set_frame/ss_stop/...) re-arms
+            # it. is_animating() stays True while effects / instances run.
+            if core.is_animating():
+                renpy.redraw(self, 0)
+            if SS_PROFILE:
+                _ss_prof_tick(_geom, _draw, time.perf_counter() - _t0, bool(plan.items))
             return r
 
         # -- draw dispatch (batched) ---------------------------------------
@@ -1028,59 +1040,48 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
+            # Preload textures via Ren'Py prediction. set_animation already
+            # acquired this pack's textures into the RenPyResourceManager (plus
+            # external instance packs as they load); hand those Images back so
+            # Ren'Py preloads them — no first-playback stutter.
             try:
                 self._ensure()
-                imgs = []
-                for h in self._texmap:
-                    path = self._texture_path(h)
-                    if path:
-                        imgs.append(self._base_image(path))
-                return imgs
+                return self._rm.images() if self._rm else []
             except Exception:
                 return []
 
         # -- playback / control / query API --------------------------------
-        # A small ss_-prefixed, Ren'Py-idiomatic playback / control surface.
-        # setAnimation/play are split (docs/06 §4): set_animation loads+poses;
-        # ss_play starts.
-        def _reapply_playback(self):
-            # setup_animation resets loop/speed/direction to defaults (docs/06
-            # §4 NOTE) — re-apply the player's settings after a switch.
-            self._rt.set_loop(self.loop)
-            if self.speed != 1.0:
-                self._rt.set_animation_speed(self.speed)
-
+        # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
+        # engine-independent core. set_animation/play are split (docs/06 §4):
+        # set_animation loads+poses; ss_play starts.
         def ss_set_animation(self, name):
             """Load + pose animation ``name`` (does NOT start playback).
 
-            Front-loads the heavy work — native setup, asset loading, and
-            Instance child-context allocation — so a later :meth:`play` starts
-            instantly with no re-allocation (docs/06 §4 setAnimation/play split).
+            Front-loads the heavy work — native setup, texture acquisition, and
+            Instance child-context allocation — so a later :meth:`ss_play` starts
+            instantly (docs/06 §4 setAnimation/play split).
             """
-            if self._rt is None:
+            if self._core is None:
                 if name:
-                    self.animation = name      # set up straight into `name`
+                    self.animation = name      # build straight into `name`
                 self._ensure()
                 return True
-            if name and name != self._anim:
-                if not self._rt.setup_animation(name):
-                    self._warn_once(("anim", name),
-                                    "setup_animation(%r) failed" % name)
-                    return False
-                self._anim = name
-                self.animation = name
-                self._reapply_playback()
-                self._evt = events.EventResolver(self._ssab_data, name)
-                self._reset_slots()
-                renpy.redraw(self, 0)
+            if not name or name == self._core.animation:
+                return True
+            if not self._core.set_animation(name):
+                self._warn_once(("anim", name),
+                                "setup_animation(%r) failed" % name)
+                return False
+            self.animation = self._core.animation
+            renpy.redraw(self, 0)
             return True
 
         def ss_get_animation(self):
-            return self._anim
+            return self._core.animation if self._core else self.animation
 
         def ss_animation_names(self):
             self._ensure()
-            return self._meta.animation_names() if self._meta else []
+            return self._core.animation_names()
 
         def ss_play(self, animation=None, loop=None, start_frame=-1.0):
             """Start playback (optionally switching animation / loop first).
@@ -1092,90 +1093,92 @@ init -10 python:
                 self.ss_set_animation(animation)
             if loop is not None:
                 self.loop = loop
-                self._rt.set_loop(loop)
-            self._reset_slots()
+                self._core.set_loop(loop)
             if start_frame is not None and start_frame >= 0:
-                self._rt.play_with_start_frame(start_frame)
+                self._core.play(start_frame=start_frame)
             else:
-                self._rt.play()
-            self._was_playing = True
+                self._core.play()
+            self.animation = self._core.animation
             self._call_cb(self.on_started)
             renpy.redraw(self, 0)
 
         def ss_pause(self):
-            # The C-API pause toggles; gate on state so this is idempotent.
-            if self._rt and not self._rt.is_pausing:
-                self._rt.pause()
+            if self._core:
+                self._core.pause()
 
         def ss_resume(self):
-            if self._rt and self._rt.is_pausing:
-                self._rt.pause()
-                self._was_playing = True
+            if self._core:
+                self._core.resume()
                 renpy.redraw(self, 0)
 
         def ss_stop(self):
-            if self._rt:
-                self._rt.stop()
+            if self._core:
+                self._core.stop()
+                # stop() may jump the head (e.g. back to the start frame); re-arm
+                # so the change is shown even if the loop had gone quiescent.
+                renpy.redraw(self, 0)
 
         def ss_is_playing(self):
-            return bool(self._rt and self._rt.is_playing)
+            return bool(self._core and self._core.is_playing())
 
         def ss_is_pausing(self):
-            return bool(self._rt and self._rt.is_pausing)
+            return bool(self._core and self._core.is_pausing())
 
         def ss_get_frame(self):
-            return self._rt.frame_no if self._rt else 0.0
+            return self._core.frame_no if self._core else 0.0
 
         def ss_set_frame(self, frame):
-            if self._rt:
-                self._rt.set_frame_no(frame)
+            if self._core:
+                self._core.set_frame(frame)
                 renpy.redraw(self, 0)
 
         def ss_total_frames(self):
-            return self._rt.total_frames if self._rt else 0
+            return self._core.total_frames if self._core else 0
 
         def ss_start_frame(self):
-            return self._rt.start_frame if self._rt else 0
+            return self._core.start_frame if self._core else 0
 
         def ss_end_frame(self):
-            return self._rt.end_frame if self._rt else 0
+            return self._core.end_frame if self._core else 0
 
         def ss_set_speed(self, speed):
             self.speed = speed
-            if self._rt:
-                self._rt.set_animation_speed(speed)
+            if self._core:
+                self._core.set_speed(speed)
 
         def ss_get_speed(self):
             return self.speed
 
         def ss_set_loop(self, count):
             self.loop = count
-            if self._rt:
-                self._rt.set_loop(count)
+            if self._core:
+                self._core.set_loop(count)
 
         def ss_get_loop(self):
             return self.loop
 
         def ss_set_section(self, start, end):
-            if self._rt:
-                self._rt.set_animation_section(start, end)
+            if self._core:
+                self._core.set_section(start, end)
                 renpy.redraw(self, 0)
 
         def ss_set_playback_direction(self, direction, style=0):
             """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
-            if self._rt:
-                self._rt.set_playback_direction(direction, style)
+            if self._core:
+                self._core.set_playback_direction(direction, style)
 
         def ss_set_frame_rate(self, fps):
-            if self._rt:
-                self._rt.set_frame_rate(fps)
+            if self._core:
+                self._core.set_frame_rate(fps)
 
         def ss_get_frame_rate(self):
-            return self._rt.fps if self._rt else 0
+            return self._core.fps if self._core else 0
 
         def ss_set_sub_frame_enabled(self, enabled):
             """Toggle sub-frame interpolation (default on)."""
             self._sub_frame = bool(enabled)
+            if self._core:
+                self._core.set_sub_frame(enabled)
             renpy.redraw(self, 0)
 
         def ss_is_sub_frame_enabled(self):
@@ -1184,33 +1187,20 @@ init -10 python:
         # -- part query ----------------------------------------------------
         def ss_part_names(self):
             self._ensure()
-            return list(self._part_index.keys())
+            return self._core.part_names()
 
         def ss_part_index(self, name):
             self._ensure()
-            return self._part_index.get(name, -1)
+            return self._core.part_index(name)
 
         def ss_part_transform(self, name):
             """Player-local transform of a part on the last rendered frame, or
             ``None``: a dict with x/y (px), rotation (deg), xscale/yscale."""
-            i = self.ss_part_index(name)
-            base = i * 16
-            if i < 0 or base + 16 > len(self._last_wm):
-                return None
-            m = self._last_wm[base:base + 16]
-            return {
-                "x": m[12], "y": m[13],
-                "rotation": math.degrees(math.atan2(m[1], m[0])),
-                "xscale": math.hypot(m[0], m[1]),
-                "yscale": math.hypot(m[4], m[5]),
-            }
+            return self._core.part_transform(name) if self._core else None
 
         def ss_is_part_hidden(self, name):
             """Whether ``name`` is hidden on the last rendered frame."""
-            i = self.ss_part_index(name)
-            if i < 0 or self._last_hidden is None:
-                return True
-            return i in self._last_hidden
+            return self._core.is_part_hidden(name) if self._core else True
 
     # Back-compat alias for the pre-rename class name (README / older scripts).
     SpriteStudioDisplayable = SSPlayer

@@ -9,7 +9,7 @@ style default:
 style text:
     font "SourceHanSansLite.ttf"
 
-# デモ用の簡易セリフ枠（screens.rpy が存在しないため、最低限のダイアログウィンドウを定義）
+# Minimal say screen for the demo (no screens.rpy here, so we define a bare dialogue window).
 screen say(who, what):
     frame:
         id "window"
@@ -59,12 +59,13 @@ init python:
                 SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
 
     def ss_make(entry):
-        # entry is (sprites_subdir, pack). The event-log overlay consumes events
-        # via ss_poll_events() (see ss_drain_events), so we don't pass callbacks
-        # here — but the constructor accepts on_user_data / on_signal / on_audio
-        # / on_finished / on_looped / on_started if you prefer push delivery.
+        # entry is (dir, pack); we just join them into the .ssab path. The
+        # event-log overlay consumes events via ss_poll_events() (see
+        # ss_drain_events), so we don't pass callbacks here — but the constructor
+        # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
+        # on_started if you prefer push delivery.
         subdir, pack = entry
-        return SSPlayer(pack, sprites_subdir=subdir)
+        return SSPlayer(subdir + "/" + pack)
 
     def ss_pack_name(entry):
         return entry[1]
@@ -127,34 +128,26 @@ init python:
             del store.ss_event_log[:-10]
 
 image ringo = SSPlayer(
-    "Ringo.ssab", 
-    sprites_subdir="ss_assets/Ringo", 
+    "Ringo",   # short name is enough: the asset index resolves it to Ringo.ssab under ss_assets
     aliases={
         "idle": "wait1",
         "happy": "joy",
         "walk": "walk",
-        "attack": ["attack1", "wait1"]  # ← リストで渡すと順番に再生されます！
+        "attack": ["attack1", "wait1"]  # a list plays the animations in sequence
     }
 )
 
-image ringo_tyu = SSPlayer(
-    "Ringo_tyu.ssab", 
-    sprites_subdir="ss_assets/Ringo"
-)
+image ringo_tyu = SSPlayer("Ringo_tyu")
 
 define r = Character(_("Ringo"), image="ringo")
 
 image hit_effect = SSPlayer(
-    "e038.ssab", 
-    sprites_subdir="ss_assets/ParticleEffect", 
-    animation="hit", 
-    loop=1 # エフェクトなので1回再生で終了させる
+    "e038",          # resolved by short name; a bad animation name errors at definition time
+    animation="hit",
+    loop=1 # an effect: play once, then stop
 )
 
-image effect_e040b = SSPlayer(
-    "e040b.ssab",
-    sprites_subdir="ss_assets/ParticleEffect"
-)
+image effect_e040b = SSPlayer("e040b")
 
 label start:
     "Please select your language. / 言語を選択してください。"
@@ -172,7 +165,7 @@ label start:
 
 label ringo_demo:
     scene bg room
-    window show  # セリフ枠を常時表示（レイヤー確認のテスト用）
+    window show  # keep the dialogue window up (handy for checking layers)
 
     show ringo idle:
         yoffset 200
@@ -195,9 +188,9 @@ label ringo_demo:
     r "After moving back to the center..." id ringo_msg5
 
     show ringo attack
-    $ renpy.pause(0.05) # 攻撃のヒットタイミング（手が振り下ろされる瞬間）まで少し待つ
+    $ renpy.pause(0.05) # wait briefly for the attack's hit moment (the downward swing)
 
-    # 攻撃に合わせて手元でエフェクトを発火 (右手側に調整)
+    # fire the effect at the hand to match the attack (offset toward the right hand)
     show hit_effect:
         xoffset -150 yoffset 50
 
