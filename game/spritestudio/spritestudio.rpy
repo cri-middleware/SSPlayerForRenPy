@@ -433,7 +433,7 @@ init -10 python:
         """
 
         def __init__(self, ssab, animation=None, sprites_subdir=None,
-                     loop=-1, speed=1.0, sub_frame=True,
+                     loop=-1, speed=1.0, sub_frame=True, size=None,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, **kwargs):
@@ -475,6 +475,18 @@ init -10 python:
             # to the Brain for *display* is floored; the playback
             # head stays a raw float either way (docs/06). By default, it is now on.
             self._sub_frame = bool(sub_frame)
+            # Layout size. Given as (w, h) (or a single number for a square),
+            # render() reports a box of that size and centers the animation
+            # within it, so `xalign` / `xpos` / `pos` and container layout work
+            # like a normal image. None (default) keeps the legacy behaviour of
+            # filling the whole offered area (then position with xoffset/yoffset).
+            # `zoom` / Transform still scale the rendered result either way.
+            if size is None:
+                self._size = None
+            elif isinstance(size, (int, float)):
+                self._size = (int(size), int(size))
+            else:
+                self._size = (int(size[0]), int(size[1]))
             # Optional event callbacks (docs/06 §4 recommended Player API). Each
             # is invoked as cb(self, frame_index, event) for the per-part events
             # and cb(self) for started/finished/looped, guarded so a raising
@@ -544,6 +556,7 @@ init -10 python:
                 loop=self.loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
+                size=self._size,
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
@@ -717,11 +730,15 @@ init -10 python:
                     self._call_cb(self.on_finished)
 
             _draw = 0.0
-            r = renpy.Render(width, height)
+            # With an explicit `size`, report a box of that size and center the
+            # animation within it, so xalign / xpos / pos position us like a
+            # normal image; otherwise fill the whole offered area (legacy).
+            rw, rh = self._size if self._size else (width, height)
+            r = renpy.Render(rw, rh)
             if plan.items:
-                ox, oy = width / 2.0, height / 2.0   # SS center -> screen center
+                ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
                 _td = time.perf_counter() if SS_PROFILE else 0.0
-                self._draw_items(r, plan.items, ox, oy, st, at, width, height)
+                self._draw_items(r, plan.items, ox, oy, st, at, rw, rh)
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
 

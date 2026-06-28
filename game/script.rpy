@@ -176,7 +176,8 @@ label ringo_demo:
 
     r piyo "I can even play the dizzy motion (piyo) just by specifying its name, su." id ringo_msg3
 
-    # SSPlayer is drawn fullscreen, use offset instead of align for position
+    # Without a `size`, SSPlayer fills the screen, so we position with offset.
+    # Pass size=(w, h) to SSPlayer(...) and xalign/xpos work like a normal image.
     show ringo walk:
         xoffset -400 yoffset 200
     with move
