@@ -121,7 +121,7 @@ screen ss_browser():
                 null height 4
                 viewport:
                     mousewheel True
-                    scrollbars "vertical"
+                    draggable True
                     ysize 540
                     vbox:
                         spacing 1
@@ -152,7 +152,7 @@ screen ss_browser():
                     text "click an animation to preview:" size 12
                     viewport:
                         mousewheel True
-                        scrollbars "vertical"
+                        draggable True
                         ysize 110
                         xsize 470
                         vbox:
@@ -180,7 +180,7 @@ screen ss_browser():
                         background Solid("#111111")
                         viewport:
                             mousewheel True
-                            scrollbars "vertical"
+                            draggable True
                             text "[_snip_disp]" size 13
                     textbutton "Save snippet -> ss_snippets.txt" action Function(_ss_browser_export, ss_browser_pack, ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]) text_size 13
                 else:

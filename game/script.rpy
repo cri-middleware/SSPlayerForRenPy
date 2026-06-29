@@ -1,8 +1,14 @@
-# SpriteStudio Player for Ren'Py — demo entry point.
+# SpriteStudio Player for Ren'Py — demo entry point (shared bits).
 #
-# Replaces the template's `label start`. Shows a .ssab animation centered, with
-# keys to cycle through the bundled sample packs. Each entry is
-# (sprites_subdir, pack) so packs in different folders (overall, Ringo) coexist.
+# This file holds only what the whole demo shares: the bare dialogue window, the
+# ss_escape text helper, and the start menu. Each menu choice jumps to a scene
+# that lives in its own file (Ren'Py loads every .rpy under game/, so labels,
+# images and screens may live anywhere):
+#   - scene_ringo.rpy   — ringo_demo (image attributes / Character image=)
+#   - scene_helper.rpy  — ringo_helper_demo (SSCharacter / attachments / helpers)
+#   - scene_mask.rpy    — mask_demo (mask / clipping-mask sample)
+#   - scene_viewer.rpy  — viewer_demo + screen ss_demo (legacy pack cycler)
+#   - asset_picker.rpy  — asset_picker_demo (auto-discovered .ssab browser)
 
 style default:
     font "SourceHanSansLite.ttf"
@@ -18,7 +24,7 @@ screen say(who, what):
         yalign 1.0
         yminimum 200
         padding (40, 40)
-        
+
         vbox:
             spacing 10
             if who is not None:
@@ -32,151 +38,12 @@ screen say(who, what):
                 size 28
 
 init python:
-    import os
-
-    # Sample packs. Basic exercises alpha / local-alpha; Effect and Instance
-    # exercise the particle and nested-animation features; Ringo is a real
-    # character (its Normal parts render; its Mesh-deform parts are not drawn
-    # yet). The event packs carry UserData / Signal / Audio timeline events.
-    SS_DEMO_PACKS = [
-        ("ss_assets/overall", "Basic.ssab"),                  # alpha / local-alpha
-        ("ss_assets/overall", "Effect.ssab"),                 # particle effects
-        ("ss_assets/overall", "Instance.ssab"),               # nested instances
-        ("ss_assets/overall", "PartsColor.ssab"),             # per-vertex part colour
-        ("ss_assets/overall", "BlendMode.ssab"),              # framebuffer blends
-        ("ss_assets/overall", "Mask.ssab"),                   # mask / clipping mask
-        ("ss_assets/overall", "Shape.ssab"),                  # shapes (incl. shape masks)
-        ("ss_assets/overall", "Interpolation_Easing_v1.ssab"),
-        ("ss_assets/overall", "UserData.ssab"),
-        ("ss_assets/overall", "Signal.ssab"),
-        ("ss_assets/overall", "Sound.ssab"),
-        ("ss_assets/Ringo",   "Ringo.ssab"),                  # character (Mesh gap)
-        ("ss_assets/Ringo",   "Ringo_tyu.ssab"),              # companion
-    ]
-
-    _fx_dir = os.path.join(renpy.config.gamedir, "ss_assets", "ParticleEffect")
-    if os.path.isdir(_fx_dir):
-        for f in sorted(os.listdir(_fx_dir)):
-            if f.endswith(".ssab"):
-                SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
-
-    def ss_make(entry):
-        # entry is (dir, pack); we just join them into the .ssab path. The
-        # event-log overlay consumes events via ss_poll_events() (see
-        # ss_drain_events), so we don't pass callbacks here — but the constructor
-        # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
-        # on_started if you prefer push delivery.
-        subdir, pack = entry
-        return SSPlayer(subdir + "/" + pack)
-
-    def ss_pack_name(entry):
-        return entry[1]
-
-    def ss_switch(delta):
-        store.ss_index = (store.ss_index + delta) % len(SS_DEMO_PACKS)
-        store.ss_current = ss_make(SS_DEMO_PACKS[store.ss_index])
-        store.ss_event_log = []
-        renpy.restart_interaction()
-
-    def ss_switch_anim(delta):
-        player = store.ss_current
-        names = player.ss_animation_names()
-        if not names:
-            return
-        curr = player.ss_get_animation()
-        try:
-            idx = names.index(curr)
-        except ValueError:
-            idx = 0
-        new_idx = (idx + delta) % len(names)
-        player.ss_play(names[new_idx])
-        store.ss_event_log = []
-        renpy.restart_interaction()
-
     def ss_escape(s):
         # Event payloads (a signal's params dict repr, user strings) can contain
         # "{" / "[", which Ren'Py text would parse as a tag / substitution
-        # ("Unknown text tag ..."). Escape them for safe display.
+        # ("Unknown text tag ..."). Escape them for safe display. Shared by the
+        # event log (scene_viewer.rpy) and the asset picker (asset_picker.rpy).
         return str(s).replace("{", "{{").replace("[", "[[")
-
-    def ss_fmt_event(fe):
-        """One human-readable line per event in a FrameEvents record."""
-        out = []
-        for u in fe.users:
-            bits = []
-            if u.integer is not None: bits.append("int=%d" % u.integer)
-            if u.string: bits.append("str=%r" % u.string)
-            out.append("f%d UserData[p%d] %s" % (fe.frame_index, u.part_index,
-                                                 " ".join(bits) or "(no payload)"))
-        for s in fe.signals:
-            out.append("f%d Signal[p%d] %s %s" % (fe.frame_index, s.part_index,
-                                                  s.command_id, s.params))
-        for a in fe.audios:
-            out.append("f%d Audio[p%d] %r loop=%d" % (fe.frame_index, a.part_index,
-                                                      a.sound_name, a.loop_num))
-        return [ss_escape(x) for x in out]
-
-    def ss_drain_events():
-        d = getattr(store, "ss_current", None)
-        if d is None:
-            return
-        try:
-            records = d.ss_poll_events()
-        except Exception:
-            return
-        for fe in records:
-            store.ss_event_log.extend(ss_fmt_event(fe))
-        if len(store.ss_event_log) > 10:        # keep the tail
-            del store.ss_event_log[:-10]
-
-image ringo = SSPlayer(
-    "ss_assets/Ringo/Ringo.ssab",   # the .ssab path (gamedir-relative)
-    aliases={
-        "idle": "wait1",
-        "happy": "joy",
-        "walk": "walk",
-        "attack": ["attack1", "wait1"]  # a list plays the animations in sequence
-    }
-)
-
-image ringo_tyu = SSPlayer("ss_assets/Ringo/Ringo_tyu.ssab")
-
-define r = Character(_("Ringo"), image="ringo")
-
-image hit_effect = SSPlayer(
-    "ss_assets/ParticleEffect/e038.ssab",
-    animation="hit",
-    loop=1 # an effect: play once, then stop
-)
-
-image effect_e040b = SSPlayer("ss_assets/ParticleEffect/e040b.ssab")
-
-# Mask / clipping-mask sample (09_mask). The `overall/Mask` pack exercises both
-# features over one stencil: pure "mask" parts cut holes in lower-priority parts
-# (the effect is kept OUTSIDE the shape), and "clipping" (write-mask) parts
-# confine higher-priority parts INSIDE their shape. A `size` is given so it
-# positions like a normal image (xalign/yalign), centered in the box.
-image mask_sample = SSPlayer(
-    "ss_assets/overall/Mask.ssab",
-    size=(640, 640),
-)
-
-# --- Helper-showcase assets (SSCharacter / attachments) --------------------
-# SSCharacter registers an image under `tag` and returns a talking Character.
-# We use tag="ringo_talk" so it does NOT clobber the `image ringo` above.
-# (Ringo has no "talk" animation, so we use "joy" as a visible stand-in.)
-define ringo_chr = SSCharacter(
-    "ss_assets/Ringo/Ringo.ssab",
-    talk="joy", idle="wait1", who="Ringo", tag="ringo_talk",
-)
-
-# `attachments` pins the ♪ to the "head" part so it follows the animation
-# (v1 = translation only).
-image ringo_point = SSPlayer(
-    "ss_assets/Ringo/Ringo.ssab",
-    animation="wait1",
-    attachments={"head": Text("♪", size=64, color="#ffcc00")},
-)
 
 label start:
     "Please select your language. / 言語を選択してください。"
@@ -193,167 +60,7 @@ label start:
             jump ringo_helper_demo
         "Watch Mask / Clipping-Mask Sample":
             jump mask_demo
+        "Browse Imported Assets (auto-discovered)":
+            jump asset_picker_demo
         "Watch Basic Feature Viewer (Legacy Demo)":
             jump viewer_demo
-
-label ringo_demo:
-    scene bg room
-    window show  # keep the dialogue window up (handy for checking layers)
-
-    show ringo idle:
-        yoffset 200
-
-    "Ringo has appeared." id ringo_msg1
-
-    r happy "I can change my motion just by changing my attributes, su!" id ringo_msg2
-
-    r piyo "I can even play the dizzy motion (piyo) just by specifying its name, su." id ringo_msg3
-
-    # Without a `size`, SSPlayer fills the screen, so we position with offset.
-    # Pass size=(w, h) to SSPlayer(...) and xalign/xpos work like a normal image.
-    show ringo walk:
-        xoffset -400 yoffset 200
-    with move
-    r walk "Of course, I can use 'move' and other Transforms together with this, su." id ringo_msg4
-
-    show ringo walk:
-        xoffset 0 yoffset 200
-    with move
-    r "After moving back to the center..." id ringo_msg5
-
-    show ringo attack
-    $ renpy.pause(0.05) # wait briefly for the attack's hit moment (the downward swing)
-
-    # fire the effect at the hand to match the attack (offset toward the right hand)
-    show hit_effect:
-        xoffset -150 yoffset 50
-
-    r "Ei! (When the attack finishes, I automatically return to the idle motion, su.)" id ringo_msg6
-
-    r idle "Furthermore, by linking with the Character's 'image' argument, you can control expressions and motions just with say statements like this, su!" id ringo_msg7
-
-    hide ringo
-    with dissolve
-
-    # Show Ringo_tyu and e040b together as a test case
-    show ringo_tyu:
-        xoffset 0 yoffset 150
-    show effect_e040b:
-        xoffset 0 yoffset 150
-    "As a bonus, here's my companion Ringo_tyu, along with a cool particle effect (e040b) playing at the same time!" id ringo_msg8
-
-    return
-
-# Showcase of the convenience layer: SSCharacter (talking), size + attachments,
-# and the ss_show_effect helper — all in one scene.
-label ringo_helper_demo:
-    scene bg room
-    window show
-
-    # 1. Living character: SSCharacter plays `talk` while speaking and `idle`
-    #    when done. (Ringo has no "talk" anim, so "joy" is a visible stand-in.)
-    #    Full-screen + yoffset like ringo_demo so the whole sprite is on screen.
-    show ringo_talk:
-        yoffset 200
-    with dissolve
-    ringo_chr "With SSCharacter, my motion switches just while I'm talking, su!" id helper_msg1
-    ringo_chr "Right now I'm using 'joy' in place of a talk motion, so I get happy when I speak, su!" id helper_msg2
-
-    # 2. Attachments: the ♪ is pinned to Ringo's "head" part and follows it.
-    hide ringo_talk
-    show ringo_point:
-        yoffset 200
-    with dissolve
-    "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg3
-
-    # 3. One-shot effect via the helper (blocks for one playthrough = a beat).
-    $ ss_show_effect("ss_assets/ParticleEffect/e040b.ssab",
-                     at=Transform(xalign=0.5, yalign=0.4), wait=True)
-    "ss_show_effect(wait=True) holds the beat until the effect finishes playing." id helper_msg4
-    hide ringo_point
-    with dissolve
-
-    # 4. ss_duration times a beat to a motion WITHOUT removing the sprite
-    #    (contrast beat 3's ss_show_effect, which hides the effect when done).
-    #    Clear the lip-flap idle/talk attributes so only `dance` selects the anim.
-    show ringo_talk dance -idle -talk:
-        yoffset 200
-    with dissolve
-    # Wait exactly one playthrough, then settle back to idle. The image loops
-    # (loop=-1), so switching right after the beat keeps it to a single dance.
-    $ renpy.pause(ss_duration("ss_assets/Ringo/Ringo.ssab", "dance"))
-    show ringo_talk idle:
-        yoffset 200
-    "That 'dance' beat was timed with ss_duration — and unlike a one-shot effect, she stays on screen." id helper_msg5
-
-    ringo_chr "That's all for the new-feature showcase. Thanks for watching, su!" id helper_msg6
-
-    return
-
-# Mask / clipping-mask feature sample (09_mask). Shows the `overall/Mask` pack,
-# which contains both pure masks (cut holes / keep OUTSIDE) and clipping
-# write-masks (confine INSIDE), plus a reversed mask and circle cut-outs.
-label mask_demo:
-    scene bg room
-    window show
-
-    show mask_sample:
-        xalign 0.5 yalign 0.5
-    with dissolve
-
-    "This is the SpriteStudio 'Mask' sample (overall/Mask.ssab)." id mask_msg1
-
-    "A pure mask part cuts a hole in the parts drawn below it — the content is kept OUTSIDE the mask shape (e.g. the circular cut-outs)." id mask_msg2
-
-    "A clipping (write-mask) part instead confines the parts drawn above it INSIDE its own shape, like a window." id mask_msg3
-
-    "Both effects come from one stencil: each part's 'visible inside mask' flag decides the inside/outside polarity per the spec (09_mask)." id mask_msg4
-
-    hide mask_sample
-    with dissolve
-    return
-
-label viewer_demo:
-    $ ss_index = 0
-    $ ss_event_log = []
-    $ ss_current = ss_make(SS_DEMO_PACKS[0])
-    call screen ss_demo
-    return
-
-screen ss_demo():
-    add Solid("#2a2e36")
-    add ss_current:
-        xalign 0.5
-        yalign (0.95 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
-
-    # Drain timeline events from the displayable's poll queue a few times a
-    # second; the screen re-renders each tick to show the latest log.
-    timer 0.1 action Function(ss_drain_events) repeat True
-
-    if ss_event_log:
-        frame:
-            xalign 0.02
-            yalign 0.5
-            background "#000000c0"
-            padding (12, 10)
-            vbox:
-                spacing 3
-                text "events" size 14 color "#7fd0ff"
-                for line in ss_event_log:
-                    text "[line]" size 14 color "#e6e6e6"
-
-    frame:
-        xalign 0.5
-        yalign 0.97
-        background "#000000c0"
-        padding (16, 8)
-        hbox:
-            spacing 18
-            text "[SS_DEMO_PACKS[ss_index][1]] : [ss_current.animation]" size 20 color "#ffffff"
-            text "< > pack | ^ v anim | Esc quit" size 16 color "#9aa0ab" yalign 0.5
-
-    key "K_RIGHT" action Function(ss_switch, 1)
-    key "K_LEFT" action Function(ss_switch, -1)
-    key "K_UP" action Function(ss_switch_anim, -1)
-    key "K_DOWN" action Function(ss_switch_anim, 1)
-    key "K_ESCAPE" action Return()
