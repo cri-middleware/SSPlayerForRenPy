@@ -264,7 +264,7 @@ def render_animation(ssab_path: str, anim: str | None, out_dir: str,
 
 def main(argv):
     ssab = argv[1] if len(argv) > 1 and not argv[1].startswith("--") else \
-        os.path.join(_GAME, "sprites", "overall", "Basic.ssab")
+        os.path.join(_GAME, "ss_assets", "overall", "Basic.ssab")
     anim = argv[2] if len(argv) > 2 and not argv[2].startswith("--") else None
     out_dir = os.path.join(_ROOT, "out")
     if "--out" in argv:

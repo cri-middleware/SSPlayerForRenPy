@@ -39,7 +39,7 @@ ss_renpy.bootstrap_paths()
 from ss_renpy import ssruntime, events  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
-_OVERALL = os.path.join(_GAME, "sprites", "overall")
+_OVERALL = os.path.join(_GAME, "ss_assets", "overall")
 # Packs that actually carry the three event kinds (others have no events table).
 _DEFAULT_PACKS = ["UserData.ssab", "Signal.ssab", "Sound.ssab"]
 

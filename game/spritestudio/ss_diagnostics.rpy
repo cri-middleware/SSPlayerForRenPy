@@ -1,0 +1,35 @@
+# SSPlayer diagnostics — a quick "is it working / what's available" check.
+#
+# In developer mode, logs a one-line summary at game start so you immediately
+# know the native runtime loaded and which .ssab packs were discovered. Also
+# exposes `ss_diagnostics()` to call from the console (Shift+O) any time.
+# Drop this file to remove it (it never affects release behaviour).
+
+init python:
+
+    def ss_diagnostics():
+        """Return {'runtime': bool, 'packs': [name, ...]} describing the install."""
+        info = {"runtime": False, "packs": []}
+        try:
+            info["runtime"] = _SS_LIB is not None
+        except Exception:
+            pass
+        try:
+            info["packs"] = sorted(ss_list_assets().keys())
+        except Exception:
+            pass
+        return info
+
+    if config.developer and hasattr(config, "start_callbacks"):
+        def _ss_log_diagnostics():
+            try:
+                info = ss_diagnostics()
+                packs = info["packs"]
+                preview = ", ".join(packs[:8]) + (" ..." if len(packs) > 8 else "")
+                renpy.log("[SSPlayer] native runtime %s | %d pack(s)%s"
+                          % ("loaded" if info["runtime"] else "NOT loaded",
+                             len(packs), (": " + preview) if packs else ""))
+            except Exception as e:
+                renpy.log("[SSPlayer] diagnostics failed: %r" % (e,))
+
+        config.start_callbacks.append(_ss_log_diagnostics)

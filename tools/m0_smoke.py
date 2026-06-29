@@ -31,7 +31,7 @@ from ss.runtime.FrameData import FrameData  # noqa: E402  (flatc generated)
 
 def main(argv: list[str]) -> int:
     ssab_path = argv[1] if len(argv) > 1 else os.path.join(
-        _GAME, "sprites", "overall", "Basic.ssab")
+        _GAME, "ss_assets", "overall", "Basic.ssab")
     if not os.path.exists(ssab_path):
         print(f"!! .ssab not found: {ssab_path}")
         return 2

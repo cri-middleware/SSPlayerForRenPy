@@ -9,7 +9,7 @@ style default:
 style text:
     font "SourceHanSansLite.ttf"
 
-# デモ用の簡易セリフ枠（screens.rpy が存在しないため、最低限のダイアログウィンドウを定義）
+# Minimal say screen for the demo (no screens.rpy here, so we define a bare dialogue window).
 screen say(who, what):
     frame:
         id "window"
@@ -59,12 +59,13 @@ init python:
                 SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
 
     def ss_make(entry):
-        # entry is (sprites_subdir, pack). The event-log overlay consumes events
-        # via ss_poll_events() (see ss_drain_events), so we don't pass callbacks
-        # here — but the constructor accepts on_user_data / on_signal / on_audio
-        # / on_finished / on_looped / on_started if you prefer push delivery.
+        # entry is (dir, pack); we just join them into the .ssab path. The
+        # event-log overlay consumes events via ss_poll_events() (see
+        # ss_drain_events), so we don't pass callbacks here — but the constructor
+        # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
+        # on_started if you prefer push delivery.
         subdir, pack = entry
-        return SSPlayer(pack, sprites_subdir=subdir)
+        return SSPlayer(subdir + "/" + pack)
 
     def ss_pack_name(entry):
         return entry[1]
@@ -127,33 +128,42 @@ init python:
             del store.ss_event_log[:-10]
 
 image ringo = SSPlayer(
-    "Ringo.ssab", 
-    sprites_subdir="ss_assets/Ringo", 
+    "ss_assets/Ringo/Ringo.ssab",   # the .ssab path (gamedir-relative)
     aliases={
         "idle": "wait1",
         "happy": "joy",
         "walk": "walk",
-        "attack": ["attack1", "wait1"]  # ← リストで渡すと順番に再生されます！
+        "attack": ["attack1", "wait1"]  # a list plays the animations in sequence
     }
 )
 
-image ringo_tyu = SSPlayer(
-    "Ringo_tyu.ssab", 
-    sprites_subdir="ss_assets/Ringo"
-)
+image ringo_tyu = SSPlayer("ss_assets/Ringo/Ringo_tyu.ssab")
 
 define r = Character(_("Ringo"), image="ringo")
 
 image hit_effect = SSPlayer(
-    "e038.ssab", 
-    sprites_subdir="ss_assets/ParticleEffect", 
-    animation="hit", 
-    loop=1 # エフェクトなので1回再生で終了させる
+    "ss_assets/ParticleEffect/e038.ssab",
+    animation="hit",
+    loop=1 # an effect: play once, then stop
 )
 
-image effect_e040b = SSPlayer(
-    "e040b.ssab",
-    sprites_subdir="ss_assets/ParticleEffect"
+image effect_e040b = SSPlayer("ss_assets/ParticleEffect/e040b.ssab")
+
+# --- Helper-showcase assets (SSCharacter / attachments) --------------------
+# SSCharacter registers an image under `tag` and returns a talking Character.
+# We use tag="ringo_talk" so it does NOT clobber the `image ringo` above.
+# (Ringo has no "talk" animation, so we use "joy" as a visible stand-in.)
+define ringo_chr = SSCharacter(
+    "ss_assets/Ringo/Ringo.ssab",
+    talk="joy", idle="wait1", who="Ringo", tag="ringo_talk",
+)
+
+# `attachments` pins the ♪ to the "head" part so it follows the animation
+# (v1 = translation only).
+image ringo_point = SSPlayer(
+    "ss_assets/Ringo/Ringo.ssab",
+    animation="wait1",
+    attachments={"head": Text("♪", size=64, color="#ffcc00")},
 )
 
 label start:
@@ -167,12 +177,14 @@ label start:
     menu:
         "Watch Ringo's Image Attribute Demo":
             jump ringo_demo
+        "Watch Helper Showcase (SSCharacter / effects / attachment)":
+            jump ringo_helper_demo
         "Watch Basic Feature Viewer (Legacy Demo)":
             jump viewer_demo
 
 label ringo_demo:
     scene bg room
-    window show  # セリフ枠を常時表示（レイヤー確認のテスト用）
+    window show  # keep the dialogue window up (handy for checking layers)
 
     show ringo idle:
         yoffset 200
@@ -183,7 +195,8 @@ label ringo_demo:
 
     r piyo "I can even play the dizzy motion (piyo) just by specifying its name, su." id ringo_msg3
 
-    # SSPlayer is drawn fullscreen, use offset instead of align for position
+    # Without a `size`, SSPlayer fills the screen, so we position with offset.
+    # Pass size=(w, h) to SSPlayer(...) and xalign/xpos work like a normal image.
     show ringo walk:
         xoffset -400 yoffset 200
     with move
@@ -195,9 +208,9 @@ label ringo_demo:
     r "After moving back to the center..." id ringo_msg5
 
     show ringo attack
-    $ renpy.pause(0.05) # 攻撃のヒットタイミング（手が振り下ろされる瞬間）まで少し待つ
+    $ renpy.pause(0.05) # wait briefly for the attack's hit moment (the downward swing)
 
-    # 攻撃に合わせて手元でエフェクトを発火 (右手側に調整)
+    # fire the effect at the hand to match the attack (offset toward the right hand)
     show hit_effect:
         xoffset -150 yoffset 50
 
@@ -214,6 +227,52 @@ label ringo_demo:
     show effect_e040b:
         xoffset 0 yoffset 150
     "As a bonus, here's my companion Ringo_tyu, along with a cool particle effect (e040b) playing at the same time!" id ringo_msg8
+
+    return
+
+# Showcase of the convenience layer: SSCharacter (talking), size + attachments,
+# and the ss_show_effect helper — all in one scene.
+label ringo_helper_demo:
+    scene bg room
+    window show
+
+    # 1. Living character: SSCharacter plays `talk` while speaking and `idle`
+    #    when done. (Ringo has no "talk" anim, so "joy" is a visible stand-in.)
+    #    Full-screen + yoffset like ringo_demo so the whole sprite is on screen.
+    show ringo_talk:
+        yoffset 200
+    with dissolve
+    ringo_chr "With SSCharacter, my motion switches just while I'm talking, su!" id helper_msg1
+    ringo_chr "Right now I'm using 'joy' in place of a talk motion, so I get happy when I speak, su!" id helper_msg2
+
+    # 2. Attachments: the ♪ is pinned to Ringo's "head" part and follows it.
+    hide ringo_talk
+    show ringo_point:
+        yoffset 200
+    with dissolve
+    "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg3
+
+    # 3. One-shot effect via the helper (blocks for one playthrough = a beat).
+    $ ss_show_effect("ss_assets/ParticleEffect/e040b.ssab",
+                     at=Transform(xalign=0.5, yalign=0.4), wait=True)
+    "ss_show_effect(wait=True) holds the beat until the effect finishes playing." id helper_msg4
+    hide ringo_point
+    with dissolve
+
+    # 4. ss_duration times a beat to a motion WITHOUT removing the sprite
+    #    (contrast beat 3's ss_show_effect, which hides the effect when done).
+    #    Clear the lip-flap idle/talk attributes so only `dance` selects the anim.
+    show ringo_talk dance -idle -talk:
+        yoffset 200
+    with dissolve
+    # Wait exactly one playthrough, then settle back to idle. The image loops
+    # (loop=-1), so switching right after the beat keeps it to a single dance.
+    $ renpy.pause(ss_duration("ss_assets/Ringo/Ringo.ssab", "dance"))
+    show ringo_talk idle:
+        yoffset 200
+    "That 'dance' beat was timed with ss_duration — and unlike a one-shot effect, she stays on screen." id helper_msg5
+
+    ringo_chr "That's all for the new-feature showcase. Thanks for watching, su!" id helper_msg6
 
     return
 

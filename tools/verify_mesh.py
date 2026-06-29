@@ -117,8 +117,8 @@ def main(argv) -> int:
         targets = [(t, None) for t in argv[1:]]
     else:
         targets = [
-            (os.path.join(_GAME, "sprites", "Ringo", "Ringo.ssab"), "dance"),
-            (os.path.join(_GAME, "sprites", "overall", "Mesh.ssab"), None),
+            (os.path.join(_GAME, "ss_assets", "Ringo", "Ringo.ssab"), "dance"),
+            (os.path.join(_GAME, "ss_assets", "overall", "Mesh.ssab"), None),
         ]
     lib = ssruntime.load_library()
     print("== Mesh(deform) verification ==\n")

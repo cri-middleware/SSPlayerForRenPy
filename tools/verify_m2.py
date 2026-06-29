@@ -222,7 +222,7 @@ def verify_pack(lib, path: str) -> dict:
 
 
 def main(argv) -> int:
-    targets = argv[1:] or [os.path.join(_GAME, "sprites", "overall")]
+    targets = argv[1:] or [os.path.join(_GAME, "ss_assets", "overall")]
     paths = []
     for t in targets:
         if os.path.isdir(t):
