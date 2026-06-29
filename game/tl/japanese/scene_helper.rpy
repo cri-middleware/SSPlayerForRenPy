@@ -1,19 +1,26 @@
 # Japanese translations for scene_helper.rpy (ringo_helper_demo).
 
+# 1. wait1 -> joy -> wait1（ナレーションで「話していない」状態を作って見せる）
 translate japanese helper_msg1:
-    ringo_chr "SSCharacter を使えば、喋っている間だけアニメが切り替わるんでス。"
+    "ナレーションが喋っている間、Ringo は話し手ではないので、SSCharacter は待機モーション（wait1）のままにしまス。"
 
 translate japanese helper_msg2:
-    ringo_chr "今は joy を talk の代わりに使ってまス。話すと喜んじゃうんでス。"
+    ringo_chr "私が喋った瞬間に talk モーションへ切り替わりまス。ここでは talk 専用アニメが無いので joy を使ってまス！"
 
 translate japanese helper_msg3:
+    "またナレーションに戻って Ringo が黙ると、wait1 に戻りまス。この idle → talk → idle こそ SSCharacter が自動でやってくれる仕事でス。"
+
+# 2. アタッチメント
+translate japanese helper_msg4:
     "頭の ♪ は head パーツに追従しているのです。"
 
-translate japanese helper_msg4:
+# 3. ss_show_effect
+translate japanese helper_msg5:
     "ss_show_effect(wait=True) は、エフェクトが終わるまで“間”を取ってくれます。"
 
-translate japanese helper_msg5:
+# 4. ss_duration
+translate japanese helper_msg6:
     "今の dance は ss_duration で長さを測って待ちました。エフェクトと違って、キャラは画面に残ります。"
 
-translate japanese helper_msg6:
+translate japanese helper_msg7:
     ringo_chr "新機能のショーケースは以上でス。よろしくでス！"

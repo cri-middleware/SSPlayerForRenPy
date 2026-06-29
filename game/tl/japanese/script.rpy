@@ -5,20 +5,20 @@
 
 translate japanese strings:
 
-    old "Language / 言語設定"
-    new "Language / 言語設定"
+    # "English" / "日本語" / the language prompt are bilingual in the source
+    # (ss_language_menu) — no translation entries needed.
 
-    old "English"
-    new "English"
+    old "SSPlayer usage — for users"
+    new "SSPlayer の使い方（利用者向け）"
 
-    old "日本語"
-    new "日本語"
+    old "For developers"
+    new "開発者向け"
 
-    old "Watch Ringo's Image Attribute Demo"
-    new "Ringo の Image Attribute デモを見る"
+    old "Ringo display sample using SSPlayer"
+    new "SSPlayer を用いた Ringo の表示サンプル"
 
-    old "Watch Helper Showcase (SSCharacter / effects / attachment)"
-    new "ヘルパー機能のショーケース（SSCharacter / エフェクト / アタッチメント）を見る"
+    old "SSPlayer helper functions sample"
+    new "SSPlayer ヘルパー機能のサンプル"
 
     old "Watch Mask / Clipping-Mask Sample"
     new "マスク / クリッピングマスクのサンプルを見る"
@@ -26,5 +26,5 @@ translate japanese strings:
     old "Browse Imported Assets (auto-discovered)"
     new "インポート済みアセットを閲覧（自動検出）"
 
-    old "Watch Basic Feature Viewer (Legacy Demo)"
-    new "基本機能ビューア（従来のデモ）を見る"
+    old "Basic Feature Viewer"
+    new "基本機能ビューア"

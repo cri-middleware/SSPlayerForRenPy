@@ -23,26 +23,29 @@ label ringo_helper_demo:
     scene bg room
     window show
 
-    # 1. Living character: SSCharacter plays `talk` while speaking and `idle`
-    #    when done. (Ringo has no "talk" anim, so "joy" is a visible stand-in.)
-    #    Full-screen + yoffset like ringo_demo so the whole sprite is on screen.
+    # 1. SSCharacter's core job — wait1 -> joy -> wait1. SSCharacter plays its
+    #    `talk` motion ONLY while its own character is the speaker, and `idle`
+    #    otherwise. So the narration lines below (no speaker = Ringo silent) keep
+    #    her in wait1, while her own line flips her to the talk motion (joy) for
+    #    just that line. Narration is what makes the "not talking" state visible.
     show ringo_talk:
         yoffset 200
     with dissolve
-    ringo_chr "With SSCharacter, my motion switches just while I'm talking, su!" id helper_msg1
-    ringo_chr "Right now I'm using 'joy' in place of a talk motion, so I get happy when I speak, su!" id helper_msg2
+    "While the narrator is speaking, Ringo isn't the speaker — so SSCharacter holds her in her idle motion (wait1)." id helper_msg1
+    ringo_chr "The moment I speak, SSCharacter switches me to the talk motion — here 'joy', since Ringo has no dedicated talk anim, su!" id helper_msg2
+    "Now the narrator has taken over and Ringo is silent again, so she settles back to wait1 — that idle → talk → idle loop is exactly what SSCharacter automates." id helper_msg3
 
     # 2. Attachments: the ♪ is pinned to Ringo's "head" part and follows it.
     hide ringo_talk
     show ringo_point:
         yoffset 200
     with dissolve
-    "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg3
+    "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg4
 
     # 3. One-shot effect via the helper (blocks for one playthrough = a beat).
     $ ss_show_effect("ss_assets/ParticleEffect/e040b.ssab",
                      at=Transform(xalign=0.5, yalign=0.4), wait=True)
-    "ss_show_effect(wait=True) holds the beat until the effect finishes playing." id helper_msg4
+    "ss_show_effect(wait=True) holds the beat until the effect finishes playing." id helper_msg5
     hide ringo_point
     with dissolve
 
@@ -57,8 +60,8 @@ label ringo_helper_demo:
     $ renpy.pause(ss_duration("ss_assets/Ringo/Ringo.ssab", "dance"))
     show ringo_talk idle:
         yoffset 200
-    "That 'dance' beat was timed with ss_duration — and unlike a one-shot effect, she stays on screen." id helper_msg5
+    "That 'dance' beat was timed with ss_duration — and unlike a one-shot effect, she stays on screen." id helper_msg6
 
-    ringo_chr "That's all for the new-feature showcase. Thanks for watching, su!" id helper_msg6
+    ringo_chr "That's all for the new-feature showcase. Thanks for watching, su!" id helper_msg7
 
     return

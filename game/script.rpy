@@ -46,21 +46,75 @@ init python:
         return str(s).replace("{", "{{").replace("[", "[[")
 
 label start:
-    "Please select your language. / 言語を選択してください。"
-    menu:
-        "English":
-            $ renpy.change_language(None)
-        "日本語":
-            $ renpy.change_language("japanese")
+    # Language picker + main menu are both custom screens (instead of `menu`s) so
+    # they share the same centered, styled look. The language picker returns
+    # "en"/"ja" (we set the language here, between interactions — the safe place);
+    # the main menu returns the target label name.
+    call screen ss_language_menu
+    $ renpy.change_language("japanese" if _return == "ja" else None)
 
-    menu:
-        "Watch Ringo's Image Attribute Demo":
-            jump ringo_demo
-        "Watch Helper Showcase (SSCharacter / effects / attachment)":
-            jump ringo_helper_demo
-        "Watch Mask / Clipping-Mask Sample":
-            jump mask_demo
-        "Browse Imported Assets (auto-discovered)":
-            jump asset_picker_demo
-        "Watch Basic Feature Viewer (Legacy Demo)":
-            jump viewer_demo
+    call screen ss_main_menu
+    jump expression _return
+
+# Language picker — same centered/styled frame as ss_main_menu. The prompt is
+# bilingual in the source (the language isn't chosen yet); each button sets the
+# language and returns. "English" / "日本語" are language names, not translated.
+screen ss_language_menu():
+    add Solid("#1c2026")
+
+    frame:
+        xalign 0.5
+        yalign 0.5
+        padding (44, 32)
+        background Solid("#00000088")
+
+        vbox:
+            spacing 6
+            xsize 760
+
+            text "Select language / 言語を選択" size 18 color "#7fd0ff"
+            textbutton "English":
+                action Return("en")
+                text_size 24
+            textbutton "日本語":
+                action Return("ja")
+                text_size 24
+
+
+# Main menu, grouped into "for users" (the SSPlayer usage samples) and "for
+# developers" (the inspection / viewer tools). Each button returns its target
+# label; `label start` jumps there. Strings are translatable (_()), so the JA
+# translations in tl/japanese/script.rpy apply.
+screen ss_main_menu():
+    add Solid("#1c2026")
+
+    frame:
+        xalign 0.5
+        yalign 0.5
+        padding (44, 32)
+        background Solid("#00000088")
+
+        vbox:
+            spacing 6
+            xsize 760
+
+            text _("SSPlayer usage — for users") size 18 color "#7fd0ff"
+            textbutton _("Ringo display sample using SSPlayer"):
+                action Return("ringo_demo")
+                text_size 24
+            textbutton _("SSPlayer helper functions sample"):
+                action Return("ringo_helper_demo")
+                text_size 24
+
+            null height 20
+
+            text _("For developers") size 18 color "#7fd0ff"
+            textbutton _("Basic Feature Viewer"):
+                action Return("viewer_demo")
+                text_size 24
+            textbutton _("Watch Mask / Clipping-Mask Sample"):
+                action Return("mask_demo")
+                text_size 24
+            textbutton _("Browse Imported Assets (auto-discovered)"):
+                action Return("asset_picker_demo")
+                text_size 24
