@@ -45,6 +45,7 @@ init -10 python:
             return
 
         converter = None
+        changed = False
 
         for sspj_path in sspj_files:
             project_name = os.path.splitext(os.path.basename(sspj_path))[0]
@@ -101,9 +102,24 @@ init -10 python:
                 res = converter.get_result()
                 if res == ConverterResult.Success:
                     print(f"[SpriteStudio] Successfully converted {project_name}.")
+                    changed = True
                 else:
                     err = converter.get_error()
                     print(f"[SpriteStudio] Error converting {project_name}: {err}")
+
+        # If we wrote any new/updated .ssab files this run, refresh Ren'Py's
+        # file index. renpy.list_files() — which the asset browser (Shift+B) and
+        # the pack resolver use to discover packs — is built once at boot, so
+        # files created here during init are otherwise invisible until the next
+        # launch (loading a pack by exact path still works; only enumeration is
+        # stale). index_files() is the same rescan Ren'Py runs at startup.
+        if changed:
+            try:
+                renpy.loader.index_files()
+                print("[SpriteStudio] Asset index refreshed; newly imported packs are now discoverable.")
+            except Exception as e:
+                print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
+                      "newly imported packs may not appear in the browser until restart.")
 
     # Execute auto-import
     _ss_auto_import()
