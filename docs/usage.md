@@ -167,15 +167,11 @@ image boss = SSPlayer(
 
 ## 6. 便利機能
 
-### 一発エフェクトを手軽に（`ss_show_effect` / `ss effect` 文）
+### 一発エフェクトを手軽に（`ss_show_effect`）
 カットシーンの演出に。`wait=True` で再生し終わるまで待ってから自動で消します。
 ```renpy
-# Python ヘルパー
 $ ss_show_effect("ss_assets/ParticleEffect/e038.ssab", "hit",
                  at=Transform(xpos=640, ypos=360), wait=True)
-
-# スクリプト動詞（同じことを $ なしで）
-ss effect "ss_assets/ParticleEffect/e038.ssab" at Transform(xpos=640, ypos=360) wait
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` はそのアニメ1周の秒数を返すので、表示中キャラの「再生して待つ」は `show ringo attack` ＋ `$ renpy.pause(ss_duration(...))` で書けます。
 

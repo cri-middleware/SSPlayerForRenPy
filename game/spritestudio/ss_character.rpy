@@ -18,7 +18,7 @@ init -9 python:
 
     def SSCharacter(ssab, talk=None, idle=None, who=None, tag=None,
                     aliases=None, size=None,
-                    start=("show_done",), stop=("slow_done", "end"),
+                    start=("show_done",), stop=("end",),
                     **char_kwargs):
         """Define a talking SpriteStudio character.
 
@@ -32,6 +32,10 @@ init -9 python:
                          returns to `idle` — per-emotion talk is not yet handled.
         `size`         : passed to SSPlayer (a (w, h) box makes xalign work).
         `start`/`stop` : Character callback events that begin / end the talk loop.
+                         Default: talk from `show_done` until the line is
+                         dismissed (`end`), so the talk animation is visible even
+                         with instant text. For lip-sync that stops when the text
+                         finishes typing, pass `stop=("slow_done", "end")`.
         `**char_kwargs`: forwarded to `Character` (e.g. who_color).
 
         Returns the `Character`. Also registers `image <tag> = SSPlayer(...)`,
@@ -51,7 +55,8 @@ init -9 python:
             al["idle"] = idle
 
         # Register the displayable as a normal Ren'Py image (idempotent re-define).
-        renpy.image(tag, SSPlayer(ssab, aliases=al, size=size))
+        # Default to the idle animation so `show <tag>` (no attributes) rests idle.
+        renpy.image(tag, SSPlayer(ssab, animation=idle, aliases=al, size=size))
 
         has_lipflap = (talk is not None) and (idle is not None)
 
@@ -60,9 +65,11 @@ init -9 python:
             # an off-screen speaker leaves it untouched.
             if not interact or not has_lipflap or not renpy.showing(tag):
                 return
+            # Attributes go in the NAME (renpy.show's 2nd arg is at_list, not
+            # attributes); the leading tag + space-separated attrs, "-x" removes.
             if event in start:
-                renpy.show(tag, ["talk", "-idle"])
+                renpy.show(tag + " talk -idle")
             elif event in stop:
-                renpy.show(tag, ["idle", "-talk"])
+                renpy.show(tag + " idle -talk")
 
         return Character(who, image=tag, callback=_ss_lipflap, **char_kwargs)

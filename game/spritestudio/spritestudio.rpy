@@ -525,12 +525,20 @@ init -10 python:
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):
+            # Cache only on SUCCESS. During Ren'Py's prediction phase
+            # renpy.loader.load() refuses to open files ("Refusing to open ...
+            # while predicting"), so reading the .ssab here raises. If we cached
+            # the empty result, the real (non-predicting) show would keep seeing
+            # an empty animation list, and any non-alias animation attribute
+            # (e.g. `show <tag> dance`) would silently fall back to the default
+            # animation. Returning [] without caching lets the next real call
+            # populate it.
             if self._available_animations is None:
                 try:
                     meta = SsabMeta(_ss_open_bytes(self._ssab_relpath))
                     self._available_animations = meta.animation_names()
                 except Exception:
-                    self._available_animations = []
+                    return []
             return self._available_animations
 
         def _list_attributes(self, tag, attributes):
@@ -539,21 +547,55 @@ init -10 python:
             available.update(self.aliases.keys())
             return list(available)
 
+        def _choose_attributes(self, tag, required, optional):
+            """Resolve `show <tag> <attr>` to a canonical name when the pack was
+            first shown with NO attribute (so its only registered entry is the
+            bare tag, e.g. via `renpy.image(tag, SSPlayer(...))` + `show <tag>`).
+
+            Ren'Py's choose_image() calls this hook to attach a new
+            animation/alias attribute onto an already-registered displayable.
+            Without it, `renpy.show("<tag> talk")` (e.g. SSCharacter's lip-flap
+            callback) finds no matching image and the sprite never switches — it
+            only works when the FIRST show already carried an attribute (which
+            takes the ImageReference.find_target path instead). Every required
+            attribute must name one of our animations or aliases, else this
+            image does not match. SSPlayer plays one animation at a time, so the
+            required attribute(s) fully determine it; stale `optional` (previous)
+            attributes are dropped."""
+            valid = set(self._get_available_animations())
+            valid.update(self.aliases.keys())
+            for a in required:
+                if a not in valid:
+                    return None
+            return tuple(required)
+
         def _duplicate(self, args):
-            """Spawn a new SSPlayer instance for `show ssplayer [attributes]`."""
+            """Spawn a FRESH SSPlayer instance for `show ssplayer [attributes]`.
+
+            Always returns a NEW copy (never `self`), even with no attributes.
+            The registered template must never be the instance actually shown:
+            Ren'Py marks a shown displayable unique (``_duplicatable = False``)
+            via ``_unique()``, so if `show <tag>` (no attribute) returned the
+            template itself, the template would be poisoned and every later
+            `show <tag> <attr>` would call ``_duplicate`` on a now-non-
+            duplicatable template and get `self` back — never switching the
+            animation. (This silently broke SSCharacter lip-flap: showing the
+            character with no attribute, then switching to ``talk``, kept
+            replaying the idle template instead of playing ``talk``.)"""
             if not getattr(self, "_duplicatable", True):
                 return self
-            if not args or not getattr(args, "args", None):
-                return self
 
-            target_anim = self.animation
-            for attr in args.args:
-                if attr in self.aliases:
-                    target_anim = self.aliases[attr]
-                elif attr in self._get_available_animations():
-                    target_anim = attr
+            # Start from the template's original spec (may be a list = sequence),
+            # then let any attribute(s) pick the alias / animation to play.
+            target_anim = self._initial_animation
+            if args and getattr(args, "args", None):
+                for attr in args.args:
+                    if attr in self.aliases:
+                        target_anim = self.aliases[attr]
+                    elif attr in self._get_available_animations():
+                        target_anim = attr
 
-            # Return a copy configured for the new animation.
+            # Return a copy configured for the chosen animation.
             rv = SSPlayer(
                 self.ssab,
                 animation=target_anim,
@@ -706,7 +748,7 @@ init -10 python:
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
-            
+
             # Detect re-show (time went backwards) -> restart from the top
             # (resets the animation sequence too).
             core = self._core
