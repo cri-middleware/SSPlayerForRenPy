@@ -49,7 +49,7 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver, mask
     from ss_renpy.effect import EffectRig
     from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
@@ -109,6 +109,22 @@ init -10 python:
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
     SS_USE_MATRIX_TRANSFORM = False  # transform backend: true shear via 4x4
+    # Mask / clipping (09_mask). Needs the mesh backend + custom shaders +
+    # offscreen Render-to-texture; set False to draw masked parts plainly
+    # (geometry stays correct, the mask is simply not applied). The coverage
+    # bitmap is sized to the writers' world bbox × the supersample factor, capped
+    # at this long edge (px). The mask edge is a hard 1-bit test (no AA), so its
+    # sharpness is limited by the coverage resolution: SUPERSAMPLE > 1 renders the
+    # coverage above the bbox's world-pixel size so a scaled / high-DPI (Retina)
+    # display doesn't show blocky stair-steps along the mask boundary. 2 suits a
+    # 2× Retina display; raise it if the player is scaled up further.
+    SS_ENABLE_MASK = True
+    SS_MASK_COVERAGE_MAX_DIM = 2048
+    SS_MASK_COVERAGE_SUPERSAMPLE = 2.0
+    # Antialias the mask boundary: the 1-bit coverage gives a hard per-fragment
+    # edge (jaggy on curved masks), so the replay shader averages a 4-tap grid
+    # and folds the coverage fraction into alpha. False = sharp 1-tap edge.
+    SS_MASK_ANTIALIAS = True
 
     # Timeline events (UserData / Signal / Audio). The decoder is pure-Python and
     # headless-verified (tools/verify_events.py); collecting into the poll queue
@@ -235,6 +251,143 @@ init -10 python:
         except Exception as e:
             renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
 
+        # -- Mask / clipping (09_mask §3-2, coverage-bitmap hybrid) ----------
+        # Two shaders implement the spec's stencil over an offscreen coverage:
+        #
+        #   ss.mask_write   — rasterizes ONE writer into the coverage bitmap.
+        #       Cuts out by the part's texture alpha vs the per-frame threshold
+        #       (255-mask)/255 (a textureless shape passes threshold<0 = whole
+        #       geometry), then writes its pre-encoded bit colour with alpha 1 so
+        #       an *additive* blend ORs disjoint writer bits into the RGB
+        #       channels (8 bits x 3 = 24 writers).
+        #
+        #   ss.partcolor_mask — ss.partcolor + the stencil REPLAY. Each masked
+        #       target computes its coverage UV from a_position (Live2D's mask
+        #       pattern), samples the coverage (nearest, emulated by snapping the
+        #       UV to texel centres — Ren'Py has no per-texture nearest filter),
+        #       replays the writers in draw order and discards by the inside/
+        #       outside test. All in float math: Ren'Py shaders are GLSL ES 1.00
+        #       / 120 with NO integer bitwise ops, so `~s & 0xFF` -> `255 - s`,
+        #       `s + 1 & 0xFF` -> `mod(s + 1, 256)`, and the bit test is
+        #       `mod(floor(byte / exp2(b)), 2)`. The loop is a constant 24 with an
+        #       early `break` (ES 1.00 forbids uniform/while loop bounds).
+        #
+        # mask_meta[i] = (writer_rank, op_invert, is_clipping, _); the writer's
+        # bit is the array index i itself (channel i/8, bit i%8).
+        try:
+            renpy.register_shader(
+                "ss.mask_write",
+                variables="""
+                    uniform sampler2D tex0;
+                    attribute vec2 a_tex_coord;
+                    varying vec2 v_tex_coord;
+                    uniform vec3 u_bit_color;   // bit value in one RGB channel
+                    uniform float u_threshold;  // (255-mask)/255, <0 = no cutout
+                """,
+                vertex_300="v_tex_coord = a_tex_coord;",
+                fragment_300="""
+                    if (u_threshold >= 0.0) {
+                        // Premultiplied atlas: .a is the true (un-multiplied)
+                        // alpha, so the cutout is a straight alpha compare.
+                        if (texture2D(tex0, v_tex_coord).a <= u_threshold)
+                            discard;
+                    }
+                    // Additive blend ORs disjoint bits; alpha 1 keeps the bit.
+                    gl_FragColor = vec4(u_bit_color, 1.0);
+                """,
+            )
+            renpy.register_shader(
+                "ss.partcolor_mask",
+                variables="""
+                    uniform sampler2D tex0;
+                    uniform sampler2D tex1;     // coverage bitmap
+                    attribute vec4 a_position;  // for the coverage UV (Live2D-style)
+                    attribute vec2 a_tex_coord;
+                    varying vec2 v_tex_coord;
+                    uniform vec4 u_ss_color;
+                    uniform vec3 u_ss_varg;
+                    uniform vec2 u_mask_origin;  // screen px of bbox min
+                    uniform vec2 u_mask_size;    // bbox size (world px)
+                    uniform vec2 u_cov_size;     // coverage tex px (nearest snap)
+                    uniform int u_mask_count;
+                    uniform float u_mask_rank;
+                    uniform float u_mask_inside;     // 1 = draw inside, 0 = outside
+                    uniform float u_mask_aa;         // edge AA tap spread (0 = sharp)
+                    uniform vec4 u_mask_meta[24];    // (rank, op_invert, clip, _)
+                    varying vec2 v_mask_uv;
+                """,
+                vertex_300="""
+                    v_tex_coord = a_tex_coord;
+                    v_mask_uv = (a_position.xy - u_mask_origin) / u_mask_size;
+                """,
+                # NOTE: everything that references a uniform/varying MUST live in
+                # this fragment_NNN part — Ren'Py only declares variables it sees
+                # *here* (it does not scan fragment_functions), so the replay is
+                # inlined (not factored into a helper) as an outer 4-tap loop over
+                # the inner per-writer loop. The 1-bit coverage gives a hard
+                # per-fragment edge; averaging the 4-tap rotated grid and folding
+                # the result into alpha antialiases it (u_mask_aa scales the tap
+                # spread; 0 -> sharp). All float math + constant loop bounds keep
+                # it GLSL ES 1.00 / 120 legal.
+                fragment_300="""
+                    float mcov = 1.0;
+                    if (u_mask_count > 0) {
+                        bool inside = u_mask_inside > 0.5;
+                        vec2 fp = u_mask_aa / u_mask_size;   // ~1 player px in UV
+                        float acc = 0.0;
+                        for (int t = 0; t < 4; t++) {
+                            vec2 off = (t == 0) ? vec2(-0.375, -0.125)
+                                     : (t == 1) ? vec2(-0.125,  0.375)
+                                     : (t == 2) ? vec2( 0.125, -0.375)
+                                                : vec2( 0.375,  0.125);
+                            vec2 uv = v_mask_uv + fp * off;
+                            if (uv.x < 0.0 || uv.x > 1.0 ||
+                                uv.y < 0.0 || uv.y > 1.0) {
+                                // bbox-outside == no writer covers it (§3-2).
+                                acc += inside ? 0.0 : 1.0;
+                                continue;
+                            }
+                            // snap to texel centre -> nearest sampling.
+                            vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
+                            vec4 cov = texture2D(tex1, cuv);
+                            float stencil = 0.0;
+                            for (int i = 0; i < 24; i++) {
+                                if (i >= u_mask_count) break;
+                                vec4 m = u_mask_meta[i];
+                                bool clip = m.z > 0.5;
+                                bool active = clip ? (u_mask_rank > m.x)
+                                                   : (u_mask_rank < m.x);
+                                if (!active) continue;
+                                float fi = float(i);
+                                float chan = floor(fi / 8.0);
+                                float b = fi - chan * 8.0;
+                                float cval = (chan < 0.5) ? cov.r
+                                           : (chan < 1.5) ? cov.g : cov.b;
+                                float byte = floor(cval * 255.0 + 0.5);
+                                if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
+                                    continue;
+                                if (m.y > 0.5) stencil = 255.0 - stencil; // invert
+                                else stencil = mod(stencil + 1.0, 256.0); // incr
+                            }
+                            bool masked = stencil >= 0.5;
+                            acc += (masked == inside) ? 1.0 : 0.0;       // §2-4
+                        }
+                        mcov = acc * 0.25;
+                        if (mcov <= 0.0) discard;
+                    }
+                    // ss.partcolor colour math (premultiplied in/out); the mask
+                    // coverage fraction folds into alpha so the edge antialiases.
+                    vec4 p = texture2D(tex0, v_tex_coord);
+                    vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
+                    vec3 wp = mix(vec3(1.0), s, u_ss_varg.z);
+                    vec3 rgb = s * u_ss_varg.x + wp * u_ss_color.rgb * u_ss_varg.y;
+                    float a = p.a * u_ss_color.a * mcov;
+                    gl_FragColor = vec4(rgb * a, a);
+                """,
+            )
+        except Exception as e:
+            renpy.log("ss: register_shader(ss.mask_*) failed: %r" % (e,))
+
     # SS Effect blend (EmitterState.blend_type): 0=Mix (normal), 1=Add. This is
     # a *different* enum from the framebuffer BlendType used by Normal parts.
     SS_EFFECT_BLEND_FUNC_KEY = {effectplan.FX_BLEND_ADD: "add"}
@@ -299,6 +452,16 @@ init -10 python:
         key = SS_BLEND_FUNC_KEY.get(blend_type)
         if not key:
             return None
+        table = getattr(renpy.config, "gl_blend_func", None) or {}
+        val = table.get(key)
+        return ("gl_blend_func", val) if val is not None else None
+
+    def _ss_gl_blend(key):
+        """Raw ('gl_blend_func', value) for a config key (e.g. 'add'), or None.
+
+        Unlike :func:`_ss_blend_property` this is not gated by SS_ENABLE_BLEND —
+        the mask coverage *requires* additive blending to OR writer bits.
+        """
         table = getattr(renpy.config, "gl_blend_func", None) or {}
         val = table.get(key)
         return ("gl_blend_func", val) if val is not None else None
@@ -511,6 +674,7 @@ init -10 python:
             self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
             self._last_st = None
             self._warned = set()
+            self._mask_white = None  # cached white tex0 for textureless writers
 
         def __getstate__(self):
             """Drop the native-backed core + caches for pickling/saves; they are
@@ -792,7 +956,14 @@ init -10 python:
             ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
-                self._draw_items(r, plan.items, ox, oy, st, at, rw, rh)
+                # Mask: rasterize each distinct coverage once before drawing the
+                # targets that sample it (09_mask §3-2). Failure leaves the dict
+                # empty so masked parts simply draw unmasked.
+                cov_by_id = {}
+                if SS_ENABLE_MASK:
+                    self._build_coverages(cov_by_id, plan.items, ox, oy, st, at,
+                                          rw, rh)
+                self._draw_items(r, plan.items, ox, oy, st, at, rw, rh, cov_by_id)
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
 
@@ -824,19 +995,38 @@ init -10 python:
             return r
 
         # -- draw dispatch (batched) ---------------------------------------
-        def _draw_items(self, r, items, ox, oy, st, at, width, height):
+        def _draw_items(self, r, items, ox, oy, st, at, width, height,
+                        cov_by_id=None):
             """Draw the z-ordered renderables, batching consecutive same-texture
             Normal parts into one mesh/blit (and each effect batch likewise).
 
-            A run breaks when the texture or framebuffer blend changes, or an
-            effect batch interrupts it — preserving draw order. Falls back to
-            per-part drawing when batching is unavailable / fails."""
+            A run breaks when the texture or framebuffer blend changes, an effect
+            batch interrupts it, or a masked part is reached — preserving draw
+            order. A masked part (``MeshPart.mask`` set, with a coverage in
+            ``cov_by_id``) draws per-part through ``ss.partcolor_mask`` instead of
+            batching. Falls back to per-part / unmasked drawing on any failure."""
             use_mesh = SS_RENDER_BACKEND == "mesh"
             can_batch = SS_BATCH_DRAW and use_mesh and _SS_PC_LAYOUT is not None
             run = []
             run_key = None
             for tag, payload in items:
                 if tag == "mesh":
+                    ap = payload.mask
+                    cov = (cov_by_id.get(id(ap.frame_mask))
+                           if ap is not None and cov_by_id else None)
+                    if cov is not None:
+                        # Masked: flush the current run, then draw it on its own
+                        # (the replay shader can't share a batched mesh).
+                        if run:
+                            self._flush_mesh_run(r, run, ox, oy, st, at, width,
+                                                 height, can_batch, use_mesh)
+                            run = []
+                            run_key = None
+                        if not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
+                                                      st, at, width, height):
+                            self._flush_mesh_run(r, [payload], ox, oy, st, at,
+                                                 width, height, can_batch, use_mesh)
+                        continue
                     key = (payload.texture_hash, payload.blend_type)
                     if run and key != run_key:
                         self._flush_mesh_run(r, run, ox, oy, st, at, width,
@@ -849,6 +1039,7 @@ init -10 python:
                         self._flush_mesh_run(r, run, ox, oy, st, at, width,
                                              height, can_batch, use_mesh)
                         run = []
+                        run_key = None
                     self._draw_effect_batch(r, payload, ox, oy, st, at,
                                             width, height)
             if run:
@@ -1000,6 +1191,202 @@ init -10 python:
                 self._warn_once("mesh-backend",
                                 "mesh backend failed (%r); falling back to "
                                 "transform backend" % (e,))
+                return False
+
+        # -- mask / clipping (09_mask §3-2): coverage + replay --------------
+        def _white_render(self, st, at):
+            """A small white tex0 for texture-less shape writers (no cutout)."""
+            if self._mask_white is None:
+                self._mask_white = Solid("#ffffffff", xysize=(2, 2))
+            return renpy.render(self._mask_white, 2, 2, st, at)
+
+        def _build_coverages(self, cov_by_id, items, ox, oy, st, at,
+                             width, height):
+            """Rasterize the coverage bitmap for every distinct ``FrameMask`` in
+            ``items`` into ``cov_by_id`` (keyed by ``id(frame_mask)``).
+
+            One coverage is shared by all targets of a mask (including instance
+            children that inherit it). A build failure is warned once and that
+            coverage is simply skipped (its targets then draw unmasked)."""
+            if _SS_Mesh2 is None:
+                return
+            seen = set()
+            for tag, mp in items:
+                if tag != "mesh" or mp.mask is None:
+                    continue
+                fm = mp.mask.frame_mask
+                key = id(fm)
+                if key in seen:
+                    continue
+                seen.add(key)
+                try:
+                    cov = self._build_coverage(fm, ox, oy, st, at, width, height)
+                except Exception as e:
+                    self._warn_once("mask-coverage",
+                                    "coverage build failed (%r); masks off this "
+                                    "frame" % (e,))
+                    cov = None
+                if cov is not None:
+                    cov_by_id[key] = cov
+
+        def _build_coverage(self, fm, ox, oy, st, at, width, height):
+            """Render all of ``fm``'s writers into one offscreen RGBA8 coverage.
+
+            Returns ``(coverage_render, cov_w, cov_h)`` or None. The coverage is
+            sized to the writers' world bbox (long edge capped at
+            SS_MASK_COVERAGE_MAX_DIM); each writer is drawn with ``ss.mask_write``
+            under *additive* blend so disjoint bits OR together (09_mask §3-2-1).
+            Built in bbox-local pixel space so the target's ``v_mask_uv`` (derived
+            from a_position via the same bbox) indexes it directly."""
+            if _SS_Mesh2 is None or not fm.writers:
+                return None
+            bx, by = fm.bmin
+            bw, bh = fm.bsize
+            ss = max(1.0, SS_MASK_COVERAGE_SUPERSAMPLE)
+            cw = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bw * ss))))
+            ch = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bh * ss))))
+            sx, sy = cw / bw, ch / bh             # world -> coverage px
+            add_prop = _ss_gl_blend("add")
+            cov = renpy.Render(cw, ch)
+            for w in fm.writers:
+                try:
+                    self._blit_writer(cov, w, bx, by, sx, sy, cw, ch,
+                                      st, at, width, height, add_prop)
+                except Exception:
+                    pass   # one bad writer must not blank the whole coverage
+            return (cov, cw, ch)
+
+        def _blit_writer(self, cov, w, bx, by, sx, sy, cw, ch,
+                         st, at, width, height, add_prop):
+            """Additively rasterize one writer's bit into the coverage ``cov``."""
+            pts = w.positions
+            npts, ntri = len(pts), len(w.triangles)
+            if npts < 3 or ntri < 1:
+                return
+            tex = self._texture_path(w.texture_hash) if w.has_texture else ""
+            if tex:
+                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                tw, th = cr.get_size()
+                if tw <= 0 or th <= 0:
+                    return
+                nuv = framedata.normalize_uvs(w.uvs, tw, th)
+                threshold = (255.0 - w.mask_value) / 255.0
+            else:
+                cr = self._white_render(st, at)   # texture-less: whole geometry
+                nuv = [(0.0, 0.0)] * npts
+                threshold = -1.0
+
+            mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, npts, ntri)
+            geom = []
+            for (x, y) in pts:
+                geom += [(x - bx) * sx, (y - by) * sy]   # world -> coverage px
+            mesh.set_geometry_data(geom)
+            attrs = []
+            for (u, v) in nuv:
+                attrs += [u, v]
+            mesh.set_attribute_data(attrs)
+            idx = []
+            for tri in w.triangles:
+                idx += [tri[0], tri[1], tri[2]]
+            mesh.set_triangle_data(idx)
+
+            wr = renpy.Render(cw, ch)
+            wr.blit(cr, (0, 0))                  # tex0 (cutout source / white)
+            wr.mesh = mesh
+            if tex and _SS_TEXTURE_WRAP is not None:
+                wr.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
+            wr.add_shader("ss.mask_write")
+            chan = w.bit // 8
+            val = float(1 << (w.bit % 8)) / 255.0
+            bc = [0.0, 0.0, 0.0]
+            bc[chan] = val
+            wr.add_uniform("u_bit_color", (bc[0], bc[1], bc[2]))
+            wr.add_uniform("u_threshold", threshold)
+            if add_prop is not None:
+                try:
+                    wr.add_property(*add_prop)
+                except Exception:
+                    pass
+            cov.blit(wr, (0, 0))
+
+        def _mask_meta_uniform(self, fm):
+            """Flat ``vec4[MAX_WRITERS]`` of (rank, op_invert, is_clipping, 0).
+
+            The writer's bit is its index, so it is not stored. Padded to the
+            full array length the shader declares."""
+            vals = []
+            for (rank, _bit, op, clip) in fm.meta:
+                vals += [float(rank), float(op), float(clip), 0.0]
+            need = mask.MAX_WRITERS * 4
+            if len(vals) < need:
+                vals += [0.0] * (need - len(vals))
+            return vals
+
+        def _draw_mesh_masked(self, r, mp, ap, cov, ox, oy, st, at, width, height):
+            """Draw one masked part via ``ss.partcolor_mask`` (coverage replay).
+
+            Same mesh as :meth:`_draw_mesh` but binds the coverage as tex1 and the
+            replay uniforms (the target's rank / polarity + the writers' meta).
+            Returns True on success; False makes the caller draw it unmasked."""
+            if _SS_Mesh2 is None:
+                return False
+            try:
+                cov_render, cw, ch = cov
+                tex = self._texture_path(mp.texture_hash)
+                if not tex:
+                    return False
+                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                tw, th = cr.get_size()
+                if tw <= 0 or th <= 0:
+                    return False
+
+                pts = mp.positions
+                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
+                tris = mp.triangles
+                mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, len(pts), len(tris))
+                geometry = []
+                for (x, y) in pts:
+                    geometry += [ox + x, oy + y]
+                mesh.set_geometry_data(geometry)
+                attributes = []
+                for (u, v) in nuv:
+                    attributes += [u, v]
+                mesh.set_attribute_data(attributes)
+                indices = []
+                for tri in tris:
+                    indices += [tri[0], tri[1], tri[2]]
+                mesh.set_triangle_data(indices)
+
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))                  # tex0 atlas
+                rv.blit(cov_render, (0, 0))          # tex1 coverage
+                if _SS_TEXTURE_WRAP is not None:
+                    rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
+                rv.mesh = mesh
+                rv.add_shader("ss.partcolor_mask")
+                avg = _ss_avg_color(mp.colors)
+                vx, vy, vz = framedata.partcolor_varg(mp.color_blend,
+                                                      _ss_avg_rate(mp))
+                rv.add_uniform("u_ss_color", (avg[0], avg[1], avg[2], avg[3]))
+                rv.add_uniform("u_ss_varg", (vx, vy, vz))
+                fm = ap.frame_mask
+                bx, by = fm.bmin
+                bw, bh = fm.bsize
+                rv.add_uniform("u_mask_origin", (ox + bx, oy + by))
+                rv.add_uniform("u_mask_size", (bw, bh))
+                rv.add_uniform("u_cov_size", (float(cw), float(ch)))
+                rv.add_uniform("u_mask_count", len(fm.meta))
+                rv.add_uniform("u_mask_aa", 1.0 if SS_MASK_ANTIALIAS else 0.0)
+                rv.add_uniform("u_mask_rank", float(ap.rank))
+                rv.add_uniform("u_mask_inside", 1.0 if ap.visible_inside else 0.0)
+                rv.add_uniform("u_mask_meta", self._mask_meta_uniform(fm))
+                self._apply_blend(rv, mp)
+                r.blit(rv, (0, 0))
+                return True
+            except Exception as e:
+                self._warn_once("mask-draw",
+                                "masked draw failed (%r); drawing unmasked"
+                                % (e,))
                 return False
 
         def _draw_mesh_batch(self, r, parts, ox, oy, st, at, width, height):

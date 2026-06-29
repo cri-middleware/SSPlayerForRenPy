@@ -103,8 +103,12 @@ def parse(fb) -> FrameData:
 # the intra-struct layout is duplicated, and a one-time self-check vs the accessor
 # disables the fast path automatically if it ever drifts.
 _PS_SIZE = 144
-# UpdateFlag u64@0, Alpha f32@48, PartColor i16@128, Hide bool@138 (little-endian).
-_PS_REC = struct.Struct('<Q40xf76xh8x?5x')
+# UpdateFlag u64@0, Alpha f32@48, Priority f32@56, Mask f32@108,
+# PartColor i16@128, Hide bool@138 (little-endian). Priority/Mask are the
+# per-frame mask attributes (09_mask): Priority feeds draw order (the runtime
+# already sorts draw_order, but we keep it for diagnostics) and Mask is the
+# cutout value (0..255, a float despite the range).
+_PS_REC = struct.Struct('<Q40xf4xf48xf16xh8x?5x')
 _ps_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
 
 
@@ -115,16 +119,20 @@ class _PartLite:
     callers are unchanged, but the values come from one bulk ``struct`` decode
     rather than four-to-six per-part FlatBuffers accessor calls.
     """
-    __slots__ = ('_uf', '_a', '_pc', '_hide')
+    __slots__ = ('_uf', '_a', '_prio', '_mask', '_pc', '_hide')
 
-    def __init__(self, uf, a, pc, hide):
+    def __init__(self, uf, a, prio, mask, pc, hide):
         self._uf = uf
         self._a = a
+        self._prio = prio
+        self._mask = mask
         self._pc = pc
         self._hide = hide
 
     def UpdateFlag(self): return self._uf
     def Alpha(self): return self._a
+    def Priority(self): return self._prio
+    def Mask(self): return self._mask
     def PartColor(self): return self._pc
     def Hide(self): return self._hide
 
@@ -146,12 +154,14 @@ def bulk_part_states(fd: FrameData):
         return None
     base = p0._tab.Pos
     blob = p0._tab.Bytes[base:base + n * _PS_SIZE]
-    lite = [_PartLite(uf, a, pc, hide)
-            for (uf, a, pc, hide) in _PS_REC.iter_unpack(blob)]
+    lite = [_PartLite(uf, a, prio, mask, pc, hide)
+            for (uf, a, prio, mask, pc, hide) in _PS_REC.iter_unpack(blob)]
     if _ps_fastpath is None:
         l0 = lite[0]
         if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
-                or l0._pc != p0.PartColor() or abs(l0._a - p0.Alpha()) > 1e-6):
+                or l0._pc != p0.PartColor() or abs(l0._a - p0.Alpha()) > 1e-6
+                or abs(l0._prio - p0.Priority()) > 1e-6
+                or abs(l0._mask - p0.Mask()) > 1e-6):
             _ps_fastpath = False
             return None
         _ps_fastpath = True
@@ -553,6 +563,11 @@ class MeshPart:
     mask_influence: bool
     use_center: bool         # 5-vertex fan (free deform / per-vertex colour)
     has_partcolor: bool      # any corner rate > 0 (i.e. colour actually applied)
+    # Masking (09_mask): a ``ss_renpy.mask.MaskApply`` when this part is a masked
+    # target this frame, else None. Set by the mask layer after the draw plan is
+    # built (the render layer reads it to bind coverage + replay the stencil); it
+    # is intentionally NOT part of the equality/identity of the geometry.
+    mask: object = None
 
 
 def _avg(seq):
@@ -694,7 +709,7 @@ def transform_mesh_part(mp: MeshPart, m, alpha_mul: float = 1.0) -> MeshPart:
         positions=positions, uvs=list(mp.uvs), colors=colors,
         rates=list(mp.rates), triangles=list(mp.triangles),
         src_rect=mp.src_rect, mask_influence=mp.mask_influence,
-        use_center=mp.use_center, has_partcolor=mp.has_partcolor)
+        use_center=mp.use_center, has_partcolor=mp.has_partcolor, mask=mp.mask)
 
 
 def classify_frame(fd: FrameData) -> dict:

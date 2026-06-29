@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import math
 
-from ss_renpy import framedata
+from ss_renpy import framedata, mask
 from ss_renpy.effectplan import transform_effect_batch
 
 # Hard cap on instance nesting (defends against pathological / cyclic refs).
@@ -42,7 +42,7 @@ def display_frame(frame_no: float, sub_frame: bool):
 
 
 def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
-                    parent_looped, sub_frame):
+                    parent_looped, sub_frame, part_infos=None, frame_mask=None):
     """Z-ordered renderables for ``rt`` at the current frame.
 
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
@@ -50,15 +50,27 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     plan; Instance parts recurse and are composed by the instance part's matrix;
     Effect parts are stepped. Shared by the root player and Instance-child
     players (both ``SSInternalPlayer``, via :meth:`SSInternalPlayer.render_at`).
+
+    Masking (09_mask): when ``part_infos`` + ``frame_mask`` are supplied (the
+    root's ``update``), each Normal/Mesh target is stamped via
+    :func:`mask.attach_target`, and a masked **instance** part propagates its
+    coverage to the *whole* sub-animation via :func:`mask.attach_inherited`
+    (single-stage §3-2-2). Instance children are seeked through ``render_at``
+    *without* these args, so they never build/attach their own coverage — they
+    only inherit, exactly as the spec / Godot port require.
     """
     # Materialize first: this fully drains the transient SoA buffers into copied
     # MeshParts / matrices, so the child/effect Brain calls below are safe.
     plan = list(framedata.iter_draw_plan(rt, fd))
+    do_mask = frame_mask is not None and part_infos is not None
     out = []
     for item in plan:
         tag = item[0]
         if tag == "mesh":
-            out.append(("mesh", item[1]))
+            mp = item[1]
+            if do_mask:
+                mask.attach_target(mp, frame_mask, part_infos)
+            out.append(("mesh", mp))
         elif tag == "instance":
             _, p, mat, alpha, hidden = item
             child_items = (instances.collect(
@@ -66,10 +78,15 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                 if instances is not None else [])
             if hidden:
                 continue   # stepped for timing above; just not drawn
+            inst_info = (part_infos[p] if do_mask and 0 <= p < len(part_infos)
+                         else None)
+            inst_rank = frame_mask.rank_of.get(p) if do_mask else None
             for ctag, payload in child_items:
                 if ctag == "mesh":
-                    out.append(("mesh",
-                                framedata.transform_mesh_part(payload, mat, alpha)))
+                    tmp = framedata.transform_mesh_part(payload, mat, alpha)
+                    if do_mask and inst_rank is not None:
+                        mask.attach_inherited(tmp, frame_mask, inst_info, inst_rank)
+                    out.append(("mesh", tmp))
                 else:  # "fx"
                     out.append(("fx",
                                 transform_effect_batch(payload, mat, alpha)))

@@ -26,7 +26,7 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from ss_renpy import framedata, ssruntime
+from ss_renpy import framedata, mask, ssruntime
 from ss_renpy.effect import EffectRig
 from ss_renpy.events import EventResolver
 from ss_renpy.instance import InstanceRig, collect_ordered
@@ -55,6 +55,11 @@ class FramePlan:
     events: list = field(default_factory=list)
     world_matrices: list = field(default_factory=list)
     hidden_parts: Optional[set] = None
+    # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) or None when this
+    # frame has no live mask writer. The render layer rasterizes its writers into
+    # an offscreen coverage bitmap; individual masked items reference it (or, for
+    # an instance child, the parent's) via ``MeshPart.mask`` (09_mask §3-2).
+    frame_mask: object = None
 
 
 class SSInternalPlayer:
@@ -96,7 +101,11 @@ class SSInternalPlayer:
         # packs' images are acquired by the loader as they are loaded.
         self._own_images = [c.image_path for c in self._meta.cellmaps()
                             if c.image_path]
-        self._part_index = {p.name: p.index for p in self._meta.parts()}
+        # Static per-part info indexed by part index (== draw-plan slot index).
+        # Cached once: the mask layer reads the static mask flags from it every
+        # frame, and it is also the name->index source.
+        self._part_infos = self._meta.parts()
+        self._part_index = {p.name: p.index for p in self._part_infos}
         # External-instance pack loader (merges into the shared texmap and
         # acquires via the shared rm). The root builds one; children share it so
         # an external pack is read + registered once for the whole tree.
@@ -403,12 +412,21 @@ class SSInternalPlayer:
         self._last_world = list(wm[0:wn]) if (wm and wn) else []
         items: list = []
         hidden: Optional[set] = None
+        frame_mask = None
         if fb:
             fd = framedata.parse(fb)
             hidden = framedata.hidden_parts(fd)
+            # Build the coverage *before* collect_ordered steps any slot — both
+            # read the transient SoA, which an instance/effect step invalidates.
+            try:
+                frame_mask = mask.build_frame_mask(rt, fd, self._part_infos)
+            except Exception:
+                frame_mask = None
             try:
                 items = collect_ordered(rt, fd, self._instances, self._effects,
-                                        frame_no, dt_s, looped, self.sub_frame)
+                                        frame_no, dt_s, looped, self.sub_frame,
+                                        part_infos=self._part_infos,
+                                        frame_mask=frame_mask)
             except Exception:
                 # collect_ordered may have stepped slots and invalidated the
                 # zero-copy view; re-evaluate for a clean Normal/Mesh-only frame.
@@ -417,11 +435,13 @@ class SSInternalPlayer:
                           for mp in framedata.build_mesh_parts(
                               rt, framedata.parse(fb2))]
                          if fb2 else [])
+                frame_mask = None
         self._last_hidden = hidden
 
         return FramePlan(items=items, frame_no=frame_no, disp=disp,
                          looped=looped, finished=finished, events=events_out,
-                         world_matrices=self._last_world, hidden_parts=hidden)
+                         world_matrices=self._last_world, hidden_parts=hidden,
+                         frame_mask=frame_mask)
 
     # -- timeline events -----------------------------------------------
     def poll_events(self) -> list:

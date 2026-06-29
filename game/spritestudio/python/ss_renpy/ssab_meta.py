@@ -25,6 +25,7 @@ from ss.format.SsAnimeBinary import SsAnimeBinary
 PART_TYPE_NORMAL = PartType.PartTypeNormal      # 2
 PART_TYPE_INSTANCE = PartType.PartTypeInstance  # 6
 PART_TYPE_EFFECT = PartType.PartTypeEffect      # 8
+PART_TYPE_MASK = PartType.PartTypeMask          # 12
 
 
 def _s(maybe_bytes) -> str:
@@ -61,6 +62,11 @@ class PartInfo:
     parts the ``ref_anime_*`` fields name the referenced pack/animation; for
     Effect parts ``ref_effect_name_hash`` keys the embedded effect. All ref
     fields are empty/0 for other part types.
+
+    The four ``*_mask`` flags are the **static** mask attributes (09_mask §1):
+    they never change per frame, so a Player reads them once. Their meaning is
+    role-dependent — see the ``is_*`` helpers below for the canonical
+    classification (pure mask / writer / clipping / target polarity).
     """
     index: int
     name: str
@@ -71,6 +77,10 @@ class PartInfo:
     ref_anime_name: str = ""
     ref_anime_name_hash: int = 0
     ref_effect_name_hash: int = 0
+    visible_inside_mask: bool = False
+    mask_write: bool = False
+    mask_influence: bool = False
+    draw_as_mask: bool = False
 
     @property
     def is_instance(self) -> bool:
@@ -79,6 +89,38 @@ class PartInfo:
     @property
     def is_effect(self) -> bool:
         return self.part_type == PART_TYPE_EFFECT
+
+    @property
+    def is_mask_part(self) -> bool:
+        """A dedicated ``PartTypeMask`` part (always a pure mask writer)."""
+        return self.part_type == PART_TYPE_MASK
+
+    @property
+    def is_pure_mask(self) -> bool:
+        """Writes the stencil but draws no colour (09_mask §1-2).
+
+        ``pure_mask = PartTypeMask || draw_as_mask``. (Only Shape/Text/Nines can
+        be turned pure via ``draw_as_mask``; the flag is ignored on other kinds
+        by the editor, so this is safe to evaluate uniformly.)
+        """
+        return self.is_mask_part or self.draw_as_mask
+
+    @property
+    def is_mask_writer(self) -> bool:
+        """Contributes to the stencil/coverage at all (09_mask §1-2).
+
+        ``is_writer = pure_mask || mask_write``.
+        """
+        return self.is_pure_mask or self.mask_write
+
+    @property
+    def is_clipping(self) -> bool:
+        """A drawing part that also writes the stencil (09_mask §1-2).
+
+        ``is_clipping = mask_write && !pure_mask`` — draws its own colour *and*
+        clips parts drawn after it (higher draw priority).
+        """
+        return self.mask_write and not self.is_pure_mask
 
 
 @dataclass(frozen=True)
@@ -181,7 +223,11 @@ class SsabMeta:
                 part_type=ptype, ref_anime_pack=ref_pack,
                 ref_anime_pack_hash=ref_pack_hash, ref_anime_name=ref_name,
                 ref_anime_name_hash=ref_name_hash,
-                ref_effect_name_hash=ref_effect_hash))
+                ref_effect_name_hash=ref_effect_hash,
+                visible_inside_mask=bool(pd.VisibleInsideMask()),
+                mask_write=bool(pd.MaskWrite()),
+                mask_influence=bool(pd.MaskInfluence()),
+                draw_as_mask=bool(pd.DrawAsMask())))
         return out
 
     def part_names(self) -> list[str]:
