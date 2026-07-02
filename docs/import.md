@@ -1,19 +1,21 @@
 # Asset Import
 
-SpriteStudio Player for Ren'Py does not read SpriteStudio project files (`.sspj`) directly; instead, they are converted into a binary format for Ren'Py (`.ssab`) before use. We provide two conversion methods to suit your project's scale and workflow.
+The `.sspj` file is converted to `.ssab` **only once during development**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation. You do not need to include the original `.sspj` workspace files in your final distributed game.
+
+We provide multiple conversion methods to suit your project's scale and workflow.
 
 ```mermaid
 graph LR
     SS[" .sspj / Images<br>(Source Assets) "]
 
-    subgraph Convert ["Conversion Process"]
+    subgraph Convert ["① Development Phase (Convert Once)"]
         AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
         GUI[[" SSConverterGUI<br>(GUI App) "]]
         CLI[[" ssconverter-cli<br>(CLI Tool) "]]
         WEB[[" ssconverter-web<br>(Web Browser) "]]
     end
 
-    subgraph RenPy ["Ren'Py Project (game/)"]
+    subgraph RenPy ["② Runtime (Inside Ren'Py Project)"]
         BIN[" .ssab + Textures "]
         NODE[[ SSPlayer ]]
         RT(" libssruntime ")

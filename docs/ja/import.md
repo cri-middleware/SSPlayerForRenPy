@@ -1,19 +1,21 @@
 # アニメーションデータのコンバート (Import)
 
-SpriteStudio Player for Ren'Py では、SpriteStudio のプロジェクトファイル (`.sspj`) をそのまま読み込むのではなく、Ren'Py 用のバイナリ形式 (`.ssab`) に変換して利用します。プロジェクトの規模やワークフローに合わせて、2つのコンバート方法を提供しています。
+`.sspj` は **開発時に一度だけ** `.ssab` へ変換し、**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけです。プレイヤーに配布するゲーム本体に元の `.sspj` 等を含める必要はありません。
+
+プロジェクトの規模やワークフローに合わせて、以下のコンバート方法を提供しています。
 
 ```mermaid
 graph LR
     SS[" .sspj / 画像<br>(ソースアセット) "]
 
-    subgraph Convert ["変換プロセス"]
+    subgraph Convert ["① 開発時（変換・1回だけ）"]
         AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
         GUI[[" SSConverterGUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
         WEB[[" ssconverter-web<br>(Webブラウザ) "]]
     end
 
-    subgraph RenPy ["Ren'Py プロジェクト (game/)"]
+    subgraph RenPy ["② 実行時（Ren'Pyプロジェクト内）"]
         BIN[" .ssab + テクスチャ "]
         NODE[[ SSPlayer ]]
         RT(" libssruntime ")
