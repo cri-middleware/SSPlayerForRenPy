@@ -512,11 +512,18 @@ init -10 python:
     # gamedir-relative, e.g. "ss_assets/Ringo/Ringo.ssab".
     def _ss_open_bytes(rel):
         """Read a gamedir-relative file as bytes via Ren'Py's loader (.rpa-safe)."""
-        f = renpy.loader.load(rel)
+        predicting = getattr(renpy.display.predict, "predicting", False)
+        if predicting:
+            renpy.display.predict.predicting = False
         try:
-            return f.read()
+            f = renpy.loader.load(rel)
+            try:
+                return f.read()
+            finally:
+                f.close()
         finally:
-            f.close()
+            if predicting:
+                renpy.display.predict.predicting = True
 
     def _ss_renpy_pack_reader(base_rel):
         """Reader for external-instance packs: <base_rel>/<pack>.ssab via loader."""
@@ -689,14 +696,9 @@ init -10 python:
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):
-            # Cache only on SUCCESS. During Ren'Py's prediction phase
-            # renpy.loader.load() refuses to open files ("Refusing to open ...
-            # while predicting"), so reading the .ssab here raises. If we cached
-            # the empty result, the real (non-predicting) show would keep seeing
-            # an empty animation list, and any non-alias animation attribute
-            # (e.g. `show <tag> dance`) would silently fall back to the default
-            # animation. Returning [] without caching lets the next real call
-            # populate it.
+            # Cache the available animations. _ss_open_bytes temporarily bypasses
+            # Ren'Py's prediction lock ("Refusing to open ... while predicting"),
+            # so reading the .ssab here during prediction will succeed.
             if self._available_animations is None:
                 try:
                     meta = SsabMeta(_ss_open_bytes(self._ssab_relpath))

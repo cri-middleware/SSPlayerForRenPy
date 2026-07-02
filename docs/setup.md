@@ -1,22 +1,23 @@
-# 導入ガイド (Setup Guide)
+# Setup Guide
 
-SpriteStudio Player for Ren'Py をご自身のゲームプロジェクトに導入する手順を解説します。
+This document provides instructions for **Users**. It explains how to integrate the package directly into your game project.
+If you want to customize the player, please refer to the [Build Guide](build.md).
 
-## 1. 必要環境
-- **Ren'Py**: バージョン 8.x 系 (Python 3 ベース) が必要です。
+## 1. Requirements
+- **Ren'Py**: Version 8.x series (Python 3 based) is required.
 
-## 2. ライブラリの配置
-[GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) からダウンロードしたZIPファイルを展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
+## 2. Placing the Library
+Extract the ZIP file downloaded from [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases), and copy the **`spritestudio/`** folder inside it directly into your project's `game/` directory.
 
-> **内部構成**: このフォルダにはPythonスクリプト（`spritestudio.rpy` 等）と、各OS向けのネイティブライブラリ(Windows / macOS / Linux)がすべて含まれています。
+> **Internal Structure**: This folder contains all the Python scripts (e.g., `spritestudio.rpy`) and native libraries for each OS (Windows / macOS / Linux).
 
-## 3. 再生データ (`.ssab`) の配置
-SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) は、Ren'Py向けにコンバートしたデータ (`.ssab`) として配置する必要があります。
+## 3. Placing Playback Data (`.ssab`)
+Animation projects (`.sspj`) created in SpriteStudio must be converted to Ren'Py format (`.ssab`) before placement.
 
-コンバート方法には以下の2通りがあります。プロジェクトの開発スタイルに合わせて選んでください。
-- **自動インポート (Auto Importer):** Ren'Py起動時に自動コンバートする手軽な方法
-- **CLIコンバート:** 外部バッチスクリプトやCI等で一括変換する方法
+There are two ways to convert them. Choose according to your project's development style:
+- **Auto Importer:** An easy way that automatically converts data when Ren'Py starts up.
+- **CLI Convert:** A way to convert in bulk using external batch scripts or CI.
 
-詳しくは **[アニメーションデータのコンバート (import.md)](import.md)** をご参照ください。
+For more details, please refer to **[Asset Import](import.md)**.
 
-これで導入は完了です。実際の呼び出し方については [usage.md](usage.md) をご参照ください。
+The setup is now complete. For how to actually call it in your game, please see [usage.md](usage.md).

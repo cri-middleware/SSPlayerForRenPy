@@ -1,149 +1,156 @@
-# 再生と制御 (Usage Guide)
+# Usage Guide
 
-SpriteStudio Player for Ren'Py では、SpriteStudioのアニメーションをRen'Py上で非常に柔軟に制御できます。画面への単純な描画から、キャラクターの立ち絵としての統合、イベントコールバックまで、目的に応じた使い方を解説します。
+In SpriteStudio Player for Ren'Py, you have very flexible control over SpriteStudio animations within Ren'Py. This guide explains how to use the player depending on your goals, ranging from simple rendering to integrating character standing images, and handling event callbacks.
 
-> **`.ssab` の置き場所について**: コンバート済みの `.ssab` とそのテクスチャ（`.png`）、および参照する外部インスタンスパックは、すべて **同じフォルダに同居** します（オートインポーターは `game/ss_assets/<プロジェクト名>/` に出力します）。プレイヤーは関連リソースを `.ssab` と同じフォルダから解決するため、テクスチャ用のフォルダを別途指定する必要はありません。
+> [!IMPORTANT]
+> **Placement of `.ssab` files**
+> The converted `.ssab` file, its textures (`.png`), and any referenced external instance packs must **reside in the same folder** (the auto importer outputs them to `game/ss_assets/<ProjectName>/`). Because the player resolves related resources from the same directory as the `.ssab`, you do not need to specify a separate folder for textures.
 
 ---
 
-## 1. 最も簡単な再生（Screenからの呼び出し）
-`SSPlayer` クラスは Ren'Py の Displayable（描画オブジェクト）として振る舞うため、スクリーン内に `add` して直接表示するのが最もシンプルです。
+## 1. The Simplest Playback (Calling from a Screen)
+Because the `SSPlayer` class acts as a Ren'Py Displayable (drawing object), the simplest way to show an animation is by `add`ing it directly into a screen.
 
 ```renpy
 screen demo():
-    # 第1引数は .ssab のパス（game/ からの相対パス）
+    # The first argument is the path to the .ssab (relative to game/)
     add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
 ```
 
-### 基本パラメータ
-- **第1引数**: 再生する `.ssab` のパス（`game/` からの相対、例 `"ss_assets/Ringo/Ringo.ssab"`）。`.ssab` とそのテクスチャ・外部インスタンスパックは同居しているので、これだけで関連リソースも解決されます。**`.rpa` アーカイブ内の `.ssab` も読み込めます**（Ren'Py のローダ経由）。
-- **`animation` (省略可能)**: 初期状態で再生するアニメーション名。省略時はデータ内の最初のアニメーションが再生されます。**存在しない名前を渡すと初回表示時にエラー**（有効なアニメーション名の一覧つき）になります。
-- **`loop` (省略可能)**: 再生回数。`-1`（既定）で無限ループ、`1` で1回再生、`N` でN回再生。
-- **`speed` (省略可能)**: 再生速度の倍率（既定 `1.0`）。
-- **`size` (省略可能)**: `(w, h)`（または正方形なら数値1つ）を渡すと、その**箱サイズの普通の画像**として振る舞い、`xalign`/`xpos`/`pos` やコンテナ配置がそのまま効きます（アニメは箱の中央に描画）。省略時は画面全体を占有するので `xoffset`/`yoffset` で位置調整します。どちらの場合も `zoom`/`Transform` での拡大縮小は効きます。
+### Basic Parameters
+- **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
+- **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display.
+- **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays.
+- **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
+- **`size` (Optional)**: If you pass `(w, h)` (or a single number for a square), it acts as a **normal image of that bounding box size**, allowing `xalign`/`xpos`/`pos` and container layouts to work directly (the animation is drawn at the center of the box). If omitted, it occupies the entire screen, and you must use `xoffset`/`yoffset` for positioning. In both cases, scaling via `zoom`/`Transform` applies.
 
 ```renpy
-# size を指定すれば align で配置できる
+# You can place it with align if you specify size
 add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.0
 ```
 
-> どんな `.ssab` パックが入っているか分からないときは、開発者モードで **Shift+B**（アセットブラウザ）を開くと、一覧・ライブプレビュー・スニペット生成ができます。
-> 旧 `sprites_subdir` 引数は後方互換のために残っていますが、パス指定で不要（非推奨）です。
+> [!TIP]
+> If you don't know what's inside an `.ssab` pack, you can open the **Shift+B** (Asset Browser) in developer mode to see a list, live preview, and generate code snippets.
+
+> [!NOTE]
+> The old `sprites_subdir` argument remains for backward compatibility, but it is unnecessary when specifying the path (deprecated).
 
 ---
 
-## 2. 立ち絵としての利用 (image 宣言と Character 連携)
-Ren'Pyの `image` ステートメントと組み合わせることで、ノベルゲームにおける**キャラクターの立ち絵**として強力に機能します。`aliases` 引数を使うと、Ren'Pyのアトリビュート名とSpriteStudio内のモーション名を紐付けることができます。
+## 2. Using as Standing Images (`image` statement and Character integration)
+By combining it with Ren'Py's `image` statement, it functions powerfully as a **character standing image** (tachie) in visual novels. Using the `aliases` argument, you can link Ren'Py attribute names to SpriteStudio motion names.
 
 ```renpy
-# キャラクターの定義（.ssab パスを指定）
+# Character definition (specify the .ssab path)
 image ringo = SSPlayer(
     "ss_assets/Ringo/Ringo.ssab",
     aliases={
-        "idle": "wait1",    # 'idle' が呼ばれたら 'wait1' モーションを再生
+        "idle": "wait1",    # When 'idle' is called, play the 'wait1' motion
         "happy": "joy",
         "walk": "walk",
-        "attack": ["attack1", "wait1"] # リストを渡すと順番に連続再生！
+        "attack": ["attack1", "wait1"] # Pass a list to play them sequentially!
     }
 )
 
 define r = Character("Ringo", image="ringo")
 
 label start:
-    # デフォルトの立ち絵を表示（idleモーション）
+    # Show default standing image (idle motion)
     show ringo idle:
         yoffset 200
 
-    r happy "アトリビュートを変えるだけでモーションが切り替わるよ！"
+    r happy "The motion switches just by changing the attribute!"
 
-    # Transform (移動) と組み合わせて歩かせる
+    # Make them walk by combining with Transform
     show ringo walk:
         xoffset -400 yoffset 200
     with move
 
-    r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
+    r attack "Attack! (It automatically returns to wait1 when attack1 ends)"
 ```
 
-### もっと簡単に：喋るキャラ (`SSCharacter`)
-`SSCharacter` を使うと、**台詞を喋っている間は talk、止まれば idle に自動で切り替わる**“生きたキャラ”を1行で定義できます。`image` 宣言と `Character` の準備、しゃべりへの同期がまとめて行われ、行ごとの Python は不要です。
+### Even Easier: Talking Character (`SSCharacter`)
+Using `SSCharacter`, you can define a "living character" in one line that **automatically switches to 'talk' while speaking, and 'idle' when stopped**. This prepares the `image` declaration, `Character` definition, and lip-sync synchronization all at once, removing the need for line-by-line Python.
 
 ```renpy
-# 画像登録 + Character + 口パク連動をまとめて定義（タグは .ssab の stem = "ringo"）
+# Register image + Character + lip-sync linked definition (tag is .ssab stem = "ringo")
 define ringo = SSCharacter(
     "ss_assets/Ringo/Ringo.ssab",
-    talk="talk",     # 喋っている間に再生するアニメ名
-    idle="wait1",    # 無音時のアニメ名
+    talk="talk",     # Animation name to play while speaking
+    idle="wait1",    # Animation name when silent
 )
 
 label start:
-    show ringo            # タグ "ringo" で表示
-    ringo "やあ。喋っている間は talk、終わると idle に戻るよ。"
+    show ringo            # Show with tag "ringo"
+    ringo "Hi. It stays on 'talk' while speaking, and returns to 'idle' when finished."
 ```
 
-- 画像タグは `.ssab` のファイル名 stem を小文字化したもの（例 `"ringo"`）。`tag=` で上書き可。
-- `aliases=`（感情など）や `size=`（`xalign` を効かせる箱サイズ）も渡せます。
-- 口パクの開始/終了タイミングは `start` / `stop`（Character のコールバックイベント名）で調整可能。
-- **v1の制限**: 喋っている間は talk/idle が属性を置き換えるため、`show ringo happy` のような感情属性は talk 中は反映されず、終了後 `idle` に戻ります（感情別の talk は今後対応）。
+- The image tag is the lowercased file stem of the `.ssab` (e.g., `"ringo"`). You can override it with `tag=`.
+- You can also pass `aliases=` (for emotions, etc.) and `size=` (box size for `xalign`).
+- The lip-sync start/stop timing can be adjusted using `start` / `stop` (Character callback event names).
+
+> [!WARNING]
+> **v1 Limitation**: Because talk/idle replace attributes while speaking, emotion attributes like `show ringo happy` won't reflect during `talk`, and it will return to `idle` afterwards (emotion-specific talks will be supported in the future).
 
 ---
 
-## 3. エフェクトとしての利用 (ループ回数の制御)
-魔法の爆発やヒットエフェクトなど、一度だけ再生して終わるアニメーションの場合は、`loop` 引数で再生回数を制限できます。
+## 3. Using as Effects (Loop Count Control)
+For animations like magic explosions or hit effects that play once and end, you can restrict the playback count with the `loop` argument.
 
 ```renpy
 image hit_effect = SSPlayer(
     "ss_assets/ParticleEffect/e038.ssab",
     animation="hit",
-    loop=1 # 1回再生したら終了して画面から消える（または最後のフレームで止まる）
+    loop=1 # End and disappear from the screen after 1 playback (or stop on the last frame)
 )
 
 label battle:
-    # 攻撃に合わせて指定位置にエフェクトを表示
+    # Show the effect at a specific position matching the attack
     show hit_effect:
         xoffset -150 yoffset 50
-    "ドガァン！"
+    "KABOOM!"
 ```
 
 ---
 
-## 4. Pythonコードからの動的制御
-ゲーム中の処理に応じてPython（スクリプト）から直接アニメーションを切り替えたり、情報を取得したりすることも可能です。
+## 4. Dynamic Control from Python
+You can switch animations directly from Python (scripts) or retrieve information depending on the game logic.
 
 ```renpy
 $ player = SSPlayer("ss_assets/Hero/Hero.ssab")
 
-# 収録されているすべてのアニメーション名リストを取得
+# Get a list of all included animation names
 $ anim_names = player.ss_animation_names()
 
-# 現在再生中のアニメーション名を取得
+# Get the currently playing animation name
 $ current_anim = player.ss_get_animation()
 
-# 任意のアニメーションへの切り替え（読み込み＋頭出し → 再生）
+# Switch to an arbitrary animation (load + cue -> play)
 $ player.ss_play("run")
 ```
 
-- **読み込みと再生の分離**: `ss_set_animation("run")` はアニメーションを読み込んでポーズ（頭出し）するだけで、再生は開始しません。`ss_play()` で再生を開始します。
-- **再生制御**: `ss_pause()` / `ss_resume()` / `ss_stop()`、フレーム操作 `ss_set_frame()` / `ss_get_frame()`、速度 `ss_set_speed()`、ループ `ss_set_loop()` などが利用できます。
-- **パーツ照会**: `ss_part_transform("part名")` で直近フレームのパーツのローカル変換（x/y/回転/スケール）を取得できます。
+- **Separation of Loading and Playback**: `ss_set_animation("run")` only loads and cues the animation; it does not start playing. `ss_play()` starts the playback.
+- **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()`, frame control `ss_set_frame()` / `ss_get_frame()`, speed `ss_set_speed()`, and looping `ss_set_loop()` are available.
+- **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame.
 
 ---
 
-## 5. アニメーションイベント（ユーザーデータ / シグナル）の処理
-SpriteStudio側で設定した「ユーザーデータ」や「シグナル」の情報をRen'Py側で受け取ることができます。これにより、特定のフレームで効果音を鳴らしたり、スクリプトの進行を同期させたりすることが可能です。
+## 5. Handling Animation Events (User Data / Signals)
+You can receive information on "User Data" and "Signals" configured on the SpriteStudio side within Ren'Py. This makes it possible to play sound effects on specific frames or synchronize script progression.
 
-### コールバック（イベント駆動）による受け取り
-`SSPlayer` のインスタンス生成時に、各イベントに対応した関数を渡すことで、特定のタイミングで処理を発火させることができます。
+### Receiving via Callbacks (Event-Driven)
+By passing corresponding functions during the `SSPlayer` instance creation, you can trigger logic at specific timings.
 
 ```python
 init python:
     def my_signal_handler(player, frame, signal):
-        print(f"シグナルを受信: コマンド={signal.command_id}, 引数={signal.params}")
+        print(f"Signal Received: Command={signal.command_id}, Params={signal.params}")
 
     def my_finish_handler(player):
-        print("アニメーションが最後まで再生されました")
+        print("Animation reached the end")
 ```
 ```renpy
-# コールバックを登録して再生
+# Register callbacks and play
 image boss = SSPlayer(
     "ss_assets/Boss/Boss.ssab",
     on_signal=my_signal_handler,
@@ -151,38 +158,39 @@ image boss = SSPlayer(
 )
 ```
 
-**利用可能なコールバック引数:**
-- `on_user_data`: ユーザーデータ到達時に呼ばれる
-- `on_signal`: シグナル到達時に呼ばれる
-- `on_audio`: 音声再生指定フレーム到達時に呼ばれる
-- `on_finished`: 再生終了時（`loop`到達時など）に呼ばれる
-- `on_looped`: ループ完了ごと（1周回るごと）に呼ばれる
-- `on_started`: アニメーション再生開始時に呼ばれる
+**Available Callback Arguments:**
+- `on_user_data`: Called when User Data is reached
+- `on_signal`: Called when a Signal is reached
+- `on_audio`: Called when an audio playback specified frame is reached
+- `on_finished`: Called when playback finishes (e.g., reached `loop` limit)
+- `on_looped`: Called every time a loop completes (1 iteration)
+- `on_started`: Called when animation playback starts
 
-> コールバックは描画スレッドから `cb(player, ...)`（開始/終了/ループ系は `cb(player)`）の形で呼ばれます。ロールバック（rollback）時のピクル化のため、ラムダやローカル関数ではなくモジュールレベルの関数を渡してください。
+> [!NOTE]
+> Callbacks are invoked from the drawing thread in the form `cb(player, ...)` (start/finish/loop forms are `cb(player)`). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
 
-※ ポーリングベース（`ss_poll_events()`）での受け取り方については、デモプロジェクトの `script.rpy` 内 `ss_drain_events()` などの実装をご参照ください。
+*Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `script.rpy` of the demo project.*
 
 ---
 
-## 6. 便利機能
+## 6. Utilities
 
-### 一発エフェクトを手軽に（`ss_show_effect`）
-カットシーンの演出に。`wait=True` で再生し終わるまで待ってから自動で消します。
+### One-Shot Effects Made Easy (`ss_show_effect`)
+Useful for cutscene direction. With `wait=True`, it waits until playback finishes and automatically disappears.
 ```renpy
 $ ss_show_effect("ss_assets/ParticleEffect/e038.ssab", "hit",
                  at=Transform(xpos=640, ypos=360), wait=True)
 ```
-`ss_duration("…/Ringo.ssab", "attack1")` はそのアニメ1周の秒数を返すので、表示中キャラの「再生して待つ」は `show ringo attack` ＋ `$ renpy.pause(ss_duration(...))` で書けます。
+`ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 
-### パーツに何かを貼る（`attachments`）
-名前付きパーツ（手・頭など）に表示物を追従させます（v1は平行移動のみ）。
+### Attaching Something to a Part (`attachments`)
+Make a displayable follow a named part (like a hand or head). Note: v1 only supports translation.
 ```renpy
 image ringo = SSPlayer(
     "ss_assets/Ringo/Ringo.ssab",
-    attachments={"head": Text("！", size=40), "hand_r": "sword.png"},
+    attachments={"head": Text("! ", size=40), "hand_r": "sword.png"},
 )
 ```
 
-### 動作確認（診断）
-開発者モードでは起動時に「runtime loaded / N pack(s)」がログ出力されます。コンソール（Shift+O）で `ss_diagnostics()` を呼ぶと、ランタイムの状態と検出済みパック一覧を確認できます。`.ssab` が読めない場合は、パス（`game/` からの相対）を含む分かりやすいエラーになります。
+### Checking Behavior (Diagnostics)
+In developer mode, "runtime loaded / N pack(s)" is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).

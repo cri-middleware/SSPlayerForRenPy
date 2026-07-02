@@ -1,82 +1,97 @@
 # SpriteStudio Player for Ren'Py
 
-**[SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** のアニメーション (`.ssab`) を [Ren'Py](https://www.renpy.org/) で再生するための拡張ライブラリ（プレイヤー）です。
+An extension library (player) for playing **[SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) in [Ren'Py](https://www.renpy.org/).
 
-## 📚 ドキュメント (Documentation)
-目的別の詳細な手順や仕様については、以下のドキュメントをご参照ください。
-- **[導入ガイド (Setup)](docs/setup.md)**: ゲームプロジェクトへの組み込み方法
-- **[データのコンバート (Import)](docs/import.md)**: アニメーションデータ (`.sspj`) の変換方法
-- **[再生と制御 (Usage)](docs/usage.md)**: Ren'Pyスクリプトからの呼び出し方
-- **[ビルドガイド (Build)](docs/build.md)**: ネイティブライブラリのコンパイルと開発環境
-- **[仕様と制約事項 (Limitations)](docs/limitations.md)**: 対応状況・未サポート機能の一覧
+## 📚 Documentation
+The documentation for this repository is structured for three different personas. Please refer to the section that matches your goals.
+
+- **User**: Those who want to integrate the provided package directly into their game.
+- **Customer**: Those who want to customize the behavior on the Ren'Py (Player) side without building the SDK itself.
+- **SDK/Player Developer**: Those who want to develop and modify the core parts, including the native library (Rust), by building it themselves.
+
+For detailed instructions and specifications by purpose, please refer to the following documents:
+- **[Setup Guide](docs/setup.md)**: How to integrate into your game project (For Users)
+- **[Asset Import](docs/import.md)**: How to convert animation data (`.sspj`)
+- **[Usage](docs/usage.md)**: How to call from Ren'Py scripts
+- **[Build Guide](docs/build.md)**: Environment setup and native build procedures for customization (For Customers & Developers)
+- **[Limitations](docs/limitations.md)**: Support status and list of unsupported features
 
 ---
 
-## 🎮 1. ゲームへの組み込み手順 (Quick Start)
-[GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) からダウンロードしたZIPファイルを展開し、中にある **`spritestudio/`** フォルダをご自身のRen'Pyプロジェクトの `game/` フォルダ内にそのままコピーしてください。これだけで導入は完了です。
+## 🎮 1. For Users: Game Integration (Quick Start)
+This is an easy way to introduce the player without any burden by using the pre-built package.
+
+Download the latest ZIP file from [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases), extract it, and copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. This completes the installation.
 
 ```renpy
-# ゲームプロジェクト内で呼び出す例
+# Example of calling it in a game project
 screen demo():
     add SSPlayer("overall/Basic.ssab") xalign 0.5 yalign 0.5
 ```
-※詳しくは [導入ガイド](docs/setup.md) および [再生と制御](docs/usage.md) をご覧ください。
+*For more details, see the [Setup Guide](docs/setup.md) and [Usage](docs/usage.md).*
 
-## 🛠 2. 開発・テスト環境を構築したい方向け
-デモの動作確認などを手軽に行えるよう、環境構築や実行用の各種スクリプト (`scripts/` 内) を用意しています。
+## 🛠 2. For Customers: Player Customization
+This is the environment setup for those who want to modify the Python code or Ren'Py scripts on the Ren'Py side, but want to use the pre-built native Rust SDK core without building it.
+You don't need to clone `SpriteStudio-SDK` recursively and build it yourself; you can obtain the pre-built binaries from the official releases.
 
 **macOS / Linux:**
 ```bash
-# デモのデータ等を利用するためサブモジュールを取得
-git submodule update --init --recursive
+# Get the submodule to use demo data (recursive is not needed)
+git submodule update --init
 
-# SDKのネイティブライブラリをダウンロード
+# Download the native SDK library from Releases
 scripts/download-sdk.sh
 
-# デモ用再生データのコンバート
+# Convert playback data for the demo
 scripts/deploy-examples.sh
 
-# Ren'Py SDKの取得とデモプロジェクトの起動テスト
+# Get Ren'Py SDK and launch the demo project test
 scripts/fetch-renpy-sdk.sh
 scripts/run-demo.sh
 ```
 
 **Windows:**
 ```powershell
-# デモのデータ等を利用するためサブモジュールを取得
-git submodule update --init --recursive
+# Get the submodule to use demo data (recursive is not needed)
+git submodule update --init
 
-# SDKのネイティブライブラリをダウンロード
+# Download the native SDK library from Releases
 scripts\download-sdk.ps1
 
-# デモ用再生データのコンバート
+# Convert playback data for the demo
 scripts\deploy-examples.ps1
 
-# Ren'Py SDKの取得とデモプロジェクトの起動テスト
+# Get Ren'Py SDK and launch the demo project test
 scripts\fetch-renpy-sdk.ps1
 scripts\run-demo.ps1
 ```
-※詳細は [ビルドガイド](docs/build.md) をご覧ください。
+*For more details, see the [Build Guide](docs/build.md).*
 
-## ⚙️ 3. SDK開発者・コントリビューター向け
-アニメーション計算のコア部分はRust製サブモジュール (`SpriteStudio-SDK`) が担い、Ren'Py側 ("Body") とは `ctypes` を介して連携します。
-ネイティブライブラリを自分でビルドする場合、事前に Rust ツールチェーン (`cargo` / `rustup`) の環境構築が必要です。
+## ⚙️ 3. For SDK/Player Developers: Full Build Environment
+This is for those who want to develop and contribute, including the Rust submodule (`SpriteStudio-SDK`) responsible for the core animation calculations.
+Since you will be using `rustup` to build `libssconverter` and `libssruntime` yourself, you need to set up the Rust toolchain (`cargo` / `rustup`) in advance.
 
 **macOS / Linux:**
 ```bash
+# Clone completely, including submodules
 git submodule update --init --recursive
 
-# ネイティブランタイムのビルド
+# Build the native runtime
 scripts/build-runtime.sh
+
+# From here, you can launch the demo just like for Customers
 ```
 
 **Windows:**
 ```powershell
+# Clone completely, including submodules
 git submodule update --init --recursive
 
-# ネイティブランタイムのビルド
+# Build the native runtime
 scripts\build-runtime.ps1
+
+# From here, you can launch the demo just like for Customers
 ```
 
-- `tools/` フォルダ内のPythonスクリプトを利用することで、Ren'Pyを起動せずにヘッドレスでの動作検証が可能です。
-- 仕様の詳細や正しい実装方法については、**必ず `SpriteStudio-SDK/libs/ssruntime/docs/` にあるPlayer移植ドキュメント（ポーティングガイド）を参照**してください。
+- By using the Python scripts in the `tools/` folder, you can perform headless behavior verification without launching Ren'Py.
+- For detailed specifications and correct implementation methods, **make sure to refer to the Player porting guide in `SpriteStudio-SDK/libs/ssruntime/docs/`**.

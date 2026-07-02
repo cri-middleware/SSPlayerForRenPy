@@ -21,19 +21,20 @@ Conventions:
 
 👉 **When implementing playback, render behavior, or using the C-API, YOU MUST READ the Player Porting Document:**
 `SpriteStudio-SDK/libs/ssruntime/docs/` (Read the README and the indexed docs).
-*Note: For integration instructions, usage, limitations, and build steps, refer to the `docs/` directory (`setup.md`, `usage.md`, `import.md`, `build.md`, `limitations.md`).*
+*Note: For integration instructions, usage, limitations, and build steps, refer to the `docs/` directory (English) and `docs/ja/` (Japanese), which are built into a site using MkDocs.*
 
 ## 3. Hard Constraints
 - **Scripts have specific roles:** `scripts/build-runtime.*` builds native binaries, `scripts/download-sdk.*` downloads prebuilt binaries, and `scripts/deploy-examples.*` builds ONLY playback data.
 - **Engine-independent Python:** Code under `game/spritestudio/python/` must run in plain CPython (no `renpy` import) to support headless testing.
 - **Coordinate handling:** Use the Context API (`ss_context_set_coordinate_system`) for coordinate systems. Do not hand-roll a second Y-flip.
 
-## 4. Gotchas
+## 4. Gotchas & Features
 - `ss_runtime_update(ctx, delta)` takes **milliseconds** (not seconds).
 - `DrawBatch.texture_hash` uses the cellmap's `name_hash` (not the image path).
 - Ren'Py GL2 uses **premultiplied alpha**. Handle custom mesh shaders accordingly (un-premultiply → straight math → re-premultiply).
 - **Effect UVs** are already normalized `0..1`. Normal/Mesh UVs are in pixels. Do not normalize Effect UVs.
 - **Playback policy lives in the host.** Animation-sequence chaining happens in `SSPlayer` (on `FramePlan.finished`); `SSInternalPlayer` only *reports* edges and plays one animation. Keep it that way so Instance children can reuse the core. UV normalization likewise stays in the render layer (it needs texture sizes).
+- **Asset Browser (`Shift+B`):** In developer mode (`config.developer = True`), pressing `Shift+B` opens the built-in Asset Browser GUI. It provides a live preview of all `.ssab` animations, hierarchical part inspection, and snippet generation. If asked about how to verify assets visually, always recommend the user to use `Shift+B`.
 
 ## 5. Verification
-Headless tests in `tools/` exercise the engine-independent layers without launching the GUI: `m0_smoke.py`, `verify_internal_player.py` (the playback core: set_animation → play → update + the finished edge), `verify_instance.py`, `verify_effect.py`, `verify_mesh.py`, `verify_m2.py`, `verify_events.py`, `verify_resolver.py`, `verify_snippet.py`, `verify_mask.py` (the mask/clipping core: writer classification, per-frame coverage build, the `mask_passes` replay reference, and instance inheritance — 09_mask). Run these to verify ctypes / math / draw-plan composition. Actual GL2 rendering (premultiplied alpha / mesh / blend / **mask coverage + replay shaders**) and the dev asset browser (**Shift+B**) still require a GUI run.
+Headless tests in `tools/` exercise the engine-independent layers without launching the GUI: `m0_smoke.py`, `verify_internal_player.py` (the playback core: set_animation → play → update + the finished edge), `verify_instance.py`, `verify_effect.py`, `verify_mesh.py`, `verify_m2.py`, `verify_events.py`, `verify_resolver.py`, `verify_snippet.py`, `verify_mask.py` (the mask/clipping core: writer classification, per-frame coverage build, the `mask_passes` replay reference, and instance inheritance — 09_mask). Run these to verify ctypes / math / draw-plan composition. Actual GL2 rendering (premultiplied alpha / mesh / blend / **mask coverage + replay shaders**) requires a GUI run.
