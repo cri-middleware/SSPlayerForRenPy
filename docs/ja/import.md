@@ -8,7 +8,9 @@ graph LR
 
     subgraph Convert ["変換プロセス"]
         AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
+        GUI[[" SSConverterGUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
+        WEB[[" ssconverter-web<br>(Webブラウザ) "]]
     end
 
     subgraph RenPy ["Ren'Py プロジェクト (game/)"]
@@ -18,9 +20,13 @@ graph LR
     end
 
     SS -- "SpriteStudio_Source/ に配置" --> AUTO
-    SS -- "手動 / バッチ処理" --> CLI
+    SS -- "ドラッグ＆ドロップ" --> GUI
+    SS -- "CLI / CI" --> CLI
+    SS -- "ブラウザにドロップ" --> WEB
     AUTO -. "自動生成" .-> BIN
+    GUI -. "生成" .-> BIN
     CLI -. "生成" .-> BIN
+    WEB -. "ダウンロード(.zip)と解凍" .-> BIN
     
     BIN -- "スクリプトで指定" --> NODE
     NODE -. "バイナリをロード" .-> RT
@@ -59,7 +65,23 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 
 ---
 
-## 方法2: CLIコンバータ (`ssconverter-cli`) による手動 / バッチ処理
+## 方法2: 専用GUIツール (`SSConverterGUI`) による手動変換
+
+コマンドライン操作に慣れていない方や、ドラッグ＆ドロップで手軽に変換したい場合は、専用のデスクトップアプリケーション **`SSConverterGUI`** の利用をおすすめします。
+
+### ダウンロードと使い方
+
+1. [SSConverterGUI の Releases ページ](https://github.com/cri-middleware/SSConverterGUI/releases) から、お使いの OS に合った最新版をダウンロードして起動します。
+2. アプリケーションウィンドウの指定エリアに、変換したい `.sspj` ファイル、または `.sspj` が含まれるフォルダを直接 **ドラッグ＆ドロップ** します。
+3. （オプション）出力先ディレクトリを指定し、「Convert」ボタンを押すと一括で `.ssab` が生成されます。
+4. 完了後、出力されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Hero/`）に手動で配置してください。
+
+> [!NOTE]
+> フォルダをドロップするだけで内部の `.sspj` を自動で探し出して一括変換できるため、非常に簡単です。
+
+---
+
+## 方法3: CLIコンバータ (`ssconverter-cli`) による CLI / CI
 
 CI/CD (継続的インテグレーション) での自動ビルドや、大規模プロジェクトで一括バッチ処理を行いたい場合は、独立した実行ツールである **`ssconverter-cli`** の利用がおすすめです。Godot や Unity 向けなどでも共通して使われているこのツールを使えば、PythonやRen'Pyの実行環境がなくてもコマンドラインから直接コンバート処理を行えます。
 
@@ -95,6 +117,18 @@ ssconverter-cli SpriteStudio_Source/Hero/Hero.sspj
 ssconverter-cli SpriteStudio_Source/
 ```
 複数のキャラクターやシーンのアニメーションデータを一気に変換・更新したい場合に非常に便利です。
+
+---
+
+## 方法4: Webブラウザ版コンバータ (`ssconverter-web`)
+
+インストール不要で、手元のブラウザ上で手軽に変換を試したい場合は、姉妹プロジェクトである `SSPlayerForWeb` に付属する **`ssconverter-web`** を利用することもできます。
+
+- WebAssembly を利用してブラウザ内でローカル処理を行うため、ファイルが外部サーバーに送信されることはありません。
+- 変換したい `.sspj` と関連ファイル（画像など）をブラウザ画面にドラッグ＆ドロップすると変換処理が走り、結果が **`.zip` 形式でダウンロード** されます。
+- ダウンロードされた `.zip` を解凍し、生成された `.ssab` と画像を一緒にご自身の `game/` フォルダ内に配置してください。
+
+詳しくは [SSPlayerForWeb リポジトリ](https://github.com/cri-middleware/SSPlayerForWeb) のドキュメントをご参照ください。
 
 ---
 

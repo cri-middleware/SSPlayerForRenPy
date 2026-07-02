@@ -1,6 +1,6 @@
-# SpriteStudio Player for Ren'Py
+[**English**](./README.md) | [**日本語**](./README.ja.md)
 
-**[日本語 (Japanese) はこちら](README.ja.md)**
+# SpriteStudio Player for Ren'Py
 
 An extension library (player) for playing **[SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) in [Ren'Py](https://www.renpy.org/).
 

@@ -8,7 +8,9 @@ graph LR
 
     subgraph Convert ["Conversion Process"]
         AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
+        GUI[[" SSConverterGUI<br>(GUI App) "]]
         CLI[[" ssconverter-cli<br>(CLI Tool) "]]
+        WEB[[" ssconverter-web<br>(Web Browser) "]]
     end
 
     subgraph RenPy ["Ren'Py Project (game/)"]
@@ -18,9 +20,13 @@ graph LR
     end
 
     SS -- "Place in SpriteStudio_Source/" --> AUTO
-    SS -- "Manual / Batch Processing" --> CLI
+    SS -- "Drag & Drop" --> GUI
+    SS -- "CLI / CI" --> CLI
+    SS -- "Drop in Browser" --> WEB
     AUTO -. "Auto-Generate" .-> BIN
+    GUI -. "Generate" .-> BIN
     CLI -. "Generate" .-> BIN
+    WEB -. "Download(.zip) & Unzip" .-> BIN
     
     BIN -- "Referenced in Script" --> NODE
     NODE -. "Load Binary" .-> RT
@@ -59,7 +65,23 @@ If a file update is detected during the startup initialization phase, the conver
 
 ---
 
-## Method 2: Manual / Batch Processing using CLI Converter (`ssconverter-cli`)
+## Method 2: Manual Conversion via Standalone GUI Tool (`SSConverterGUI`)
+
+If you are not familiar with command-line operations or prefer to convert files easily using drag-and-drop, we recommend using the dedicated desktop application **`SSConverterGUI`**.
+
+### Download and Usage
+
+1. Download and launch the latest version suitable for your OS from the [SSConverterGUI Releases page](https://github.com/cri-middleware/SSConverterGUI/releases).
+2. Directly **drag and drop** the `.sspj` file or a folder containing `.sspj` files into the designated area of the application window.
+3. (Optional) Specify the output directory and press the "Convert" button to generate the `.ssab` files all at once.
+4. After conversion, manually move the output folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Hero/`).
+
+> [!NOTE]
+> It is extremely easy to use, as dropping a folder automatically finds and batch-converts all `.sspj` files inside it.
+
+---
+
+## Method 3: CLI / CI using CLI Converter (`ssconverter-cli`)
 
 For automated builds in CI/CD (Continuous Integration) or batch processing across large-scale projects, we recommend using the independent execution tool **`ssconverter-cli`**. This tool, which is also commonly used for Godot and Unity, allows you to perform conversions directly from the command line without needing Python or Ren'Py execution environments.
 
@@ -95,6 +117,18 @@ By specifying a directory path instead of a file, it will automatically find all
 ssconverter-cli SpriteStudio_Source/
 ```
 This is very convenient when you want to convert and update animation data for multiple characters or scenes in one go.
+
+---
+
+## Method 4: Web-based Converter (`ssconverter-web`)
+
+If you want to try conversion quickly in your browser without installing any tools, you can use **`ssconverter-web`**, which is included in the sister project `SSPlayerForWeb`.
+
+- It uses WebAssembly to process files locally within the browser, meaning your files are never uploaded to an external server.
+- Simply drag and drop the `.sspj` and related files (like images) into the browser window. The converted result will be **downloaded as a `.zip` file**.
+- Unzip the downloaded `.zip` file, and place the generated `.ssab` and images together in your `game/` folder.
+
+For details, please refer to the documentation in the [SSPlayerForWeb repository](https://github.com/cri-middleware/SSPlayerForWeb).
 
 ---
 
