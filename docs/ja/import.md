@@ -15,6 +15,8 @@ graph LR
         WEB[[" ssconverter-web<br>(Webブラウザ) "]]
     end
 
+    DEPLOY(("配置<br>(Deploy)"))
+
     subgraph RenPy ["② 実行時（Ren'Pyプロジェクト内）"]
         BIN[" .ssab + テクスチャ "]
         NODE[[ SSPlayer ]]
@@ -25,11 +27,13 @@ graph LR
     SS -- "ドラッグ＆ドロップ" --> GUI
     SS -- "CLI / CI" --> CLI
     SS -- "ブラウザにドロップ" --> WEB
-    AUTO -. "自動生成" .-> BIN
-    GUI -. "手動で配置" .-> BIN
-    CLI -. "手動で配置" .-> BIN
-    WEB -. "解凍して配置" .-> BIN
     
+    AUTO -. "自動生成" .-> BIN
+    GUI -. "手動で配置" .-> DEPLOY
+    CLI -. "手動で配置" .-> DEPLOY
+    WEB -. "解凍して配置" .-> DEPLOY
+    
+    DEPLOY --> BIN
     BIN -- "スクリプトで指定" --> NODE
     NODE -. "バイナリをロード" .-> RT
 

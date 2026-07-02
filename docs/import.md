@@ -15,6 +15,8 @@ graph LR
         WEB[[" ssconverter-web<br>(Web Browser) "]]
     end
 
+    DEPLOY(("Deploy"))
+
     subgraph RenPy ["② Runtime (Inside Ren'Py Project)"]
         BIN[" .ssab + Textures "]
         NODE[[ SSPlayer ]]
@@ -25,13 +27,15 @@ graph LR
     SS -- "Drag & Drop" --> GUI
     SS -- "CLI / CI" --> CLI
     SS -- "Drop in Browser" --> WEB
-    AUTO -. "Auto-Generate" .-> BIN
-    GUI -. "Manual Deploy" .-> BIN
-    CLI -. "Manual Deploy" .-> BIN
-    WEB -. "Unzip & Deploy" .-> BIN
     
-    BIN -- "Referenced in Script" --> NODE
-    NODE -. "Load Binary" .-> RT
+    AUTO -. "Auto Generate" .-> BIN
+    GUI -. "Manual Deploy" .-> DEPLOY
+    CLI -. "Manual Deploy" .-> DEPLOY
+    WEB -. "Unzip & Deploy" .-> DEPLOY
+    
+    DEPLOY --> BIN
+    BIN -- "Specified in script" --> NODE
+    NODE -. "Load binary" .-> RT
 
     classDef generated stroke-dasharray: 5 5;
     class BIN generated;
