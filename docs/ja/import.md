@@ -24,9 +24,9 @@ graph LR
     SS -- "CLI / CI" --> CLI
     SS -- "ブラウザにドロップ" --> WEB
     AUTO -. "自動生成" .-> BIN
-    GUI -. "生成" .-> BIN
-    CLI -. "生成" .-> BIN
-    WEB -. "ダウンロード(.zip)と解凍" .-> BIN
+    GUI -. "手動で配置" .-> BIN
+    CLI -. "手動で配置" .-> BIN
+    WEB -. "解凍して配置" .-> BIN
     
     BIN -- "スクリプトで指定" --> NODE
     NODE -. "バイナリをロード" .-> RT

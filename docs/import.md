@@ -24,9 +24,9 @@ graph LR
     SS -- "CLI / CI" --> CLI
     SS -- "Drop in Browser" --> WEB
     AUTO -. "Auto-Generate" .-> BIN
-    GUI -. "Generate" .-> BIN
-    CLI -. "Generate" .-> BIN
-    WEB -. "Download(.zip) & Unzip" .-> BIN
+    GUI -. "Manual Deploy" .-> BIN
+    CLI -. "Manual Deploy" .-> BIN
+    WEB -. "Unzip & Deploy" .-> BIN
     
     BIN -- "Referenced in Script" --> NODE
     NODE -. "Load Binary" .-> RT
