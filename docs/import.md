@@ -134,5 +134,5 @@ For details, please refer to the documentation in the [SSPlayerForWeb repository
 
 ## Release Builds and Archives (`.rpa`)
 
-Because `.ssab` files and textures (`.png`) are loaded via Ren'Py's loader, **they can be successfully loaded even if included in an `.rpa` archive**.
+Because `.ssab` files and textures (PNG / WebP) are loaded via Ren'Py's loader, **they can be successfully loaded even if included in an `.rpa` archive**. Textures go through Ren'Py's standard image pipeline (`Image`), so any format Ren'Py supports — PNG or WebP — works just like every other image in your project.
 When archiving `game/` for distribution builds (e.g., via `build.classify`), you may simply leave them to be archived. They will also work properly if left as loose files.

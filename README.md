@@ -2,9 +2,16 @@
 
 # SpriteStudio Player for Ren'Py
 
-An extension library (player) for playing **[SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) in [Ren'Py](https://www.renpy.org/).
+**Give your visual novel editor-crafted 2D animation — in just a few lines of script, no video files.**
 
-With this player, Ren'Py users are freed from writing long, complex ATL (Animation and Transformation Language) or custom animation logic. You can easily integrate highly expressive 2D animations crafted in the dedicated editor—such as smoothly moving character sprites, dynamic UI, and effects—into your project with just a few lines of script. It delivers lightweight, native performance without relying on heavy video files.
+An extension (player) that plays **[OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
+
+## ✨ Why SpriteStudio Player?
+
+- **Editor-crafted animation, not hand-written ATL.** SpriteStudio 7 is a dedicated editor for **raster-based 2D animation** — bone hierarchies, mesh deformation, particle effects. You build the motion visually and the player just plays it, so there's no long, complex ATL (Animation and Transformation Language) to hand-write for the animation itself.
+- **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back. No bloated video files.
+- **Uses the art you already have (PNG / WebP).** Textures load through Ren'Py's standard image pipeline, so PNG and WebP work exactly like every other image in your project.
+- **Still composes with ATL & `Transform`.** `SSPlayer` is a standard Ren'Py Displayable, so you keep ATL where it shines — position, slide, zoom, or fade the whole animated sprite exactly like any other image.
 
 ## 📚 Documentation
 
