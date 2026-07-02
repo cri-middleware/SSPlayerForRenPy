@@ -1,5 +1,7 @@
 # SpriteStudio Player for Ren'Py
 
+**[English is here](README.md)**
+
 **[SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** のアニメーション (`.ssab`) を [Ren'Py](https://www.renpy.org/) で再生するための拡張ライブラリ（プレイヤー）です。
 
 ## 📚 ドキュメント (Documentation)
