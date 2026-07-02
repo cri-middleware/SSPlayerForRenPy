@@ -71,3 +71,9 @@ git submodule update --init --recursive
 scripts\build-runtime.ps1
 ```
 *For detailed specifications, be sure to read the Player Porting Guide located in `SpriteStudio-SDK/libs/ssruntime/docs/`.*
+
+## 📄 License
+
+This project and its output are provided under the [LICENSE.md](LICENSE.md) (BSD-3-Clause).
+
+For the licenses of the bundled `SpriteStudio-SDK` and other third-party libraries used in this project, please refer to [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
