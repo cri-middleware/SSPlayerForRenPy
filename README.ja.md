@@ -12,11 +12,11 @@
 - **SDK・Player開発者**: ネイティブライブラリ(Rust)を含めたコア部分から自身でビルドし、開発・改修を行いたい方
 
 目的別の詳細な手順や仕様については、以下のドキュメントをご参照ください。
-- **[導入ガイド (Setup)](docs/setup.md)**: ゲームプロジェクトへの組み込み方法（利用者向け）
-- **[データのコンバート (Import)](docs/import.md)**: アニメーションデータ (`.sspj`) の変換方法
-- **[再生と制御 (Usage)](docs/usage.md)**: Ren'Pyスクリプトからの呼び出し方
-- **[ビルド・カスタマイズガイド (Build)](docs/build.md)**: カスタマイズ環境の構築とネイティブのビルド手順（カスタマー・開発者向け）
-- **[仕様と制約事項 (Limitations)](docs/limitations.md)**: 対応状況・未サポート機能の一覧
+- **[導入ガイド (Setup)](docs/ja/setup.md)**: ゲームプロジェクトへの組み込み方法（利用者向け）
+- **[データのコンバート (Import)](docs/ja/import.md)**: アニメーションデータ (`.sspj`) の変換方法
+- **[再生と制御 (Usage)](docs/ja/usage.md)**: Ren'Pyスクリプトからの呼び出し方
+- **[ビルド・カスタマイズガイド (Build)](docs/ja/build.md)**: カスタマイズ環境の構築とネイティブのビルド手順（カスタマー・開発者向け）
+- **[仕様と制約事項 (Limitations)](docs/ja/limitations.md)**: 対応状況・未サポート機能の一覧
 
 ---
 
@@ -30,7 +30,7 @@
 screen demo():
     add SSPlayer("overall/Basic.ssab") xalign 0.5 yalign 0.5
 ```
-※詳しくは [導入ガイド](docs/setup.md) および [再生と制御](docs/usage.md) をご覧ください。
+※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
 
 ## 🛠 2. カスタマー向け: Playerのカスタマイズ
 Ren'Py側のPythonコードやRen'Pyスクリプトを改修したいが、Rust製のSDKコア(ネイティブライブラリ)はビルドせずに既存のものをそのまま利用したい方向けの環境構築です。
@@ -67,7 +67,7 @@ scripts\deploy-examples.ps1
 scripts\fetch-renpy-sdk.ps1
 scripts\run-demo.ps1
 ```
-※詳細は [ビルド・カスタマイズガイド](docs/build.md) をご覧ください。
+※詳細は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
 
 ## ⚙️ 3. SDK・Player開発者向け: フルビルド環境
 アニメーション計算のコア部分を担うRust製サブモジュール (`SpriteStudio-SDK`) も含めて開発・コントリビュートを行いたい方向けの手順です。
