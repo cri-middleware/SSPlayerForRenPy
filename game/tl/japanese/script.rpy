@@ -20,9 +20,6 @@ translate japanese strings:
     old "SSPlayer helper functions sample"
     new "SSPlayer ヘルパー機能のサンプル"
 
-    old "Watch Mask / Clipping-Mask Sample"
-    new "マスク / クリッピングマスクのサンプルを見る"
-
     old "Browse Imported Assets (auto-discovered)"
     new "インポート済みアセットを閲覧（自動検出）"
 

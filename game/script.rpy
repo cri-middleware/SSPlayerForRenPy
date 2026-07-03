@@ -112,9 +112,6 @@ screen ss_main_menu():
             textbutton _("Basic Feature Viewer"):
                 action Return("viewer_demo")
                 text_size 24
-            textbutton _("Watch Mask / Clipping-Mask Sample"):
-                action Return("mask_demo")
-                text_size 24
             textbutton _("Browse Imported Assets (auto-discovered)"):
                 action Return("asset_picker_demo")
                 text_size 24
