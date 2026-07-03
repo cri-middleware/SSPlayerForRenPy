@@ -145,28 +145,38 @@ def _quad_writer_geom(rt, fd, p, thash):
 def _shape_writer_geom(rt, fd, p):
     """Coverage geometry for a cell-less writer (Shape / draw_as_mask part).
 
-    Shape parts carry no cell, so the runtime leaves their entry in the Normal
-    ``local_vertices`` SoA empty (it collapses to a point). Their region is
-    instead the part's ``PartState.Size`` box, which we transform by the world
-    matrix to a quad — texture-less (whole geometry is the mask, 09_mask §2-5).
-    A true vector shape (circle / polygon) is thus approximated by its bounding
-    box; a rectangle shape is exact. Returns None for a zero-size part.
+    Prefer the runtime's **real Shape geometry** (the ``shape_vertices`` SoA — a
+    TRIANGLE_FAN of the actual rectangle / triangle / star / arrow), so a shape
+    mask cuts its true silhouette rather than a bounding box. Falls back to the
+    part's ``PartState.Size`` box (transformed by the world matrix) for a
+    cell-less writer the runtime exposes no shape geometry for — texture-less,
+    whole geometry is the mask (09_mask §2-5). Returns None for a zero-size /
+    empty part.
     """
-    wm, _ = rt.world_matrices()
+    wm, wn = rt.world_matrices()
     if not wm:
         return None
     ps = fd.Parts(p)
     if ps is None:
         return None
+    # Real shape polygon (exact silhouette) when the runtime provides it.
+    shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
+                 rt.shape_vertex_counts())
+    sp = framedata._read_shape_part(shape_soa, wm, wn, fd, ps, p, 0, False)
+    if sp is not None and len(sp.positions) >= 3:
+        return dict(positions=list(sp.positions),
+                    uvs=[(0.0, 0.0)] * len(sp.positions),
+                    triangles=list(sp.triangles), texture_hash=0,
+                    has_texture=False)
+    # Fallback: size-based bounding quad (pivot assumed centred, matching how a
+    # Normal part's cell quad is laid out about its origin).
     sx, sy = ps.SizeX() or 0.0, ps.SizeY() or 0.0
     if sx <= 0.0 or sy <= 0.0:
         return None
     hx, hy = sx / 2.0, sy / 2.0
     mo = p * framedata.MATRIX_STRIDE
     mat = wm[mo:mo + framedata.MATRIX_STRIDE]
-    # Local corners LT, RT, LB, RB (Y-down), pivot assumed centred (matches how
-    # a Normal part's cell quad is laid out about its origin).
-    local = ((-hx, -hy), (hx, -hy), (-hx, hy), (hx, hy))
+    local = ((-hx, -hy), (hx, -hy), (-hx, hy), (hx, hy))   # LT, RT, LB, RB (Y-down)
     positions = [framedata._transform(mat, lx, ly) for (lx, ly) in local]
     return dict(positions=positions, uvs=[(0.0, 0.0)] * 4,
                 triangles=list(_QUAD_TRIS), texture_hash=0, has_texture=False)

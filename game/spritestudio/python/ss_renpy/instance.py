@@ -98,7 +98,7 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                 continue
             for eb in batches:
                 out.append(("fx", eb))
-        # "skip": unsupported kind (Shape / Mesh / Text / Nines / Mask) — ignored
+        # "skip": unsupported kind (Text / Nines / Mask) — ignored
     return out
 
 

@@ -15,8 +15,10 @@ Two render paths are provided, both for the ``Normal`` draw-batch kind:
   framebuffer + PartColor blend modes. This is what a model-based mesh renderer
   consumes and is shear/free-deform exact.
 
-Other batch kinds (Mesh, Shape, Effect, Mask, Instance, Text, Nines) are
-enumerated for diagnostics but not yet emitted — see :func:`classify_frame`.
+The z-ordered walk :func:`iter_draw_plan` additionally emits Mesh(deform) and
+Shape parts (both as ``("mesh", MeshPart)`` — a Shape is a textureless
+procedural polygon) plus Instance / Effect slots. The remaining kinds (Text,
+Nines, Mask) are enumerated for diagnostics only — see :func:`classify_frame`.
 
 SoA lifetime: the pointers returned by the runtime are valid only until the
 next Brain call. Build geometry immediately after ``get_frame_data`` and do not
@@ -59,6 +61,10 @@ MATRIX_STRIDE = 16   # 4×4 world matrix, column-major
 VERT_STRIDE = 10     # local vertices: LT,RT,LB,RB,CENTER × (x, y)
 UV_STRIDE = 10       # local UVs: same layout, in texture-pixel space
 CELL_STRIDE = 6      # cell meta: [pivot_x, pivot_y, size_w, size_h, rect_left, rect_top]
+# Shape SoA: fixed 12 verts/part × (x, y) for local positions, and × (fx, fy)
+# for the matching normalized bbox coords. Only the first shape_vertex_counts[p]
+# slots are valid; the runtime caps a shape at 12 verts (star = 12).
+SHAPE_STRIDE = 24
 
 # Vertex order within a part (indices into the 5-vertex local position/UV arrays).
 LT, RT, LB, RB, CENTER = 0, 1, 2, 3, 4
@@ -336,6 +342,70 @@ def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
         color_blend=PC_BLEND_MIX, positions=positions, uvs=uvs, colors=colors,
         rates=rates, triangles=tris, src_rect=(0, 0, 0, 0),
         mask_influence=mask, use_center=False, has_partcolor=False)
+
+
+def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask):
+    """Build a :class:`MeshPart` for a Shape part from the shape SoA.
+
+    Shape parts are textureless procedural polygons (Rectangle / Triangle /
+    Star / Arrow). The runtime emits, per part, up to 12 LOCAL vertices
+    (post-pivot, post-coord-system) laid out as a TRIANGLE_FAN from vertex 0,
+    plus matching normalized bbox coords ((0, 0) = LT .. (1, 1) = RB). Positions
+    are sent through the part's world matrix (exactly like a Normal part's local
+    vertices); the fill is the PartColor with ``rate`` forced to 1.0 — a shape
+    has no texel to blend against (SCHEMA.md / 10_parts_color: Shape is rate-1.0),
+    so the (white) texture supplied by the render layer is fully replaced by the
+    interpolated corner colour. Returns ``None`` for a non-shape part or a
+    degenerate range (<3 valid verts, e.g. a size-collapsed shape).
+    """
+    (sv, nsv), (sb, nsb), (sc, nsc) = shape_soa
+    if not sv or not sc or p >= nsc:
+        return None
+    count = int(sc[p])
+    if count < 3:
+        return None
+    mo = p * MATRIX_STRIDE
+    so = p * SHAPE_STRIDE
+    if mo + MATRIX_STRIDE > wn or so + count * 2 > nsv or so + count * 2 > nsb:
+        return None
+    mat = wm[mo:mo + MATRIX_STRIDE]
+    # Bulk-slice the ctypes SoA pointers once (mirrors _read_mesh_part) rather
+    # than indexing per element — per-element ctypes access is the hot cost.
+    lv = sv[so:so + count * 2]
+    bc = sb[so:so + count * 2]
+    positions = [_transform(mat, lv[j * 2], lv[j * 2 + 1]) for j in range(count)]
+
+    # Per-vertex colour: bilinear-interpolate the four PartColor corners across
+    # the shape's bbox (fx, fy). ``part_colors`` returns [LT, RT, LB, RB]; a part
+    # with no ``parts_color`` entry gets white × hierarchical alpha (so a shape
+    # still fills solid).
+    #
+    # A Shape **bypasses the PartColor blend formula** (SSPlayerForWeb
+    # GeometryBuilder.buildShape, 10_parts_color): a textureless shape has no
+    # texel to blend against, so the blend mode is FORCED to Mix and the rate to
+    # 1.0 — the fill is the interpolated corner colour itself, regardless of the
+    # part's authored PartColor blend (Add/Sub against the white texel would
+    # otherwise blow out / invert). The authored ``blend`` from ``part_colors``
+    # is intentionally discarded.
+    _authored_blend, corners = part_colors(fd, ps)
+    lt, rt, lb, rb = corners
+    colors = []
+    for j in range(count):
+        fx, fy = bc[j * 2], bc[j * 2 + 1]
+        w = ((1.0 - fx) * (1.0 - fy), fx * (1.0 - fy),
+             (1.0 - fx) * fy, fx * fy)          # LT, RT, LB, RB weights
+        colors.append(tuple(
+            lt.rgba[c] * w[0] + rt.rgba[c] * w[1]
+            + lb.rgba[c] * w[2] + rb.rgba[c] * w[3] for c in range(4)))
+    rates = [1.0] * count
+    # TRIANGLE_FAN from vertex 0 (centre for rect/tri/star; leading corner for
+    # arrow). count-2 triangles; the closing vertex makes the fan wrap.
+    tris = [(0, i, i + 1) for i in range(1, count - 1)]
+    return MeshPart(
+        part_index=p, texture_hash=0, blend_type=blend, color_blend=PC_BLEND_MIX,
+        positions=positions, uvs=[(0.0, 0.0)] * count, colors=colors,
+        rates=rates, triangles=tris, src_rect=(0, 0, 0, 0),
+        mask_influence=mask, use_center=False, has_partcolor=True)
 
 
 def _iter_visible_normal_parts(rt, fd: FrameData):
@@ -630,10 +700,11 @@ def iter_draw_plan(rt, fd: FrameData):
 
     Yields, in draw order, one of:
 
-    * ``("mesh", MeshPart)`` — a visible Normal *or* Mesh(deform) part;
+    * ``("mesh", MeshPart)`` — a visible Normal, Mesh(deform) *or* Shape part
+      (Shape is a textureless procedural polygon; ``texture_hash == 0``);
     * ``("instance", part_index, matrix, alpha, hidden)`` — an Instance slot;
     * ``("effect", part_index, matrix, alpha, hidden)`` — an Effect slot;
-    * ``("skip", kind, part_index)`` — an unsupported kind (Shape/Text/Nines/Mask).
+    * ``("skip", kind, part_index)`` — an unsupported kind (Text/Nines/Mask).
 
     ``matrix`` is the part's 16-float column-major world matrix (a *copy*) and
     ``alpha`` its hierarchical ``PartState.alpha``. Every payload is copied out
@@ -655,7 +726,25 @@ def iter_draw_plan(rt, fd: FrameData):
     mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
                 rt.mesh_indices(), rt.mesh_vertex_offsets(),
                 rt.mesh_index_offsets())
+    # Shape SoA — fixed 12-vert/part local positions + bbox coords + valid
+    # counts. Cheap pointer fetch even when the pack has no Shape parts (counts
+    # are then all zero / skipped).
+    shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
+                 rt.shape_vertex_counts())
     parts = bulk_part_states(fd)
+    # Parts emitted as a Mask batch write coverage only — no colour output. A pure
+    # Mask-type part has ONLY a Mask batch (already yielded as "skip"), but a
+    # ``draw_as_mask`` Shape/Normal/Mesh part ALSO emits its own colour batch at
+    # the same draw-order slot; that colour batch must be suppressed (the part is
+    # the mask, not a drawn sprite — 09_mask). Clipping writers (``mask_write``)
+    # emit no Mask batch, so they are absent here and draw normally.
+    mask_only_parts = set()
+    for b in range(fd.DrawBatchesLength()):
+        batch = fd.DrawBatches(b)
+        if batch.Kind() == KIND_MASK:
+            s, c = batch.StartRank(), batch.Count()
+            for k in range(c):
+                mask_only_parts.add(fd.DrawOrder(s + k))
     for b in range(fd.DrawBatchesLength()):
         batch = fd.DrawBatches(b)
         kind = batch.Kind()
@@ -665,6 +754,8 @@ def iter_draw_plan(rt, fd: FrameData):
         start, count = batch.StartRank(), batch.Count()
         for k in range(count):
             p = fd.DrawOrder(start + k)
+            if kind != KIND_MASK and p in mask_only_parts:
+                continue   # draw_as_mask: contributes coverage, not colour
             ps = parts[p] if parts is not None else fd.Parts(p)
             hidden = ps is None or ps.Hide()
             if kind == KIND_NORMAL:
@@ -678,6 +769,12 @@ def iter_draw_plan(rt, fd: FrameData):
                 mp = _read_mesh_part(mesh_soa, ps, p, blend, thash, mask)
                 if mp is not None:
                     yield ("mesh", mp)
+            elif kind == KIND_SHAPE:
+                if not have_soa or hidden:
+                    continue
+                sp = _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask)
+                if sp is not None:
+                    yield ("mesh", sp)
             elif kind == KIND_INSTANCE or kind == KIND_EFFECT:
                 mo = p * MATRIX_STRIDE
                 mat = (list(wm[mo:mo + MATRIX_STRIDE])

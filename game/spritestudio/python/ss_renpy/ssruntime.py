@@ -678,6 +678,23 @@ class SSRuntime:
     def mesh_index_offsets(self):
         return self._soa_uint32(self._lib.ss_runtime_get_mesh_index_offsets)
 
+    # -- Shape SoA buffers (Shape-kind parts) -----------------------------
+    # Procedural shape geometry (Rectangle/Triangle/Star/Arrow). Fixed stride
+    # of 12 vertices/part (24 floats): ``shape_vertices`` are LOCAL, post-pivot,
+    # post-coord-system (multiply by the world matrix, like local_vertices);
+    # ``shape_vertex_box_coords`` are the matching normalized bbox coords
+    # ((0,0)=LT .. (1,1)=RB) for per-vertex PartColor interpolation. Only the
+    # first ``shape_vertex_counts()[part]`` slots are valid (0 for non-shape
+    # parts). Shape parts carry no texture — the fill is the PartColor.
+    def shape_vertices(self):
+        return self._soa_float(self._lib.ss_runtime_get_shape_vertices)
+
+    def shape_vertex_box_coords(self):
+        return self._soa_float(self._lib.ss_runtime_get_shape_vertex_box_coords)
+
+    def shape_vertex_counts(self):
+        return self._soa_int32(self._lib.ss_runtime_get_shape_vertex_counts)
+
     # -- Instance / Effect slots (docs/08 "Instance / Effect") ------------
     # Instance: stateless slot stepped against a *child* context per call.
     # Effect: stateful slot bound to this runtime's resource + an effect hash.
