@@ -32,14 +32,14 @@ init python:
             if f.endswith(".ssab"):
                 SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
 
-    def ss_make(entry):
+    def ss_make(entry, animation=None):
         # entry is (dir, pack); we just join them into the .ssab path. The
         # event-log overlay consumes events via ss_poll_events() (see
         # ss_drain_events), so we don't pass callbacks here — but the constructor
         # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
         # on_started if you prefer push delivery.
         subdir, pack = entry
-        return SSPlayer(subdir + "/" + pack)
+        return SSPlayer(subdir + "/" + pack, animation=animation)
 
     def ss_pack_name(entry):
         return entry[1]
@@ -61,7 +61,7 @@ init python:
         except ValueError:
             idx = 0
         new_idx = (idx + delta) % len(names)
-        player.ss_play(names[new_idx])
+        store.ss_current = ss_make(SS_DEMO_PACKS[store.ss_index], animation=names[new_idx])
         store.ss_event_log = []
         renpy.restart_interaction()
 

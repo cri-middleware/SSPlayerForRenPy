@@ -18,4 +18,4 @@ if (-not (Test-Path $Launcher)) {
 }
 
 Write-Host "Launching the SSPlayer demo: $Launcher $RootDir"
-& $Launcher $RootDir
+Start-Process -FilePath $Launcher -ArgumentList $RootDir -Wait -NoNewWindow

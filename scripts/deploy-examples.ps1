@@ -31,7 +31,14 @@ if (-not $SdkDir) {
 if (-not $SdkDir -or -not (Test-Path (Join-Path $SdkDir "Cargo.toml"))) {
     Write-Error "SpriteStudio-SDK not found (init the submodule or set `$env:SSSDK)"
 }
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) { Write-Error "python not on PATH" }
+$pythonCmd = "python"
+if (-not (Get-Command $pythonCmd -ErrorAction SilentlyContinue)) {
+    if (Get-Command "python3" -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python3"
+    } else {
+        Write-Error "python/python3 not on PATH"
+    }
+}
 
 # --- convert test projects -> SpriteStudio_Source/ -> game\ss_assets\<project> ---
 $SourceDir = Join-Path $RootDir "SpriteStudio_Source"
@@ -51,7 +58,7 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     
     $sspjPath = Join-Path $workDir "$ProjectName.sspj"
-    python (Join-Path $RootDir "tools\cli_convert.py") $sspjPath $Dest
+    & $pythonCmd (Join-Path $RootDir "tools\cli_convert.py") $sspjPath $Dest
 }
 
 Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")
