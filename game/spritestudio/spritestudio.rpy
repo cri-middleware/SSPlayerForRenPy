@@ -1075,6 +1075,9 @@ init -10 python:
             self._last_st = None
             self._warned = set()
             self._mask_white = None  # cached white tex0 for textureless writers
+            # Atlases still to force onto the GPU (see _prewarm_textures): None
+            # until the first render snapshots them, then drained a few per frame.
+            self._prewarm_pending = None
 
         def __getstate__(self):
             """Drop the native-backed core + caches for pickling/saves; they are
@@ -1085,6 +1088,7 @@ init -10 python:
             state["_texpath"] = {}
             state["_last_st"] = None
             state["_warned"] = set()
+            state["_prewarm_pending"] = None   # GPU textures are gone too; re-warm
             return state
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
@@ -1304,6 +1308,41 @@ init -10 python:
             self._ensure()
             return self._core.poll_events()
 
+        # -- texture prewarm ------------------------------------------------
+        def _prewarm_textures(self, width, height, st, at, budget=2):
+            """Force this pack's atlases onto the GPU up front, a few per frame.
+
+            Ren'Py uploads a cell atlas to the GPU only when its ``Image`` is
+            first *drawn* (``im.cache.get(texture=True)`` -> a synchronous
+            ``ready_one_texture`` drain). ``visit()`` prediction merely decodes
+            the CPU surface — it does NOT drain that GPU-upload queue — and while
+            we animate we ``renpy.redraw`` every frame, so the interaction never
+            idles for Ren'Py to drain it in the background. The upshot: a large
+            atlas a long animation doesn't reference until deep into its timeline
+            (fire_sword's character atlas ``fire_sword.png`` is 4.9 MB and first
+            becomes visible at cinema frame ~108) uploads mid-playback and stalls
+            that one frame — the classic first-play-only hitch that never recurs
+            (the texture stays GPU-resident across loops). The Godot / Web ports
+            never show it because they upload every cellmap at load; we do the
+            same here, spread over the first frames so neither the show frame nor
+            a mid-anim frame carries the whole cost. Idempotent; never raises."""
+            if self._prewarm_pending is None:
+                self._prewarm_pending = list(self._rm.images()) if self._rm else []
+            n = 0
+            while self._prewarm_pending and n < budget:
+                img = self._prewarm_pending.pop()
+                try:
+                    # A throwaway render drives the full upload path (decode +
+                    # ready_one_texture); the atlas then lives in Ren'Py's texture
+                    # cache, so the real draw — this frame or frame 108 — is free.
+                    renpy.render(img, width, height, st, at)
+                except Exception:
+                    pass
+                n += 1
+            if self._prewarm_pending:
+                # Keep draining even if playback goes idle before we finish.
+                renpy.redraw(self, 0)
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
@@ -1314,6 +1353,11 @@ init -10 python:
             if self._last_st is not None and st < self._last_st:
                 self._start_initial(start_frame=0)
                 self._call_cb(self.on_started)
+
+            # Pre-upload atlases so a large one first drawn deep in a long
+            # timeline doesn't stall that frame (first-play hitch). See above.
+            if self._prewarm_pending is None or self._prewarm_pending:
+                self._prewarm_textures(width, height, st, at)
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
             dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
@@ -2049,15 +2093,10 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            # Preload textures via Ren'Py prediction. set_animation already
-            # acquired this pack's textures into the RenPyResourceManager (plus
-            # external instance packs as they load); hand those Images back so
-            # Ren'Py preloads them — no first-playback stutter.
-            try:
-                self._ensure()
-                return self._rm.images() if self._rm else []
-            except Exception:
-                return []
+            # Disabled: Eagerly predicting unused textures causes mid-animation 
+            # stutters when the background thread finishes decoding massive PNGs
+            # and stalls the main thread to upload them to the GPU.
+            return []
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
