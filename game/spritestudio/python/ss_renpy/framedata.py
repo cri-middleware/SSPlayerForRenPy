@@ -395,17 +395,21 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     # is intentionally discarded.
     _authored_blend, corners = part_colors(fd, ps, pcs)
     lt, rt, lb, rb = corners
+    # Corner colours are loop-invariant — hoist the four .rgba reads out of the
+    # per-vertex loop; only the bbox weights (fx, fy) vary per vertex.
+    c0, c1, c2, c3 = lt.rgba, rt.rgba, lb.rgba, rb.rgba
     colors = []
     for j in range(count):
         fx, fy = bc[j * 2], bc[j * 2 + 1]
-        w = ((1.0 - fx) * (1.0 - fy), fx * (1.0 - fy),
-             (1.0 - fx) * fy, fx * fy)          # LT, RT, LB, RB weights
-        c0, c1, c2, c3 = lt.rgba, rt.rgba, lb.rgba, rb.rgba
+        w0 = (1.0 - fx) * (1.0 - fy)            # LT, RT, LB, RB weights
+        w1 = fx * (1.0 - fy)
+        w2 = (1.0 - fx) * fy
+        w3 = fx * fy
         colors.append((
-            c0[0] * w[0] + c1[0] * w[1] + c2[0] * w[2] + c3[0] * w[3],
-            c0[1] * w[0] + c1[1] * w[1] + c2[1] * w[2] + c3[1] * w[3],
-            c0[2] * w[0] + c1[2] * w[1] + c2[2] * w[2] + c3[2] * w[3],
-            c0[3] * w[0] + c1[3] * w[1] + c2[3] * w[2] + c3[3] * w[3]
+            c0[0] * w0 + c1[0] * w1 + c2[0] * w2 + c3[0] * w3,
+            c0[1] * w0 + c1[1] * w1 + c2[1] * w2 + c3[1] * w3,
+            c0[2] * w0 + c1[2] * w1 + c2[2] * w2 + c3[2] * w3,
+            c0[3] * w0 + c1[3] * w1 + c2[3] * w2 + c3[3] * w3,
         ))
     rates = [1.0] * count
     # TRIANGLE_FAN from vertex 0 (centre for rect/tri/star; leading corner for
