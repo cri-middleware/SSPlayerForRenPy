@@ -31,7 +31,9 @@ import math
 import struct
 from dataclasses import dataclass
 
+from ss.runtime.DrawBatch import DrawBatch
 from ss.runtime.FrameData import FrameData
+from ss.runtime.PartAttributePartColor import PartAttributePartColor
 from ss.runtime.PartState import PartState
 from ss.runtime.SsAttributePartColorKeyValueColor import (
     SsAttributePartColorKeyValueColor,
@@ -348,7 +350,7 @@ def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
         mask_influence=mask, use_center=False, has_partcolor=False)
 
 
-def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask):
+def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     """Build a :class:`MeshPart` for a Shape part from the shape SoA.
 
     Shape parts are textureless procedural polygons (Rectangle / Triangle /
@@ -391,16 +393,20 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask):
     # part's authored PartColor blend (Add/Sub against the white texel would
     # otherwise blow out / invert). The authored ``blend`` from ``part_colors``
     # is intentionally discarded.
-    _authored_blend, corners = part_colors(fd, ps)
+    _authored_blend, corners = part_colors(fd, ps, pcs)
     lt, rt, lb, rb = corners
     colors = []
     for j in range(count):
         fx, fy = bc[j * 2], bc[j * 2 + 1]
         w = ((1.0 - fx) * (1.0 - fy), fx * (1.0 - fy),
              (1.0 - fx) * fy, fx * fy)          # LT, RT, LB, RB weights
-        colors.append(tuple(
-            lt.rgba[c] * w[0] + rt.rgba[c] * w[1]
-            + lb.rgba[c] * w[2] + rb.rgba[c] * w[3] for c in range(4)))
+        c0, c1, c2, c3 = lt.rgba, rt.rgba, lb.rgba, rb.rgba
+        colors.append((
+            c0[0] * w[0] + c1[0] * w[1] + c2[0] * w[2] + c3[0] * w[3],
+            c0[1] * w[0] + c1[1] * w[1] + c2[1] * w[2] + c3[1] * w[3],
+            c0[2] * w[0] + c1[2] * w[1] + c2[2] * w[2] + c3[2] * w[3],
+            c0[3] * w[0] + c1[3] * w[1] + c2[3] * w[2] + c3[3] * w[3]
+        ))
     rates = [1.0] * count
     # TRIANGLE_FAN from vertex 0 (centre for rect/tri/star; leading corner for
     # arrow). count-2 triangles; the closing vertex makes the fan wrap.
@@ -429,16 +435,13 @@ def _iter_visible_normal_parts(rt, fd: FrameData):
         return
 
     parts = bulk_part_states(fd)
-    for b in range(fd.DrawBatchesLength()):
-        batch = fd.DrawBatches(b)
-        if batch.Kind() != KIND_NORMAL:
+    do = _draw_order_array(fd)
+    for (start, count, thash, _vc, _ic, blend, kind, flags) in _draw_batch_list(fd):
+        if kind != KIND_NORMAL:
             continue
-        blend = batch.BlendType()
-        thash = batch.TextureHash()
-        mask = bool(batch.Flags() & MASK_INFLUENCE)
-        start, count = batch.StartRank(), batch.Count()
+        mask = bool(flags & MASK_INFLUENCE)
         for k in range(count):
-            p = fd.DrawOrder(start + k)
+            p = do[start + k]
             ps = parts[p] if parts is not None else fd.Parts(p)
             if ps is None or ps.Hide():
                 continue
@@ -585,7 +588,66 @@ def _read_corner(kv) -> VertexColor:
         kv.Rate())
 
 
-def part_colors(fd: FrameData, ps) -> tuple:
+# --- Bulk PartColor decode (same idea as bulk_part_states) ------------------
+# PartAttributePartColor is a fixed 36-byte FlatBuffers *struct* in a contiguous
+# vector, so the whole PartsColor array decodes in ONE struct pass instead of
+# N parts x 4 corners x ~5 accessor chains (the profiler put part_colors at ~35%
+# of the FramePlan CPU on a colour-heavy pack). Layout MIRRORS the generated
+# PartAttributePartColor.py (regenerate via scripts/generate-runtime-code if the
+# schema changes): BlendType u8@0 (+3 pad), then Lt/Rt/Lb/Rb key-values at 4/12/
+# 20/28, each an RGBA byte quad (A,R,G,B) + f32 rate. A one-time self-check vs the
+# accessor path disables the fast path automatically if the layout ever drifts.
+_PC_SIZE = 36
+_PC_REC = struct.Struct('<B3x' + 'BBBBf' * 4)   # blend, (A,R,G,B,rate) x4
+_pc_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
+
+
+def _decode_pc_record(rec) -> tuple:
+    """One ``_PC_REC`` tuple -> ``(blend, [lt, rt, lb, rb])`` VertexColors.
+
+    ``rec`` is ``(blend, a,r,g,b,rate, a,r,g,b,rate, ...)`` — the RGBA bytes are
+    stored A,R,G,B (see U8Rect), so re-order to the (R,G,B,A) VertexColor tuple.
+    """
+    corners = []
+    o = 1
+    for _ in range(4):
+        a, r, g, b, rate = rec[o], rec[o + 1], rec[o + 2], rec[o + 3], rec[o + 4]
+        corners.append(VertexColor(
+            (r / 255.0, g / 255.0, b / 255.0, a / 255.0), rate))
+        o += 5
+    return (clamp_pc_blend(rec[0]), corners)
+
+
+def bulk_part_colors(fd: FrameData):
+    """All PartColor entries decoded in one pass → ``list`` indexed by
+    ``PartState.part_color()``, or ``None`` (empty / size drift / self-check
+    failed → callers fall back to :func:`part_colors`' accessor path)."""
+    global _pc_fastpath
+    if _pc_fastpath is False:
+        return None
+    n = fd.PartsColorLength()
+    if n == 0 or PartAttributePartColor.SizeOf() != _PC_SIZE:
+        return None
+    p0 = fd.PartsColor(0)
+    if p0 is None:
+        return None
+    base = p0._tab.Pos
+    blob = p0._tab.Bytes[base:base + n * _PC_SIZE]
+    out = [_decode_pc_record(rec) for rec in _PC_REC.iter_unpack(blob)]
+    if _pc_fastpath is None:
+        ref_b = clamp_pc_blend(p0.BlendType())
+        ref_lt = _read_corner(p0.Lt(SsAttributePartColorKeyValueColor()))
+        got_b, got_corners = out[0]
+        if (got_b != ref_b or got_corners[0].rate != ref_lt.rate
+                or any(abs(got_corners[0].rgba[i] - ref_lt.rgba[i]) > 1e-6
+                       for i in range(4))):
+            _pc_fastpath = False
+            return None
+        _pc_fastpath = True
+    return out
+
+
+def part_colors(fd: FrameData, ps, pcs=None) -> tuple:
     """Resolve a part's per-corner colour: ``(blend_idx, [lt, rt, lb, rb])``.
 
     ``blend_idx`` is clamped to the 4 valid PartColor modes. Parts without a
@@ -593,11 +655,17 @@ def part_colors(fd: FrameData, ps) -> tuple:
     rate-0 default on all four corners (10_parts_color §1-2/§1-2-4). Only the
     Normal-part rule (four corners individual) is applied here; Mesh (Whole-only)
     and Shape (rate forced 1.0) are M3+/Shape-kind concerns.
+
+    ``pcs`` is an optional pre-decoded :func:`bulk_part_colors` array; when given
+    (the render hot path) the entry is read from it instead of the per-corner
+    FlatBuffers accessor chain.
     """
     cidx = ps.PartColor()
     if cidx is None or cidx < 0:
         vc = _default_vertex_color(ps.Alpha())
         return (PC_BLEND_MIX, [vc, vc, vc, vc])
+    if pcs is not None and 0 <= cidx < len(pcs):
+        return pcs[cidx]
     pc = fd.PartsColor(cidx)
     if pc is None:
         vc = _default_vertex_color(ps.Alpha())
@@ -677,14 +745,15 @@ def read_shader(fd: FrameData, ps) -> tuple:
     return (0, ())
 
 
-def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
+def _mesh_part_from(fd: FrameData, part: _NormalPart, pcs=None) -> MeshPart:
     """Project one resolved :class:`_NormalPart` to a coloured triangulated mesh.
 
     The per-part half of :func:`build_mesh_parts`, factored out so the z-ordered
-    :func:`iter_draw_plan` walk can reuse it.
+    :func:`iter_draw_plan` walk can reuse it. ``pcs`` is an optional pre-decoded
+    :func:`bulk_part_colors` array (see :func:`part_colors`).
     """
     ps = part.ps
-    cblend, corners = part_colors(fd, ps)
+    cblend, corners = part_colors(fd, ps, pcs)
     shader_id, shader_params = read_shader(fd, ps)
 
     positions = list(part.positions[:4])             # LT, RT, LB, RB
@@ -695,11 +764,19 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
 
     use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
     if use_center:
-        # Centre vertex (index 4) — fan for smooth deform / gradient.
+        # Centre vertex (index 4) — fan for smooth deform / gradient. The centre
+        # colour/rate is the mean of the four corners; inlined over the fixed 4
+        # (== _avg but without the per-channel generator+call — this ran for
+        # nearly every part on a deform-heavy pack). ``a*0.25 == a/4.0`` exactly.
         positions.append(part.positions[CENTER])
         uvs.append(part.uvs[CENTER])
-        colors.append(tuple(_avg(c[i] for c in colors) for i in range(4)))
-        rates.append(_avg(rates))
+        c0, c1, c2, c3 = colors
+        colors.append(((c0[0] + c1[0] + c2[0] + c3[0]) * 0.25,
+                       (c0[1] + c1[1] + c2[1] + c3[1]) * 0.25,
+                       (c0[2] + c1[2] + c2[2] + c3[2]) * 0.25,
+                       (c0[3] + c1[3] + c2[3] + c3[3]) * 0.25))
+        r0, r1, r2, r3 = rates
+        rates.append((r0 + r1 + r2 + r3) * 0.25)
         # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
         tris = [(CENTER, LT, RT), (CENTER, RT, RB),
                 (CENTER, RB, LB), (CENTER, LB, LT)]
@@ -715,6 +792,80 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
         shader_id_hash=shader_id, shader_params=shader_params)
 
 
+class _ZeroSeq:
+    """``x[i] == 0`` for any ``i`` — mirrors ``FrameData.DrawOrder``'s 0-on-absent
+    when the frame has no draw-order vector (so the walk never IndexErrors)."""
+    __slots__ = ()
+
+    def __getitem__(self, i):
+        return 0
+
+
+_ZERO_SEQ = _ZeroSeq()
+
+
+def _draw_order_array(fd: FrameData):
+    """The whole DrawOrder Uint16 vector as a tuple (one struct read), or a
+    zero sequence when absent. Hoists the per-call offset/base recompute out of
+    the hot draw walk (``fd.DrawOrder(j)`` is read once per part per batch)."""
+    tab = fd._tab
+    o = tab.Offset(16)
+    if o == 0:
+        return _ZERO_SEQ
+    a = tab.Vector(o)
+    n = tab.VectorLen(o)
+    if n == 0:
+        return _ZERO_SEQ
+    return struct.unpack_from('<%dH' % n, tab.Bytes, a)
+
+
+# --- Bulk DrawBatch decode (same idea as bulk_part_states) ------------------
+# DrawBatch is a fixed 16-byte FlatBuffers *struct*; iter_draw_plan walks the
+# batch vector TWICE (mask pre-scan + draw), reading up to 6 fields per batch, so
+# decode the whole vector once. Layout MIRRORS the generated DrawBatch.py
+# (regenerate via scripts/generate-runtime-code if the schema changes):
+# StartRank u16@0, Count u16@2, TextureHash u32@4, VertexCount u16@8,
+# IndexCount u16@10, BlendType u8@12, Kind u8@13, Flags u8@14 (+1 pad). A
+# one-time self-check vs the accessor disables the fast path if it ever drifts.
+_DB_SIZE = 16
+_DB_REC = struct.Struct('<HHIHHBBBx')  # start,count,thash,vcount,icount,blend,kind,flags
+_db_fastpath = None
+
+
+def _draw_batch_list(fd: FrameData):
+    """All DrawBatches as ``(start, count, thash, vcount, icount, blend, kind,
+    flags)`` tuples — one struct pass (or the accessor path on drift). Never
+    ``None`` so the two draw-walk loops can iterate it directly."""
+    global _db_fastpath
+    n = fd.DrawBatchesLength()
+    if n == 0:
+        return []
+    if _db_fastpath is not False and DrawBatch.SizeOf() == _DB_SIZE:
+        b0 = fd.DrawBatches(0)
+        if b0 is not None:
+            base = b0._tab.Pos
+            out = list(_DB_REC.iter_unpack(
+                b0._tab.Bytes[base:base + n * _DB_SIZE]))
+            if _db_fastpath is None:
+                r = out[0]
+                if (r[0] == b0.StartRank() and r[1] == b0.Count()
+                        and r[2] == b0.TextureHash() and r[5] == b0.BlendType()
+                        and r[6] == b0.Kind() and r[7] == b0.Flags()):
+                    _db_fastpath = True
+                else:
+                    _db_fastpath = False
+            if _db_fastpath:
+                return out
+    # Fallback: accessor path, same tuple shape.
+    out = []
+    for b in range(n):
+        db = fd.DrawBatches(b)
+        out.append((db.StartRank(), db.Count(), db.TextureHash(),
+                    db.VertexCount(), db.IndexCount(), db.BlendType(),
+                    db.Kind(), db.Flags()))
+    return out
+
+
 def build_mesh_parts(rt, fd: FrameData) -> list:
     """Resolve every visible Normal part of ``fd`` into a coloured world mesh.
 
@@ -725,7 +876,8 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
     transient. ``uvs`` are texture-pixel; normalize with :func:`normalize_uvs`
     and sample with REPEAT wrap (the runtime bakes UV scale/rotation in).
     """
-    return [_mesh_part_from(fd, part)
+    pcs = bulk_part_colors(fd)
+    return [_mesh_part_from(fd, part, pcs)
             for part in _iter_visible_normal_parts(rt, fd)]
 
 
@@ -766,28 +918,27 @@ def iter_draw_plan(rt, fd: FrameData):
     shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
                  rt.shape_vertex_counts())
     parts = bulk_part_states(fd)
+    pcs = bulk_part_colors(fd)   # pre-decoded per-corner colours (hot path)
+    # DrawOrder is a Uint16 vector read once per part per batch; the generated
+    # accessor recomputes the vector base every call, so hoist the whole vector
+    # in one struct read (empty tuple mirrors the accessor's 0-on-absent).
+    do = _draw_order_array(fd)
     # Parts emitted as a Mask batch write coverage only — no colour output. A pure
     # Mask-type part has ONLY a Mask batch (already yielded as "skip"), but a
     # ``draw_as_mask`` Shape/Normal/Mesh part ALSO emits its own colour batch at
     # the same draw-order slot; that colour batch must be suppressed (the part is
     # the mask, not a drawn sprite — 09_mask). Clipping writers (``mask_write``)
     # emit no Mask batch, so they are absent here and draw normally.
+    batches = _draw_batch_list(fd)
     mask_only_parts = set()
-    for b in range(fd.DrawBatchesLength()):
-        batch = fd.DrawBatches(b)
-        if batch.Kind() == KIND_MASK:
-            s, c = batch.StartRank(), batch.Count()
+    for (s, c, _th, _vc, _ic, _bl, kind, _fl) in batches:
+        if kind == KIND_MASK:
             for k in range(c):
-                mask_only_parts.add(fd.DrawOrder(s + k))
-    for b in range(fd.DrawBatchesLength()):
-        batch = fd.DrawBatches(b)
-        kind = batch.Kind()
-        blend = batch.BlendType()
-        thash = batch.TextureHash()
-        mask = bool(batch.Flags() & MASK_INFLUENCE)
-        start, count = batch.StartRank(), batch.Count()
+                mask_only_parts.add(do[s + k])
+    for (start, count, thash, _vc, _ic, blend, kind, flags) in batches:
+        mask = bool(flags & MASK_INFLUENCE)
         for k in range(count):
-            p = fd.DrawOrder(start + k)
+            p = do[start + k]
             if kind != KIND_MASK and p in mask_only_parts:
                 continue   # draw_as_mask: contributes coverage, not colour
             ps = parts[p] if parts is not None else fd.Parts(p)
@@ -796,7 +947,7 @@ def iter_draw_plan(rt, fd: FrameData):
                 if not have_soa or hidden:
                     continue
                 part = _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask)
-                yield ("mesh", _mesh_part_from(fd, part))
+                yield ("mesh", _mesh_part_from(fd, part, pcs))
             elif kind == KIND_MESH:
                 if hidden:
                     continue
@@ -806,7 +957,7 @@ def iter_draw_plan(rt, fd: FrameData):
             elif kind == KIND_SHAPE:
                 if not have_soa or hidden:
                     continue
-                sp = _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask)
+                sp = _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs)
                 if sp is not None:
                     yield ("mesh", sp)
             elif kind == KIND_INSTANCE or kind == KIND_EFFECT:
