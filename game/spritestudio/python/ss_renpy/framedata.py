@@ -110,11 +110,12 @@ def parse(fb) -> FrameData:
 # disables the fast path automatically if it ever drifts.
 _PS_SIZE = 144
 # UpdateFlag u64@0, Alpha f32@48, Priority f32@56, Mask f32@108,
-# PartColor i16@128, Hide bool@138 (little-endian). Priority/Mask are the
-# per-frame mask attributes (09_mask): Priority feeds draw order (the runtime
-# already sorts draw_order, but we keep it for diagnostics) and Mask is the
-# cutout value (0..255, a float despite the range).
-_PS_REC = struct.Struct('<Q40xf4xf48xf16xh8x?5x')
+# PartColor i16@128, Shader i16@130, Hide bool@138 (little-endian). Priority/Mask
+# are the per-frame mask attributes (09_mask): Priority feeds draw order (the
+# runtime already sorts draw_order, but we keep it for diagnostics) and Mask is
+# the cutout value (0..255, a float despite the range). Shader indexes
+# FrameData.shaders (the per-part user-shader effect; -1 = none).
+_PS_REC = struct.Struct('<Q40xf4xf48xf16xhh6x?5x')
 _ps_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
 
 
@@ -125,14 +126,15 @@ class _PartLite:
     callers are unchanged, but the values come from one bulk ``struct`` decode
     rather than four-to-six per-part FlatBuffers accessor calls.
     """
-    __slots__ = ('_uf', '_a', '_prio', '_mask', '_pc', '_hide')
+    __slots__ = ('_uf', '_a', '_prio', '_mask', '_pc', '_shader', '_hide')
 
-    def __init__(self, uf, a, prio, mask, pc, hide):
+    def __init__(self, uf, a, prio, mask, pc, shader, hide):
         self._uf = uf
         self._a = a
         self._prio = prio
         self._mask = mask
         self._pc = pc
+        self._shader = shader
         self._hide = hide
 
     def UpdateFlag(self): return self._uf
@@ -140,6 +142,7 @@ class _PartLite:
     def Priority(self): return self._prio
     def Mask(self): return self._mask
     def PartColor(self): return self._pc
+    def Shader(self): return self._shader
     def Hide(self): return self._hide
 
 
@@ -160,12 +163,13 @@ def bulk_part_states(fd: FrameData):
         return None
     base = p0._tab.Pos
     blob = p0._tab.Bytes[base:base + n * _PS_SIZE]
-    lite = [_PartLite(uf, a, prio, mask, pc, hide)
-            for (uf, a, prio, mask, pc, hide) in _PS_REC.iter_unpack(blob)]
+    lite = [_PartLite(uf, a, prio, mask, pc, shader, hide)
+            for (uf, a, prio, mask, pc, shader, hide) in _PS_REC.iter_unpack(blob)]
     if _ps_fastpath is None:
         l0 = lite[0]
         if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
-                or l0._pc != p0.PartColor() or abs(l0._a - p0.Alpha()) > 1e-6
+                or l0._pc != p0.PartColor() or l0._shader != p0.Shader()
+                or abs(l0._a - p0.Alpha()) > 1e-6
                 or abs(l0._prio - p0.Priority()) > 1e-6
                 or abs(l0._mask - p0.Mask()) > 1e-6):
             _ps_fastpath = False
@@ -633,6 +637,13 @@ class MeshPart:
     mask_influence: bool
     use_center: bool         # 5-vertex fan (free deform / per-vertex colour)
     has_partcolor: bool      # any corner rate > 0 (i.e. colour actually applied)
+    # User-shader effect (SS6 ss-* family). ``shader_id_hash`` is the runtime's
+    # fnv1a(name) of the assigned shader (0 = none / Default); ``shader_params``
+    # is the (param0..param7) tuple driving it (empty when no shader). The render
+    # layer maps the hash to a registered GLSL variant and binds the params; the
+    # shader is orthogonal to the geometry, so it is NOT part of equality.
+    shader_id_hash: int = 0
+    shader_params: tuple = ()
     # Masking (09_mask): a ``ss_renpy.mask.MaskApply`` when this part is a masked
     # target this frame, else None. Set by the mask layer after the draw plan is
     # built (the render layer reads it to bind coverage + replay the stencil); it
@@ -645,6 +656,27 @@ def _avg(seq):
     return sum(seq) / float(len(seq)) if seq else 0.0
 
 
+def read_shader(fd: FrameData, ps) -> tuple:
+    """Resolve a part's user-shader effect → ``(id_hash, params)``.
+
+    Mirrors SSPlayerForGodot's ``_resolve_part_shader_info``: the shader applies
+    only when the ``AttributeShader`` flag is set and ``PartState.shader`` indexes
+    a valid ``FrameData.shaders`` entry. ``id_hash`` is the runtime's fnv1a of the
+    shader name (e.g. ``fnv1a("ss-sepia")``); ``params`` is the 8-float
+    ``(param0..param7)`` tuple. Returns ``(0, ())`` when no shader is present.
+    """
+    idx = ps.Shader()
+    if (idx is not None and idx >= 0
+            and (ps.UpdateFlag() & UpdateAttributeFlags.AttributeShader)
+            and idx < fd.ShadersLength()):
+        sh = fd.Shaders(idx)
+        if sh is not None:
+            return (sh.IdHash(), (sh.Param0(), sh.Param1(), sh.Param2(),
+                                  sh.Param3(), sh.Param4(), sh.Param5(),
+                                  sh.Param6(), sh.Param7()))
+    return (0, ())
+
+
 def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
     """Project one resolved :class:`_NormalPart` to a coloured triangulated mesh.
 
@@ -653,6 +685,7 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
     """
     ps = part.ps
     cblend, corners = part_colors(fd, ps)
+    shader_id, shader_params = read_shader(fd, ps)
 
     positions = list(part.positions[:4])             # LT, RT, LB, RB
     uvs = list(part.uvs[:4])
@@ -678,7 +711,8 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart) -> MeshPart:
         blend_type=part.blend_type, color_blend=cblend, positions=positions,
         uvs=uvs, colors=colors, rates=rates, triangles=tris,
         src_rect=part.src_rect, mask_influence=part.mask_influence,
-        use_center=use_center, has_partcolor=has_pc)
+        use_center=use_center, has_partcolor=has_pc,
+        shader_id_hash=shader_id, shader_params=shader_params)
 
 
 def build_mesh_parts(rt, fd: FrameData) -> list:
@@ -806,7 +840,9 @@ def transform_mesh_part(mp: MeshPart, m, alpha_mul: float = 1.0) -> MeshPart:
         positions=positions, uvs=list(mp.uvs), colors=colors,
         rates=list(mp.rates), triangles=list(mp.triangles),
         src_rect=mp.src_rect, mask_influence=mp.mask_influence,
-        use_center=mp.use_center, has_partcolor=mp.has_partcolor, mask=mp.mask)
+        use_center=mp.use_center, has_partcolor=mp.has_partcolor,
+        shader_id_hash=mp.shader_id_hash, shader_params=mp.shader_params,
+        mask=mp.mask)
 
 
 def classify_frame(fd: FrameData) -> dict:

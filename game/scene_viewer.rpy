@@ -6,30 +6,47 @@
 init python:
     import os
 
-    # Sample packs. Basic exercises alpha / local-alpha; Effect and Instance
-    # exercise the particle and nested-animation features; Ringo is a real
-    # character (its Normal parts render; its Mesh-deform parts are not drawn
-    # yet). The event packs carry UserData / Signal / Audio timeline events.
+    # Sample packs. The full `overall/` feature set is listed so the viewer
+    # exercises every supported feature (Basic alpha, PartsColor, blends, mesh
+    # deform, shapes, masks, the ss-* user shaders, instances, timeline events).
+    # Text / NineSlice are listed for completeness but their batch kinds are not
+    # rendered yet (they show empty — later milestones). Ringo is a real
+    # character (Normal parts render; Mesh-deform parts do). A trimmed sample of
+    # the ParticleEffect packs is appended after these (see below).
     SS_DEMO_PACKS = [
         ("ss_assets/overall", "Basic.ssab"),                  # alpha / local-alpha
-        ("ss_assets/overall", "Effect.ssab"),                 # particle effects
-        ("ss_assets/overall", "Instance.ssab"),               # nested instances
         ("ss_assets/overall", "PartsColor.ssab"),             # per-vertex part colour
         ("ss_assets/overall", "BlendMode.ssab"),              # framebuffer blends
-        ("ss_assets/overall", "Mask.ssab"),                   # mask / clipping mask
-        ("ss_assets/overall", "Shape.ssab"),                  # shapes (incl. shape masks)
+        ("ss_assets/overall", "Interpolation.ssab"),          # interpolation
         ("ss_assets/overall", "Interpolation_Easing_v1.ssab"),
-        ("ss_assets/overall", "UserData.ssab"),
-        ("ss_assets/overall", "Signal.ssab"),
-        ("ss_assets/overall", "Sound.ssab"),
-        ("ss_assets/Ringo",   "Ringo.ssab"),                  # character (Mesh gap)
+        ("ss_assets/overall", "Mesh.ssab"),                   # mesh deform
+        ("ss_assets/overall", "Shape.ssab"),                  # shapes (incl. shape masks)
+        ("ss_assets/overall", "Mask.ssab"),                   # mask / clipping mask
+        ("ss_assets/overall", "Shader.ssab"),                 # ss-* user shaders
+        ("ss_assets/overall", "Bounding.ssab"),               # bounding
+        ("ss_assets/overall", "TextureChange.ssab"),          # runtime cell/tex swap
+        ("ss_assets/overall", "Effect.ssab"),                 # particle effects
+        ("ss_assets/overall", "Instance.ssab"),               # nested instances
+        ("ss_assets/overall", "Instance_SourceAnime.ssab"),   # instance source
+        ("ss_assets/overall", "UserData.ssab"),               # timeline: user data
+        ("ss_assets/overall", "Signal.ssab"),                 # timeline: signal
+        ("ss_assets/overall", "Sound.ssab"),                  # timeline: audio
+        ("ss_assets/overall", "01-new.ssab"),
+        ("ss_assets/overall", "Text.ssab"),                   # (not rendered yet)
+        ("ss_assets/overall", "NineSlice.ssab"),              # (not rendered yet)
+        ("ss_assets/Ringo",   "Ringo.ssab"),                  # character
         ("ss_assets/Ringo",   "Ringo_tyu.ssab"),              # companion
     ]
 
+    # Particle-effect packs: there are ~40, so show only a small curated sample
+    # (the full set is still browsable via Shift+B). e040a / e040b are the
+    # showpiece composite effects; the rest are a spread across the range.
     _fx_dir = os.path.join(renpy.config.gamedir, "ss_assets", "ParticleEffect")
     if os.path.isdir(_fx_dir):
-        for f in sorted(os.listdir(_fx_dir)):
-            if f.endswith(".ssab"):
+        _fx_pick = ["e001.ssab", "e012.ssab", "e024.ssab", "e036.ssab",
+                    "e040a.ssab", "e040b.ssab"]
+        for f in _fx_pick:
+            if os.path.isfile(os.path.join(_fx_dir, f)):
                 SS_DEMO_PACKS.append(("ss_assets/ParticleEffect", f))
 
     def ss_make(entry, animation=None):

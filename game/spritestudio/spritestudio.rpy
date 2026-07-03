@@ -130,6 +130,17 @@ init -10 python:
     # SS_MASK_COVERAGE_SUPERSAMPLE. Kept defined so existing overrides don't error.
     SS_MASK_ANTIALIAS = True
 
+    # User-shader effects (SS6 ss-* family: sepia / outline / bmask / hsb / step /
+    # move / wave / noise / blur / pix / scatter / circle / spot). Needs the mesh
+    # backend + custom shaders; a part with an assigned shader draws per-part
+    # through its ss.user_* variant (breaking the same-texture batch). Set False to
+    # draw those parts plainly (geometry + PartColor stay correct, the effect is
+    # simply not applied). The `overall/Shader.ssab` sample pack exercises all 13.
+    # A part that is BOTH masked and shadered draws masked (the mask wins); the two
+    # rarely combine. Ported from SSPlayerForGodot (ss_player/shaders/*.fs); the
+    # engine-independent half is headless-verified by tools/verify_shader.py.
+    SS_ENABLE_USER_SHADERS = True
+
     # Timeline events (UserData / Signal / Audio). The decoder is pure-Python and
     # headless-verified (tools/verify_events.py); collecting into the poll queue
     # is cheap and always on when enabled. Optional callbacks (see the
@@ -179,6 +190,20 @@ init -10 python:
         8: "ss_mul",                                           # Mul2 -> Mul
         10: "ss_screen",                                       # Screen2 -> Screen
     }
+
+    # id_hash (fnv1a of the SS shader name, e.g. fnv1a("ss-sepia")) -> registered
+    # ss.user_* Ren'Py shader. Populated below once the variants register; stays
+    # empty on an older Ren'Py without register_shader (draw code then skips the
+    # user-shader path). Keyed by the Brain's own hash so it matches the draw
+    # plan's PartAttributeShader.id_hash exactly (mirrors Godot's
+    # ss_runtime_hash_string catalog).
+    _SS_USER_SHADER_BY_HASH = {}
+    # Which optional uniforms each variant actually references. Ren'Py's shader
+    # cache PRUNES a declared-but-unused uniform from the compiled program, so we
+    # bind u_texel / u_cell_rect only for the variants whose GLSL uses them (every
+    # variant uses u_ss_param, so that is always bound). Populated with the map.
+    _SS_USER_NEEDS_TEXEL = set()
+    _SS_USER_NEEDS_CELL = set()
 
     # PartColor shader (10_parts_color §1-4), used by the "mesh" backend. The
     # CPU reference is framedata.eval_partcolor — keep this GLSL in step with it.
@@ -427,6 +452,334 @@ init -10 python:
             )
         except Exception as e:
             renpy.log("ss: register_shader(ss.mask_*) failed: %r" % (e,))
+
+        # -- User-shader effects (SS6 ss-* family) ---------------------------
+        # Ported from SSPlayerForGodot (ss_player/shaders/*.fs). Each variant is a
+        # per-part shader over the same per-vertex mesh as ss.partcolor_batched
+        # (a_tex_coord + a_ss_color + a_ss_varg), so gradients / Shape fills keep
+        # their true per-vertex colour. Shared, DRY-composed GLSL: _SS_USER_FUNCS
+        # holds the helpers, each fragment body inserts its effect between the
+        # (un-premultiplied) input sample and the PartColor composite.
+        #
+        # Dialect adaptations vs the Godot originals (Ren'Py GL2 is GLSL ES 1.00 /
+        # 120, premultiplied-alpha textures):
+        #   * ss_input_texture(TEXTURE, uv) -> ss_texs(tex0, uv): sample + UN-
+        #     premultiply to straight colour (the SS6 math — luminance / HSB /
+        #     averaging — assumes straight rgb; Godot's canvas textures already are).
+        #     Output re-premultiplies (ss_pc_out / inline).
+        #   * TEXTURE_PIXEL_SIZE -> u_texel (= 1/atlas_size, set per draw).
+        #   * PI -> SS_PI (no ES 1.00 built-in); ss_paramN -> u_ss_param.{x,y,z,w};
+        #     ss_cell_rect -> u_cell_rect (circle / spot only).
+        #   * ss-move's data-dependent loop bound -> constant 128 loop with an
+        #     early `break` (ES 1.00 forbids non-constant loop bounds), matching
+        #     the mask-replay idiom already used above.
+        _SS_USER_VARS = """
+            uniform sampler2D tex0;
+            attribute vec2 a_tex_coord;
+            attribute vec4 a_ss_color;
+            attribute vec3 a_ss_varg;
+            varying vec2 v_tex_coord;
+            varying vec4 v_ss_color;
+            varying vec3 v_ss_varg;
+            uniform vec2 u_texel;      // 1/atlas_size (Godot TEXTURE_PIXEL_SIZE)
+            uniform vec4 u_ss_param;   // (param0, param1, param2, param3)
+        """
+        _SS_USER_VARS_CELL = _SS_USER_VARS + \
+            "            uniform vec4 u_cell_rect;  // cell UV bounds (lt.uv, rb.uv)\n"
+        _SS_USER_VERT = """
+            v_tex_coord = a_tex_coord;
+            v_ss_color = a_ss_color;
+            v_ss_varg = a_ss_varg;
+        """
+        _SS_USER_FUNCS = """
+            const float SS_PI = 3.14159265358979;
+            // Ren'Py GL2 textures are premultiplied; un-premultiply to straight so
+            // the SS6 effect math matches the Godot originals (whose canvas
+            // textures are straight). Alpha is unchanged by (un)premultiply.
+            vec4 ss_texs(sampler2D t, vec2 uv) {
+                vec4 p = texture2D(t, uv);
+                return vec4(p.a > 0.0 ? p.rgb / p.a : p.rgb, p.a);
+            }
+            // PartColor composite (10_parts_color §1-4-3), straight-space.
+            vec3 ss_pc_blend(vec3 rgb, vec3 color, vec3 varg) {
+                return rgb * varg.x + mix(vec3(1.0), rgb, varg.z) * color * varg.y;
+            }
+            // Straight rgb+a -> PartColor-composited, re-premultiplied output.
+            vec4 ss_pc_out(vec3 rgb, float a, vec4 color, vec3 varg) {
+                vec3 o = ss_pc_blend(rgb, color.rgb, varg);
+                float oa = a * color.a;
+                return vec4(o * oa, oa);
+            }
+        """
+        _SS_HSB_FUNCS = """
+            vec4 ss_rgb_to_hsb(vec4 color) {
+                vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+                vec4 p = mix(vec4(color.bg, K.wz), vec4(color.gb, K.xy),
+                             step(color.b, color.g));
+                vec4 q = mix(vec4(p.xyw, color.r), vec4(color.r, p.yzx),
+                             step(p.x, color.r));
+                float d = q.x - min(q.w, q.y);
+                float e = 1.0e-10;
+                return vec4(abs(q.z + (q.w - q.y) / (6.0 * d + e)),
+                            d / (q.x + e), q.x, color.a);
+            }
+            vec4 ss_hsb_to_rgb(vec4 hsb) {
+                vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                vec3 p = abs(fract(hsb.xxx + K.xyz) * 6.0 - K.www);
+                return vec4(hsb.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), hsb.y),
+                            hsb.w);
+            }
+        """
+        _SS_RND_FUNC = """
+            float ss_rnd(vec2 p) {
+                return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+        """
+        # name -> (needs_cell_rect, extra fragment_functions, fragment body).
+        _SS_USER_FRAG = {
+            "sepia": (False, "", """
+                float fPower = u_ss_param.x;
+                vec4 Pixel = ss_texs(tex0, v_tex_coord);
+                float gray = dot(Pixel.rgb, vec3(0.298912, 0.586611, 0.114478));
+                vec3 GrayRgb = vec3(gray);
+                vec3 SepiaRgb = GrayRgb * vec3(1.07, 0.74, 0.43);
+                vec3 toned = mix(SepiaRgb, GrayRgb, step(fPower, 0.0));
+                vec3 mixed_rgb = mix(Pixel.rgb, toned, abs(fPower));
+                gl_FragColor = ss_pc_out(mixed_rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "outline": (False, "", """
+                float fThreshold = u_ss_param.x;
+                float fRatio = abs(fThreshold);
+                float e = 1.0e-5;
+                vec2 px = u_texel;
+                float lo = 0.0;
+                lo += step(ss_texs(tex0, v_tex_coord + vec2(-px.x, 0.0)).a, fRatio);
+                lo += step(ss_texs(tex0, v_tex_coord + vec2(px.x, 0.0)).a, fRatio);
+                lo += step(ss_texs(tex0, v_tex_coord + vec2(0.0, -px.y)).a, fRatio);
+                lo += step(ss_texs(tex0, v_tex_coord + vec2(0.0, px.y)).a, fRatio);
+                vec4 ctr = ss_texs(tex0, v_tex_coord);
+                float hi = step(fRatio + e, ctr.a);
+                float v = min(hi * lo, 1.0);
+                if (v <= 0.0) discard;
+                gl_FragColor = ss_pc_out(vec3(v), v, v_ss_color, v_ss_varg);
+            """),
+            "bmask": (False, "", """
+                float fBrightness = u_ss_param.x;
+                vec4 Pixel = ss_texs(tex0, v_tex_coord);
+                float b = abs(step(fBrightness, 0.0)
+                              - max(Pixel.r, max(Pixel.g, Pixel.b)));
+                if (b <= abs(fBrightness)) discard;
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "hsb": (False, _SS_HSB_FUNCS, """
+                float fHue = u_ss_param.x;
+                float fSaturation = u_ss_param.y;
+                float fBrightness = u_ss_param.z;
+                vec4 Pixel = ss_texs(tex0, v_tex_coord);
+                vec4 hsb = ss_rgb_to_hsb(Pixel);
+                hsb.x += fHue;
+                hsb.y = clamp(hsb.y + fSaturation, 0.0, 1.0);
+                hsb.z = clamp(hsb.z + fBrightness, 0.0, 1.0);
+                if (hsb.x < 0.0) hsb.x += 1.0;
+                if (hsb.x > 1.0) hsb.x -= 1.0;
+                vec4 shifted = ss_hsb_to_rgb(hsb);
+                gl_FragColor = ss_pc_out(shifted.rgb, shifted.a, v_ss_color,
+                                         v_ss_varg);
+            """),
+            "step": (False, "", """
+                float fThreshold = u_ss_param.x;
+                float fStage = u_ss_param.y;
+                float fColor = u_ss_param.z;
+                vec4 Pixel = ss_texs(tex0, v_tex_coord);
+                float d = 1.0 + 255.0 * abs(fStage);
+                float e = 1.0e-10;
+                float t = abs(fThreshold);
+                float b = abs(step(fThreshold, 0.0)
+                              - max(Pixel.r, max(Pixel.g, Pixel.b)));
+                float rr = clamp(floor((b - t) / (t + e) * 256.0 / d) * d / 256.0,
+                                 0.0, 1.0);
+                float c = step(t, b) * rr;
+                vec3 vv = mix(vec3(c), Pixel.rgb * c, fColor);
+                gl_FragColor = ss_pc_out(vv, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "move": (False, "", """
+                float fDistance = u_ss_param.x;
+                float fDirection = u_ss_param.y;
+                float fPower = u_ss_param.z;
+                vec2 Coord = v_tex_coord;
+                vec2 px = u_texel;
+                int iCount = int(floor(abs(fDistance) * 96.0));
+                if (iCount > 128) iCount = 128;
+                vec2 Vel = vec2(sin(fDirection * SS_PI) * px.x,
+                                cos(fDirection * SS_PI) * px.y) * sign(fDistance);
+                Coord += Vel * float(iCount);
+                Coord -= Vel;
+                vec4 Pixel = ss_texs(tex0, Coord);
+                for (int i = 1; i < 128; i++) {
+                    if (i >= iCount) break;
+                    Coord -= Vel;
+                    Pixel = mix(ss_texs(tex0, Coord), Pixel, 0.96 * abs(fPower));
+                }
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "wave": (False, "", """
+                float fWidth = u_ss_param.x;
+                float fHeight = u_ss_param.y;
+                float fPhase = u_ss_param.z;
+                vec2 Coord = v_tex_coord;
+                vec2 px = u_texel;
+                float l = 384.0 * fHeight * 0.5;
+                float s = l * sin(Coord.y * 384.0 * fWidth * 0.5
+                                  + SS_PI * 2.0 * fPhase) * px.x;
+                vec4 Pixel = ss_texs(tex0, vec2(Coord.x + s, Coord.y));
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "noise": (False, _SS_RND_FUNC, """
+                float fPower = u_ss_param.x;
+                float fColor = u_ss_param.y;
+                float fPhase = u_ss_param.z;
+                vec2 Coord = v_tex_coord;
+                vec2 px = u_texel;
+                vec2 u = floor(Coord / px) * px;
+                vec4 Pixel = ss_texs(tex0, Coord);
+                vec2 t = u + vec2(fPhase);
+                vec3 c;
+                c.r = ss_rnd(t);
+                c.g = mix(c.r, ss_rnd(t * c.r), fColor);
+                c.b = mix(c.g, ss_rnd(t * c.g), fColor);
+                Pixel.rgb = clamp(mix(Pixel.rgb, c.rgb, fPower), 0.0, 1.0);
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            # ss-blur intentionally SKIPS the PartColor composite (matches SS6):
+            # the 9 taps are averaged then multiplied by the vertex colour.
+            "blur": (False, "", """
+                float fFocus = u_ss_param.x;
+                vec2 px = u_texel;
+                vec2 d = vec2(fFocus * px.x * 16.0, fFocus * px.y * 16.0);
+                vec2 tc = v_tex_coord;
+                vec4 sum = ss_texs(tex0, tc);
+                sum += ss_texs(tex0, vec2(tc.x + d.x, tc.y + d.y));
+                sum += ss_texs(tex0, vec2(tc.x + d.x, tc.y));
+                sum += ss_texs(tex0, vec2(tc.x, tc.y + d.y));
+                sum += ss_texs(tex0, vec2(tc.x - d.x, tc.y - d.y));
+                sum += ss_texs(tex0, vec2(tc.x + d.x, tc.y - d.y));
+                sum += ss_texs(tex0, vec2(tc.x - d.x, tc.y + d.y));
+                sum += ss_texs(tex0, vec2(tc.x - d.x, tc.y));
+                sum += ss_texs(tex0, vec2(tc.x, tc.y - d.y));
+                vec4 Pixel = sum / 9.0;
+                float oa = Pixel.a * v_ss_color.a;
+                gl_FragColor = vec4(Pixel.rgb * v_ss_color.rgb * oa, oa);
+            """),
+            "pix": (False, "", """
+                float fPower = u_ss_param.x;
+                vec2 px = u_texel;
+                float v = 1.0 + 96.0 * fPower;
+                vec2 step_uv = vec2(v * px.x, v * px.y);
+                vec2 Coord = floor(v_tex_coord / step_uv) * step_uv;
+                vec4 Pixel = ss_texs(tex0, Coord);
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "scatter": (False, _SS_RND_FUNC, """
+                float fPower = u_ss_param.x;
+                float fRatio = u_ss_param.y;
+                float fPhase = u_ss_param.z;
+                vec2 Coord = v_tex_coord;
+                vec2 px = u_texel;
+                vec2 u = floor(Coord / px) * px;
+                vec2 t = u + vec2(fPhase);
+                float r = ss_rnd(t) * SS_PI * 2.0 - SS_PI;
+                float r2 = step(ss_rnd(t * r), fRatio);
+                vec2 v = vec2(sin(r), cos(r)) * px * 96.0 * fPower * r2;
+                vec4 Pixel = ss_texs(tex0, Coord + v);
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "circle": (True, "", """
+                float fPhase = u_ss_param.x;
+                float fDirection = u_ss_param.y;
+                float e = 1.0e-10;
+                vec2 px = u_texel;
+                vec2 uv1 = vec2(px.x + e, px.y + e);
+                vec2 lt_uv = u_cell_rect.xy;
+                vec2 rb_uv = u_cell_rect.zw;
+                vec2 center_uv = (lt_uv + rb_uv) * 0.5;
+                vec2 tx = v_tex_coord / uv1;
+                vec2 cc = center_uv / uv1;
+                vec2 lt = lt_uv / uv1;
+                vec2 rb = rb_uv / uv1;
+                vec2 dd = rb - lt;
+                vec2 vv = tx - cc;
+                float r = min(abs(rb.x - cc.x), abs(rb.y - cc.y)) + e;
+                float dis = length(vv);
+                if (dis > r) discard;
+                vec2 nv = (dis > e) ? (vv / dis) : vec2(1.0, 0.0);
+                float uu = 1.0 - dis / r;
+                float ang = (atan(nv.y, nv.x) / SS_PI + 1.0) * 0.5 + fPhase;
+                if (ang < 0.0) ang += 1.0;
+                if (ang > 1.0) ang -= 1.0;
+                if (fDirection <= 0.0) ang = 1.0 - ang;
+                vec2 st = dd * vec2(uu, ang) * uv1;
+                vec4 Pixel = ss_texs(tex0, lt_uv + st);
+                gl_FragColor = ss_pc_out(Pixel.rgb, Pixel.a, v_ss_color, v_ss_varg);
+            """),
+            "spot": (True, "", """
+                float fPower = u_ss_param.x;
+                float fDecay = u_ss_param.y;
+                float fColor = u_ss_param.z;
+                float e = 1.0e-10;
+                float p = abs(fPower);
+                float d_abs = abs(fDecay);
+                vec2 px = u_texel;
+                vec2 uv1 = vec2(px.x + e, px.y + e);
+                vec2 lt_uv = u_cell_rect.xy;
+                vec2 rb_uv = u_cell_rect.zw;
+                vec2 center_uv = (lt_uv + rb_uv) * 0.5;
+                vec2 cc = center_uv / uv1;
+                vec2 rb = rb_uv / uv1;
+                float l = min(abs(rb.x - cc.x), abs(rb.y - cc.y)) + e;
+                vec2 tt = v_tex_coord / uv1;
+                vec2 vv = cc - tt;
+                float fR = max(p / (length(vv / l) + e) - p, 0.0);
+                float fL = max(p - length(vv / l), 0.0);
+                fR = clamp(mix(fR, fL, d_abs), 0.0, 1.0);
+                vec3 sampled = ss_texs(tex0, v_tex_coord).rgb;
+                gl_FragColor = ss_pc_out(mix(vec3(1.0), sampled, fColor), fR,
+                                         v_ss_color, v_ss_varg);
+            """),
+        }
+        # SS shader id string -> our variant key (drives the hash map below).
+        _SS_USER_NAME_MAP = [
+            ("ss-sepia", "sepia"), ("ss-outline", "outline"),
+            ("ss-bmask", "bmask"), ("ss-hsb", "hsb"), ("ss-step", "step"),
+            ("ss-move", "move"), ("ss-wave", "wave"), ("ss-noise", "noise"),
+            ("ss-blur", "blur"), ("ss-pix", "pix"), ("ss-scatter", "scatter"),
+            ("ss-circle", "circle"), ("ss-spot", "spot"),
+        ]
+        try:
+            for _nm, (_cell, _fns, _body) in _SS_USER_FRAG.items():
+                _sh = "ss.user_" + _nm
+                renpy.register_shader(
+                    _sh,
+                    variables=(_SS_USER_VARS_CELL if _cell else _SS_USER_VARS),
+                    vertex_300=_SS_USER_VERT,
+                    fragment_functions=_SS_USER_FUNCS + _fns,
+                    fragment_300=_body,
+                )
+                if "u_texel" in _body:
+                    _SS_USER_NEEDS_TEXEL.add(_sh)
+                if "u_cell_rect" in _body:
+                    _SS_USER_NEEDS_CELL.add(_sh)
+            # Hash via the Brain's own fnv1a so the keys match the draw plan's
+            # PartAttributeShader.id_hash byte-for-byte (mirrors Godot).
+            _SS_USER_SHADER_BY_HASH = {
+                _SS_LIB.ss_runtime_hash_string(_ss.encode("utf-8")): "ss.user_" + _key
+                for _ss, _key in _SS_USER_NAME_MAP
+            }
+        except Exception as e:
+            _SS_USER_SHADER_BY_HASH = {}
+            _SS_USER_NEEDS_TEXEL = set()
+            _SS_USER_NEEDS_CELL = set()
+            renpy.log("ss: register_shader(ss.user_*) failed: %r; user-shader "
+                      "effects disabled" % (e,))
 
     # SS Effect blend (EmitterState.blend_type): 0=Mix (normal), 1=Add. This is
     # a *different* enum from the framebuffer BlendType used by Normal parts.
@@ -1043,10 +1396,12 @@ init -10 python:
             Normal parts into one mesh/blit (and each effect batch likewise).
 
             A run breaks when the texture or framebuffer blend changes, an effect
-            batch interrupts it, or a masked part is reached — preserving draw
-            order. A masked part (``MeshPart.mask`` set, with a coverage in
-            ``cov_by_id``) draws per-part through ``ss.partcolor_mask`` instead of
-            batching. Falls back to per-part / unmasked drawing on any failure."""
+            batch interrupts it, or a masked / user-shadered part is reached —
+            preserving draw order. A masked part (``MeshPart.mask`` set, with a
+            coverage in ``cov_by_id``) draws per-part through ``ss.partcolor_mask``;
+            a part with a recognized ``shader_id_hash`` draws per-part through its
+            ``ss.user_*`` variant. Both break the batch. Falls back to per-part /
+            unmasked / plain drawing on any failure."""
             use_mesh = SS_RENDER_BACKEND == "mesh"
             can_batch = SS_BATCH_DRAW and use_mesh and _SS_PC_LAYOUT is not None
             run = []
@@ -1058,7 +1413,15 @@ init -10 python:
                            if ap is not None and cov_by_id else None)
                     if cov is not None:
                         # Masked: flush the current run, then draw it on its own
-                        # (the replay shader can't share a batched mesh).
+                        # (the replay shader can't share a batched mesh). If the
+                        # part ALSO carries a user shader, the mask wins (the two
+                        # rarely combine and there's no merged replay+effect pass).
+                        if (SS_ENABLE_USER_SHADERS and payload.shader_id_hash
+                                in _SS_USER_SHADER_BY_HASH):
+                            self._warn_once(("mask+shader", payload.shader_id_hash),
+                                            "part %d is both masked and shadered; "
+                                            "mask applied, user shader skipped"
+                                            % payload.part_index)
                         if run:
                             self._flush_mesh_run(r, run, ox, oy, st, at, width,
                                                  height, can_batch, use_mesh)
@@ -1066,6 +1429,21 @@ init -10 python:
                             run_key = None
                         if not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
                                                       st, at, width, height):
+                            self._flush_mesh_run(r, [payload], ox, oy, st, at,
+                                                 width, height, can_batch, use_mesh)
+                        continue
+                    # User-shader effect (SS6 ss-*): per-part through its variant,
+                    # can't share a batched mesh either.
+                    ush = (_SS_USER_SHADER_BY_HASH.get(payload.shader_id_hash)
+                           if SS_ENABLE_USER_SHADERS and use_mesh else None)
+                    if ush is not None:
+                        if run:
+                            self._flush_mesh_run(r, run, ox, oy, st, at, width,
+                                                 height, can_batch, use_mesh)
+                            run = []
+                            run_key = None
+                        if not self._draw_mesh_user_shader(r, payload, ush, ox, oy,
+                                                           st, at, width, height):
                             self._flush_mesh_run(r, [payload], ox, oy, st, at,
                                                  width, height, can_batch, use_mesh)
                         continue
@@ -1442,6 +1820,83 @@ init -10 python:
                 self._warn_once("mask-draw",
                                 "masked draw failed (%r); drawing unmasked"
                                 % (e,))
+                return False
+
+        def _draw_mesh_user_shader(self, r, mp, shader, ox, oy, st, at,
+                                   width, height):
+            """Draw one part through a user-shader variant (SS6 ss-* family).
+
+            Same per-vertex mesh as :meth:`_draw_mesh_masked` (a_tex_coord +
+            a_ss_color + a_ss_varg, so gradients / Shape fills keep their true
+            colour), but binds ``shader`` (e.g. ``ss.user_sepia``) with the effect
+            uniforms instead of the coverage replay: ``u_texel`` (= 1/atlas px,
+            Godot's TEXTURE_PIXEL_SIZE), ``u_ss_param`` (param0..3), and — for the
+            cell-rect shaders (circle / spot) — ``u_cell_rect`` (the part's atlas
+            cell in UV, from ``src_rect``). Returns True on success; False makes
+            the caller draw the part plainly (effect skipped, never blanks)."""
+            if _SS_Mesh2 is None or _SS_PC_LAYOUT is None:
+                return False
+            try:
+                cr = self._tex0_render(mp.texture_hash, st, at, width, height)
+                if cr is None:
+                    return False
+                tw, th = cr.get_size()
+                if tw <= 0 or th <= 0:
+                    return False
+
+                pts = mp.positions
+                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
+                tris = mp.triangles
+                mesh = _SS_Mesh2(_SS_PC_LAYOUT, len(pts), len(tris))
+                geometry = []
+                attributes = []
+                for idx in range(len(pts)):
+                    x, y = pts[idx]
+                    geometry += [ox + x, oy + y]
+                    u, v = nuv[idx]
+                    c = mp.colors[idx]
+                    vx, vy, vz = framedata.partcolor_varg(
+                        mp.color_blend, mp.rates[idx])
+                    attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+                mesh.set_geometry_data(geometry)
+                mesh.set_attribute_data(attributes)
+                indices = []
+                for tri in tris:
+                    indices += [tri[0], tri[1], tri[2]]
+                mesh.set_triangle_data(indices)
+
+                rv = renpy.Render(width, height)
+                rv.blit(cr, (0, 0))                  # tex0 atlas / white
+                if _SS_TEXTURE_WRAP is not None:
+                    rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
+                rv.mesh = mesh
+                rv.add_shader(shader)
+                # u_ss_param (every variant uses it): (param0..param3).
+                params = mp.shader_params
+                rv.add_uniform("u_ss_param", (
+                    params[0] if len(params) > 0 else 0.0,
+                    params[1] if len(params) > 1 else 0.0,
+                    params[2] if len(params) > 2 else 0.0,
+                    params[3] if len(params) > 3 else 0.0))
+                # Bind the optional uniforms only for variants that use them (an
+                # unused one is pruned from the compiled program — see
+                # _SS_USER_NEEDS_*). u_texel = 1/atlas px (Godot TEXTURE_PIXEL_SIZE);
+                # neighbour-sampling variants step by it in UV space.
+                if shader in _SS_USER_NEEDS_TEXEL:
+                    rv.add_uniform("u_texel", (1.0 / tw, 1.0 / th))
+                # u_cell_rect = the part's atlas cell in UV (circle / spot).
+                # src_rect is (left, top, w, h) atlas px.
+                if shader in _SS_USER_NEEDS_CELL:
+                    l, t, w, h = mp.src_rect
+                    rv.add_uniform("u_cell_rect", (
+                        l / tw, t / th, (l + w) / tw, (t + h) / th))
+                self._apply_blend(rv, mp)
+                r.blit(rv, (0, 0))
+                return True
+            except Exception as e:
+                self._warn_once(("user-shader", shader),
+                                "user shader %s failed (%r); drawing plainly"
+                                % (shader, e))
                 return False
 
         def _draw_mesh_batch(self, r, parts, ox, oy, st, at, width, height):
