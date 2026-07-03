@@ -396,9 +396,9 @@ init -10 python:
                                 if (i >= u_mask_count) break;
                                 vec4 m = u_mask_meta[i];
                                 bool clip = m.z > 0.5;
-                                bool active = clip ? (u_mask_rank > m.x)
-                                                   : (u_mask_rank < m.x);
-                                if (!active) continue;
+                                bool is_active = clip ? (u_mask_rank > m.x)
+                                                      : (u_mask_rank < m.x);
+                                if (!is_active) continue;
                                 float fi = float(i);
                                 float chan = floor(fi / 8.0);
                                 float b = fi - chan * 8.0;
