@@ -35,24 +35,26 @@ scripts\download-sdk.ps1
 
 ### 1.4 デモの起動と開発のイテレーション
 デモプロジェクトに含まれるアニメーションデータを変換し、Ren'Pyを起動して動作確認を行います。
-**macOS / Linux:**
+**macOS / Linux (`*.sh`):**
 ```bash
-# デモ用再生データのコンバート
-scripts/deploy-examples.sh
-
-# Ren'Py SDKの取得とデモプロジェクトの起動テスト
+# Ren'Py SDKの取得
 scripts/fetch-renpy-sdk.sh
+
+# デモ用再生データのコンバートとデモプロジェクトの起動テスト
+scripts/deploy-examples.sh
 scripts/run-demo.sh
 ```
-**Windows:**
+**Windows (`*.ps1`):**
 ```powershell
-# デモ用再生データのコンバート
-scripts\deploy-examples.ps1
-
-# Ren'Py SDKの取得とデモプロジェクトの起動テスト
+# Ren'Py SDKの取得
 scripts\fetch-renpy-sdk.ps1
+
+# デモ用再生データのコンバートとデモプロジェクトの起動テスト
+scripts\deploy-examples.ps1
 scripts\run-demo.ps1
 ```
+
+※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
 
 **開発サイクルの回し方:**
 Ren'Py側のPythonコード (`game/spritestudio/python/`) やRen'Pyスクリプト (`game/*.rpy`) を書き換えた後は、`run-demo.sh` を再実行するだけで変更が反映されます。

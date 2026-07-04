@@ -38,7 +38,19 @@ if [ -z "$SDK_DIR" ] || [ ! -f "$SDK_DIR/Cargo.toml" ]; then
   echo "deploy-examples.sh: SpriteStudio-SDK not found (init the submodule or set SSSDK)" >&2
   exit 1
 fi
-command -v python3 >/dev/null || { echo "deploy-examples.sh: python3 not on PATH" >&2; exit 1; }
+PYTHON_CMD=""
+RENPY_PYTHON_DIR=$(ls -d "$ROOT_DIR/renpy-sdk/lib/py3-"* 2>/dev/null | head -n 1 || true)
+if [ -n "$RENPY_PYTHON_DIR" ] && [ -x "$RENPY_PYTHON_DIR/python" ]; then
+    PYTHON_CMD="$RENPY_PYTHON_DIR/python"
+elif [ -n "$RENPY_PYTHON_DIR" ] && [ -x "$RENPY_PYTHON_DIR/python.exe" ]; then
+    PYTHON_CMD="$RENPY_PYTHON_DIR/python.exe"
+elif command -v python3 >/dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python >/dev/null; then
+    PYTHON_CMD="python"
+else
+    echo "deploy-examples.sh: python/python3 not found in renpy-sdk or PATH" >&2; exit 1
+fi
 
 # --- convert test projects -> SpriteStudio_Source/ -> game/ss_assets/<project> ---
 SOURCE_DIR="$ROOT_DIR/SpriteStudio_Source"
@@ -55,7 +67,7 @@ convert () { # <test-folder-relative-to-sdk> <project-name> <dest-abs>
   cp -R "$src_dir/"* "$work_dir/"
   
   rm -rf "$dest"; mkdir -p "$dest"
-  python3 "$ROOT_DIR/tools/cli_convert.py" "$work_dir/$project_name.sspj" "$dest"
+  "$PYTHON_CMD" "$ROOT_DIR/tools/cli_convert.py" "$work_dir/$project_name.sspj" "$dest"
 }
 
 convert "tests/overall" "overall" "$GAME_DIR/ss_assets/overall"

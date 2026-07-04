@@ -31,12 +31,28 @@ if (-not $SdkDir) {
 if (-not $SdkDir -or -not (Test-Path (Join-Path $SdkDir "Cargo.toml"))) {
     Write-Error "SpriteStudio-SDK not found (init the submodule or set `$env:SSSDK)"
 }
-$pythonCmd = "python"
-if (-not (Get-Command $pythonCmd -ErrorAction SilentlyContinue)) {
-    if (Get-Command "python3" -ErrorAction SilentlyContinue) {
+$pythonCmd = ""
+$RenpyLibDir = Join-Path $RootDir "renpy-sdk\lib"
+if (Test-Path $RenpyLibDir) {
+    $RenpyPythonDirs = Get-ChildItem -Path $RenpyLibDir -Directory -Filter "py3-*"
+    if ($RenpyPythonDirs.Count -gt 0) {
+        $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python.exe"
+        if (-not (Test-Path $bundledPython)) {
+            $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python"
+        }
+        if (Test-Path $bundledPython) {
+            $pythonCmd = $bundledPython
+        }
+    }
+}
+
+if (-not $pythonCmd) {
+    if (Get-Command "python" -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python"
+    } elseif (Get-Command "python3" -ErrorAction SilentlyContinue) {
         $pythonCmd = "python3"
     } else {
-        Write-Error "python/python3 not on PATH"
+        Write-Error "python/python3 not found in renpy-sdk or PATH"
     }
 }
 

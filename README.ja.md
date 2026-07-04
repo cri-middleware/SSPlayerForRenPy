@@ -44,23 +44,25 @@ screen demo():
 ## 🛠 2. カスタマー向け: Playerのカスタマイズ
 Ren'Py側のPythonコードやRen'Pyスクリプトを改修したいが、Rust製のSDKコアはビルドせずに既存のものを利用したい方向けの環境構築です。
 
-**macOS / Linux:**
+**macOS / Linux (`*.sh`):**
 ```bash
 git submodule update --init
 scripts/download-sdk.sh
-scripts/deploy-examples.sh
 scripts/fetch-renpy-sdk.sh
+scripts/deploy-examples.sh
 scripts/run-demo.sh
 ```
 
-**Windows:**
+**Windows (`*.ps1`):**
 ```powershell
 git submodule update --init
 scripts\download-sdk.ps1
-scripts\deploy-examples.ps1
 scripts\fetch-renpy-sdk.ps1
+scripts\deploy-examples.ps1
 scripts\run-demo.ps1
 ```
+
+※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
 ※詳細は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
 
 ## ⚙️ 3. SDK・Player開発者向け: フルビルド環境

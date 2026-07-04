@@ -35,24 +35,26 @@ scripts\download-sdk.ps1
 
 ### 1.4 Launching the Demo and Development Iteration
 Convert the animation data included in the demo project, and start Ren'Py to verify behavior.
-**macOS / Linux:**
+**macOS / Linux (`*.sh`):**
 ```bash
-# Convert playback data for the demo
-scripts/deploy-examples.sh
-
-# Get Ren'Py SDK and launch the demo project test
+# Get Ren'Py SDK
 scripts/fetch-renpy-sdk.sh
+
+# Convert playback data for the demo and launch the demo project test
+scripts/deploy-examples.sh
 scripts/run-demo.sh
 ```
-**Windows:**
+**Windows (`*.ps1`):**
 ```powershell
-# Convert playback data for the demo
-scripts\deploy-examples.ps1
-
-# Get Ren'Py SDK and launch the demo project test
+# Get Ren'Py SDK
 scripts\fetch-renpy-sdk.ps1
+
+# Convert playback data for the demo and launch the demo project test
+scripts\deploy-examples.ps1
 scripts\run-demo.ps1
 ```
+
+*Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
 
 **How to Iterate:**
 After modifying the Python code (`game/spritestudio/python/`) or Ren'Py scripts (`game/*.rpy`) on the Ren'Py side, the changes will be reflected just by re-running `run-demo.sh`.

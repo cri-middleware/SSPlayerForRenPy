@@ -44,23 +44,25 @@ screen demo():
 ## 🛠 2. Customizing the Player (For Customers)
 If you want to modify the Ren'Py scripts or Python code but prefer to use the pre-built native Rust SDK core, follow these steps to set up your environment.
 
-**macOS / Linux:**
+**macOS / Linux (`*.sh`):**
 ```bash
 git submodule update --init
 scripts/download-sdk.sh
-scripts/deploy-examples.sh
 scripts/fetch-renpy-sdk.sh
+scripts/deploy-examples.sh
 scripts/run-demo.sh
 ```
 
-**Windows:**
+**Windows (`*.ps1`):**
 ```powershell
 git submodule update --init
 scripts\download-sdk.ps1
-scripts\deploy-examples.ps1
 scripts\fetch-renpy-sdk.ps1
+scripts\deploy-examples.ps1
 scripts\run-demo.ps1
 ```
+
+*Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
 *For details, see the [Build Guide](docs/build.md).*
 
 ## ⚙️ 3. Full Build Environment (For SDK/Player Developers)
