@@ -48,13 +48,35 @@ init -10 python:
     build.classify('**.wav', 'all')
     build.classify('**.mp3', 'all')
 
-    # Exclude THIS development repo's tooling / build dirs from the package.
+    # Native libraries: ship ONLY the target platform's binary. Mirror Ren'Py's
+    # own per-platform lib tagging (see renpy/common/00build.rpy: lib/py*-mac-*/**
+    # -> "mac", lib/web/** -> "web", ...). Without this a mac .app would also
+    # carry the Windows .dll / Linux .so / Web .wasm — dead weight for that build.
+    # build.classify is FIRST-MATCH-WINS, so the two excludes below must precede
+    # the per-platform lib patterns (which would otherwise re-classify them):
+    #  * stale __pycache__ from headless CPython test runs — never ship it;
+    #  * the converter (libssconverter.*) is an IMPORT / DEV-time tool used by
+    #    auto_importer (gated on config.developer); a shipped game never loads it.
+    build.classify('**/__pycache__/**', None)
+    build.classify('**/*ssconverter.*', None)
+    build.classify('**/spritestudio/libs/macos/**', 'mac')
+    build.classify('**/spritestudio/libs/windows/x86_64/**', 'windows')
+    build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')
+    build.classify('**/spritestudio/libs/linux/aarch64/**', 'linux_arm')
+    build.classify('**/spritestudio/libs/android/**', 'android')
+    build.classify('**/spritestudio/libs/ios/**', 'ios')
+    build.classify('**/spritestudio/libs/web/**', 'web')
+
+    # Exclude THIS development repo's tooling / build / docs dirs from the package.
     # Guarded by the SpriteStudio-SDK submodule so a downstream game that only
     # vendors game/spritestudio/ — and may legitimately have its own top-level
-    # `scripts/` or `tools/` — is NOT affected by these repo-specific excludes.
+    # `scripts/`, `docs/` or `README.md` — is NOT affected by these repo-specific
+    # excludes. (`*.md` / `*.txt` match root-level files only — `*` does not cross
+    # `/` — so the libraries' bundled licences under game/.../libs/ are kept.)
     if os.path.isdir(os.path.join(config.basedir, "SpriteStudio-SDK")):
         for _ss_dev_pat in ('renpy-sdk/**', 'SpriteStudio-SDK/**',
                             'SpriteStudio_Source/**', 'web_out/**', 'web_out.zip',
+                            'dist/**', 'docs/**', 'mkdocs.yml', '*.md', '*.txt',
                             '.git/**', 'tools/**', 'scripts/**'):
             build.classify(_ss_dev_pat, None)
 
