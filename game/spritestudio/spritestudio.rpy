@@ -1,61 +1,51 @@
 # SpriteStudio Player for Ren'Py — SSPlayer
 #
-# Renders a SpriteStudio 7 .ssab animation pack as a Creator-Defined
-# Displayable (`SSPlayer`; one instance plays one .ssab, selecting an animation
-# by name). The heavy lifting (frame stepping, world transforms, UVs, vertex
-# colours, particle sim) is done by the native "Brain" (libssruntime) via
-# ctypes; this file is only the thin Ren'Py rendering layer + the lazy
-# setup/path wiring.
+# Renders a SpriteStudio 7 .ssab animation pack as a Creator-Defined Displayable.
+# One SSPlayer instance plays one .ssab and selects an animation in it by name:
 #
-# Scope: Normal parts (per-vertex mesh — shear / free-deform exact, per-vertex
-# `parts_color`, framebuffer + PartColor blend), **Instance** parts (nested
-# child animations, synced or independent, recursive), **Effect** parts
-# (particles), **Mesh(deform)** parts (skinned/free-deform meshes), and
-# **Shape** parts (textureless procedural polygons — rect/triangle/star/arrow,
-# filled by the PartColor) — all walked z-ordered via
-# `ss_renpy.instance.collect_ordered` and batched by texture (shapes share the
-# hash-0 / white-tex batch). Mask/clipping is handled by the mask section below;
-# Text / NineSlice batch kinds are still skipped (later milestones). The
-# engine-independent cores are headless-verified by tools/verify_*.py.
+#     add SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="Idle") xalign 0.5 yalign 0.5
 #
-# Timeline events (roadmap Step 4) are surfaced independently of rendering:
-# UserData / Signal / Audio markers are decoded by `ss_renpy.events` and
-# delivered via the optional on_* callbacks and the ss_poll_events() queue;
-# finished / looped derive from runtime state. (Playing audio is the host's
-# job — the Player only reports the trigger, per docs/00_limitations.)
+# The heavy lifting (frame stepping, world transforms, UVs, vertex colours,
+# particle sim) is done by the native "Brain" (libssruntime) via ctypes; this
+# file is the thin Ren'Py rendering layer + setup/path wiring around it.
 #
-# ─────────────────────────────────────────────────────────────────────────
-# VERIFICATION STATUS — READ THIS
-# The engine-independent render core (geometry + colour + blend math) is
-# headless-verified by `tools/verify_m2.py` and `tools/render_png.py`. The
-# *Ren'Py-specific* drawing below (GL blend funcs, matrixcolor conventions,
-# custom mesh construction, rotation/zoom signs) could NOT be run against a
-# real Ren'Py here, so each such feature sits behind a tuning knob with a safe
-# fallback. Defaults keep the known-good M1 placement and layer the
-# well-documented M2 features on top; flip the knobs after on-device checks.
-# The "mesh" backend (true per-vertex gradients / non-parallelogram deform) is
-# the documented #1 spike from renpy-cold-start.ja.md §3.2 — opt-in only.
-# ─────────────────────────────────────────────────────────────────────────
+# Supported part kinds: Normal (per-vertex mesh — shear / free-deform, per-vertex
+# parts_color, framebuffer + PartColor blend), Instance (nested child animations,
+# synced or independent, recursive), Effect (particles), Mesh/deform, and Shape
+# (textureless procedural polygons — rect / triangle / star / arrow, filled by the
+# PartColor). Mask / clipping and the SS6 user-shader family (ss-*) are supported
+# too. Text / NineSlice parts are not drawn yet.
+#
+# Timeline events (UserData / Signal / Audio) are surfaced via the optional on_*
+# callbacks and the ss_poll_events() queue; `finished` / `looped` derive from
+# runtime state. Playing audio is normally the host's job — the Player reports the
+# trigger and, with SS_ENABLE_AUDIO (default on), also plays it through Ren'Py.
+#
+# Rendering conventions that can vary by Ren'Py build / GPU (rotation sign, mirror
+# axis, blend, mask, render backend) are exposed as the SS_* tuning knobs below.
+# The defaults are known-good; override a knob only if something looks wrong on
+# your target. The engine-independent cores are headless-verified by
+# tools/verify_*.py; GL2 rendering is signed off visually (Shift+B / run-demo).
 
 init -10 python:
     import os
     import sys, math, time
 
-    # Ensure custom asset extensions and uncompressed audio are packaged.
-    # (Ren'Py's web builder skips .wav/.mp3 and unknown extensions by default).
-    # These are library-relevant, so they apply to any game using SSPlayer.
-    build.classify('**.ssab', 'all')
-    build.classify('**.wav', 'all')
-    build.classify('**.mp3', 'all')
+    # Packaging (build.classify): the library classifies only its OWN files —
+    # its `.ssab` pack format and its per-platform native libraries. build.classify
+    # is FIRST-MATCH-WINS by registration order, and this runs at init -10, so a
+    # game can override any of it from an EARLIER init in its options.rpy (the demo
+    # does exactly that — see game/options.rpy for asset archiving, the `**.wav` /
+    # `**.mp3` audio rules, and this repo's dev-file excludes).
+    build.classify('**.ssab', 'all')            # the SpriteStudio pack format
 
-    # Native libraries: ship ONLY the target platform's binary. Mirror Ren'Py's
-    # own per-platform lib tagging (see renpy/common/00build.rpy: lib/py*-mac-*/**
-    # -> "mac", lib/web/** -> "web", ...). Without this a mac .app would also
-    # carry the Windows .dll / Linux .so / Web .wasm — dead weight for that build.
-    # build.classify is FIRST-MATCH-WINS, so the two excludes below must precede
-    # the per-platform lib patterns (which would otherwise re-classify them):
+    # Native libraries: ship ONLY the target platform's binary, mirroring Ren'Py's
+    # own per-platform lib tagging (renpy/common/00build.rpy). Without this a mac
+    # .app would also carry the Windows .dll / Linux .so / Web .wasm — dead weight.
+    # The two `None` excludes come first (first-match-wins) so they win over the
+    # lib patterns below:
     #  * stale __pycache__ from headless CPython test runs — never ship it;
-    #  * the converter (libssconverter.*) is an IMPORT / DEV-time tool used by
+    #  * the converter (libssconverter.*) is an import- / dev-time tool used by
     #    auto_importer (gated on config.developer); a shipped game never loads it.
     build.classify('**/__pycache__/**', None)
     build.classify('**/*ssconverter.*', None)
@@ -66,19 +56,6 @@ init -10 python:
     build.classify('**/spritestudio/libs/android/**', 'android')
     build.classify('**/spritestudio/libs/ios/**', 'ios')
     build.classify('**/spritestudio/libs/web/**', 'web')
-
-    # Exclude THIS development repo's tooling / build / docs dirs from the package.
-    # Guarded by the SpriteStudio-SDK submodule so a downstream game that only
-    # vendors game/spritestudio/ — and may legitimately have its own top-level
-    # `scripts/`, `docs/` or `README.md` — is NOT affected by these repo-specific
-    # excludes. (`*.md` / `*.txt` match root-level files only — `*` does not cross
-    # `/` — so the libraries' bundled licences under game/.../libs/ are kept.)
-    if os.path.isdir(os.path.join(config.basedir, "SpriteStudio-SDK")):
-        for _ss_dev_pat in ('renpy-sdk/**', 'SpriteStudio-SDK/**',
-                            'SpriteStudio_Source/**', 'web_out/**', 'web_out.zip',
-                            'dist/**', 'docs/**', 'mkdocs.yml', '*.md', '*.txt',
-                            '.git/**', 'tools/**', 'scripts/**'):
-            build.classify(_ss_dev_pat, None)
 
     # This library lives at <gamedir>/spritestudio/ by convention. If you drop
     # it somewhere else, set `store.spritestudio_root` in an earlier init block
@@ -124,28 +101,26 @@ init -10 python:
                   p["draw"] / n * 1000.0, p["total"] / n * 1000.0, p["drawn"], n))
             p.update(n=0, geom=0.0, draw=0.0, total=0.0, drawn=0)
 
-    # --- Tuning knobs (set before first render) ----------------------------
-    # I could not run Ren'Py to confirm its rendering conventions, so these let
-    # you correct the result on your build without touching code.
+    # --- Tuning knobs (set before the first render) ------------------------
+    # Rendering conventions vary a little by Ren'Py build / GPU. Each knob has a
+    # known-good default; override it here (no code changes) if the result looks
+    # wrong on your target.
     SS_ROTATE_SIGN = 1.0          # set -1.0 if rotation direction is reversed
     SS_MIRROR_AXIS = "y"          # "y" = mirror via negative yzoom, "x" = xzoom
 
     # Render backend:
-    #   "transform" (default) — blit + Transform. Documented, robust. Adds over
-    #       M1: framebuffer blend modes and uniform parts_color tint. Drops
-    #       shear/free-deform back to the M1 similarity fit and renders
-    #       per-vertex colour *gradients* as a flat (averaged) tint.
     #   "mesh" (default) — model-based per-vertex mesh (renpy.gl2 Mesh2) + custom
     #       shader. The only backend that reproduces shear / free-deform and the
-    #       baked UV transforms (UvScale/UvTranslation/UvRotation) by sampling the
-    #       full atlas with gl_texture_wrap = REPEAT. Mirrors the reference
-    #       renderers. On any error it falls back per-part to the transform
-    #       backend, so it can never blank the screen.
-    #
-    # The transform backend CANNOT represent UV scale/rotation (it crops the cell
-    # rect), so parts like Basic.ssab's UvScale=2 render wrong there — hence mesh
-    # is the default. Set "transform" only if the mesh backend misbehaves on your
-    # GPU/Ren'Py build.
+    #       baked UV transforms (UvScale / UvTranslation / UvRotation), by sampling
+    #       the full atlas with gl_texture_wrap = REPEAT. Mirrors the reference
+    #       renderers. On any error it falls back per-part to "transform", so it
+    #       can never blank the screen.
+    #   "transform" — blit + Transform. Robust, but drops shear / free-deform to a
+    #       similarity fit and renders per-vertex colour gradients as a flat tint;
+    #       it also cannot represent UV scale / rotation (it crops the cell rect),
+    #       so packs like Basic.ssab (UvScale=2) render wrong.
+    # "mesh" is the default for that reason; choose "transform" only if the mesh
+    # backend misbehaves on your GPU / Ren'Py build.
     SS_RENDER_BACKEND = "mesh"
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
@@ -162,11 +137,8 @@ init -10 python:
     SS_ENABLE_MASK = True
     SS_MASK_COVERAGE_MAX_DIM = 2048
     SS_MASK_COVERAGE_SUPERSAMPLE = 2.0
-    # RESERVED (no longer wired): the replay shader used to average a 4-tap grid
-    # for edge AA, but that made it an outer×inner loop (up to 96 unrolled
-    # texture-sampling iterations) that Metal/ANGLE could not reliably compile, so
-    # the replay is now single-tap and the mask edge is antialiased solely by
-    # SS_MASK_COVERAGE_SUPERSAMPLE. Kept defined so existing overrides don't error.
+    # Deprecated no-op, kept so existing overrides don't error: the mask edge is
+    # antialiased solely by SS_MASK_COVERAGE_SUPERSAMPLE (above) — tune that instead.
     SS_MASK_ANTIALIAS = True
 
     # User-shader effects (SS6 ss-* family: sepia / outline / bmask / hsb / step /
@@ -1005,10 +977,9 @@ init -10 python:
           Mix/Add/Sub (varg.z=0): S = varg.x,           O = color*varg.y
           Mul        (varg.z=1):  S = varg.x+color*varg.y, O = 0
         Returns a renpy Matrix or None (→ caller skips tint). The colour-matrix
-        arity/convention (premultiply, row order, 5x4 vs 5x5) is version-
-        dependent and unverified here, so the whole construction is guarded —
-        any mismatch returns None and the part renders untinted (geometry stays
-        correct).
+        arity / convention (premultiply, row order, 5x4 vs 5x5) is version-
+        dependent, so the whole construction is guarded — any mismatch returns
+        None and the part renders untinted (geometry stays correct).
         """
         try:
             from renpy.display.matrix import Matrix
@@ -1206,7 +1177,7 @@ init -10 python:
             self.speed = speed
             # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (docs/06). By default, it is now on.
+            # head stays a raw float either way (docs/06). Defaults to on.
             self._sub_frame = bool(sub_frame)
             # Layout size. Given as (w, h) (or a single number for a square),
             # render() reports a box of that size and centers the animation

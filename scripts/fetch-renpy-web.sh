@@ -11,6 +11,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT_DIR/renpy-sdk"
 BASE_URL="https://www.renpy.org/dl"
+VERSION_FILE="$ROOT_DIR/scripts/RENPY_VERSION.txt"
 
 usage() { sed -n '/^# Usage:/,/^#   8/p' "$0" | sed 's/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
@@ -24,7 +25,13 @@ if [ ! -d "$DEST" ]; then
 fi
 
 # --- resolve version ------------------------------------------------------
+# priority: CLI arg > $RENPY_VERSION > scripts/RENPY_VERSION.txt (the pin all
+# fetch-renpy-* scripts share) > latest stable resolved from latest.html.
 VERSION="${1:-${RENPY_VERSION:-}}"
+if [ -z "$VERSION" ] && [ -f "$VERSION_FILE" ]; then
+  VERSION="$(tr -d ' \t\r\n' < "$VERSION_FILE")"
+  [ -n "$VERSION" ] && echo "Using pinned version from scripts/RENPY_VERSION.txt: $VERSION"
+fi
 if [ -z "$VERSION" ]; then
   echo "Resolving latest stable Ren'Py version..."
   VERSION="$(curl -fsSL https://www.renpy.org/latest.html \

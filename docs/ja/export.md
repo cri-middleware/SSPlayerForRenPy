@@ -74,9 +74,10 @@ scripts\deploy-web.ps1 [dest_dir]
 
 ### 仕様に関する注意点
 
-* **`.ssab` / `.wav` / `.mp3` のパッケージング**
+* **`.ssab` とオーディオ (`.wav` / `.mp3`) のパッケージング**
   Ren'Py は Web エクスポート時に、デフォルトでは `.png` や `.ogg` など限られた拡張子のファイルしか出力用アーカイブ (`game.zip`) に含めません。
-  本ライブラリでは `spritestudio.rpy` 内にて `build.classify('**.ssab', 'all')`・`build.classify('**.wav', 'all')`・`build.classify('**.mp3', 'all')` を定義しているため、開発者が自身で `options.rpy` 等を変更しなくても、必要なアセットが正しくパッケージングされます。
+  本ライブラリは `spritestudio.rpy` 内で `build.classify('**.ssab', 'all')` を定義しているため、SpriteStudio パックは常に含まれます（この分は `options.rpy` の変更不要）。
+  **非圧縮オーディオはライブラリではなくゲーム側の責務です。** SpriteStudio の **Audio** タイムラインイベントで `.wav` / `.mp3` を再生する場合は、ご自身の `options.rpy` に `build.classify('**.wav', 'all')` と `build.classify('**.mp3', 'all')` を追加してください（本デモも `game/options.rpy` でそうしています）。追加しないと Web ビルドで除外されます。
 
 ## デスクトップ向けエクスポート (Windows / macOS / Linux)
 
@@ -87,10 +88,11 @@ scripts\deploy-web.ps1 [dest_dir]
 同梱し、`ssruntime.py` が実行時に `game/spritestudio/libs/<platform-arch>/` から
 解決します（開発時とまったく同じレイアウトです）。
 
-アセットも対応済みです。`spritestudio.rpy` が
-`build.classify('**.ssab' / '**.wav' / '**.mp3', 'all')` を宣言しているため、
-`.ssab` パック・テクスチャ・非圧縮オーディオは `options.rpy` を触らなくても正しく
-パッケージングされます。
+アセットも対応済みです。`spritestudio.rpy` が `build.classify('**.ssab', 'all')`
+を宣言しているため、`.ssab` パック（および同じ場所のテクスチャ）は `options.rpy`
+を触らなくても正しくパッケージングされます。非圧縮**オーディオ** (`.wav` / `.mp3`)
+はゲーム側の責務です。SS Audio イベントを使う場合はご自身の `options.rpy` で
+classify してください（本デモは `game/options.rpy` で対応済みです）。
 
 > **⚠️ ターゲットの各プラットフォームごとに、対応するネイティブライブラリが必要です。**
 > Brain はコンパイル済みバイナリなので、パッケージが *実行* できるのは、そのライブラリ
@@ -172,9 +174,10 @@ Ren'Py Launcher の GUI からも可能です。プロジェクトを選択 → 
 * **コンバータ (`libssconverter.*`) は一切同梱されません。** これはインポート/開発時
   ツール（`auto_importer`、`config.developer` でガード)で、配布されたゲームが実行時に
   ロードすることはありません。
-* 古い `__pycache__` も除外します。本リポジトリでは開発専用ファイル（`docs/`・
-  `dist/`・ルート直下の `*.md` / `*.txt` など）も除外しています（ガード付きなので、
-  `game/spritestudio/` を取り込んだ下流ゲームには影響しません）。
+* 古い `__pycache__` も除外します。（本リポジトリ自身の開発用ファイル — `renpy-sdk/`・
+  `SpriteStudio-SDK/`・`scripts/`・`docs/`・`dist/`・ルート直下の `*.md` / `*.txt` など —
+  は、ライブラリではなく**デモの** `game/options.rpy` で除外しています。そのため
+  `game/spritestudio/` を取り込んだ下流ゲームには一切影響しません。）
 
 **任意 — アセットを `.rpa` アーカイブにまとめる。** Ren'Py は既定でゲームファイルを
 ルーズに配置します。1 つのアーカイブにまとめたい場合は、アーカイブを宣言してアセットを
@@ -192,7 +195,69 @@ init -20 python:
 デモの `options.rpy` は既にこれを `ss_pack_assets_into_rpa` トグル付きで実装済みです
 （`False` にするとアセットをルーズで配布します）。
 
-## モバイル (Android / iOS)
+## Android 向けエクスポート
 
-*(後日追加予定 — いずれも Android/iOS 用ネイティブライブラリをビルドし、
-`game/spritestudio/libs/{android/<abi>,ios}/` へ配置する必要があります。)*
+Android 向けエクスポートは Ren'Py 標準の **RAPT**（Ren'Py Android Packaging Tool）
+を使います。デスクトップ向けと同様、Web と違って**エクスポート後の手作業は不要**です。
+`game/spritestudio/libs/android/<arch>/` のネイティブ「頭脳 (Brain)」`.so` がアプリに
+同梱され、`ssruntime.py` が実行時にロードします。
+
+> **⚠️ Android は ABI ごとに専用のネイティブライブラリが必要です。**
+> Brain はコンパイル済みバイナリなので、`.so` が存在する ABI でしか動作しません。
+> 配置先は SDK の **arch トークン**（`arm64` / `arm32` / `x86_64`）であり、Android の
+> ABI 名（`arm64-v8a` / `armeabi-v7a`）**ではありません** — これは APK の `lib/<abi>/`
+> ではなく `game/` 内の ctypes ロードパスだからです:
+>
+> | デバイス | パス |
+> |---|---|
+> | 64bit スマホ/タブレット（大半） | `libs/android/arm64/libssruntime.so` |
+> | 旧 32bit スマホ                | `libs/android/arm32/libssruntime.so` |
+> | x86_64 エミュレータ            | `libs/android/x86_64/libssruntime.so` |
+>
+> 取得は `scripts/build-runtime.* platform=android build=release`（ソースからビルド、
+> Android NDK が必要）または `scripts/download-sdk.*`（ビルド済み）で行います。
+
+### 一度だけの準備
+
+1. **RAPT を取得** — Android ターゲットに必要な追加ダウンロード（Web における
+   `fetch-renpy-web.*` に相当）:
+   ```bash
+   scripts/fetch-renpy-android.sh          # Windows: scripts\fetch-renpy-android.ps1
+   ```
+2. **Android SDK のインストールと署名鍵の生成** — どちらも対話式なので、launcher の
+   GUI から一度だけ実施します:
+   ```bash
+   renpy-sdk/renpy.sh renpy-sdk/launcher   # -> Android
+   ```
+   * **Install SDK** — Android SDK / NDK / JDK を `renpy-sdk/rapt/Sdk/` にダウンロード。
+   * **Generate Keys** — 署名用の `android.keystore`（および `bundle.keystore`）を
+     プロジェクトルートに生成。
+
+### 自動ビルド（推奨）
+
+上記の前提を確認してエクスポートを実行するヘルパスクリプトを使います。Ren'Py SDK と
+RAPT が未取得なら自動で取得します:
+
+```bash
+scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]   # 既定 dest: dist
+# Windows:
+scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+```
+
+* `--bundle` は Universal `.apk` の代わりに `.aab` App Bundle（Play アップロード用）を
+  ビルドします。`--install` / `--launch` は接続中の端末へ `adb` で転送・起動します。
+
+### 手動ビルド
+
+```bash
+renpy-sdk/renpy.sh renpy-sdk/launcher android_build . --dest dist
+```
+
+または launcher GUI からプロジェクトを選択 → **Android** → **Build**。デスクトップ
+同様 `build.name` の設定が必須です（本デモの `options.rpy` は設定済み）。
+
+## iOS 向けエクスポート
+
+*(後日追加予定 — iOS 用ネイティブライブラリ (`libssruntime.xcframework`) をビルドして
+`game/spritestudio/libs/ios/` へ配置する必要があります。`scripts/build-runtime.*
+platform=ios` で生成できます。)*

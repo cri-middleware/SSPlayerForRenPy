@@ -78,9 +78,10 @@ do it by hand, follow the manual steps instead.
 
 ### Implementation Details
 
-* **Packaging `.ssab`, `.wav` and `.mp3` Files**
+* **Packaging `.ssab` and audio (`.wav` / `.mp3`) Files**
    By default during web exports, Ren'Py only includes specific file extensions (like `.png` or `.ogg`) in the output archive (`game.zip`).
-   This library already defines `build.classify('**.ssab', 'all')`, `build.classify('**.wav', 'all')` and `build.classify('**.mp3', 'all')` within `spritestudio.rpy`. Because of this, developers do not need to manually edit their `options.rpy`; the necessary assets will automatically be packaged correctly.
+   The library defines `build.classify('**.ssab', 'all')` in `spritestudio.rpy`, so your SpriteStudio packs are always included — no `options.rpy` edit needed for those.
+   **Uncompressed audio is the game's call, not the library's:** if your game plays SpriteStudio **Audio** timeline events from `.wav` / `.mp3` files, add `build.classify('**.wav', 'all')` and `build.classify('**.mp3', 'all')` to your own `options.rpy` (this demo does exactly that — see `game/options.rpy`). Otherwise the web builder drops them.
 
 ## Desktop Export (Windows / macOS / Linux)
 
@@ -91,9 +92,11 @@ Web target, **no post-export steps are required**: the native "Brain" library
 resolves it at runtime from `game/spritestudio/libs/<platform-arch>/` — the same
 layout used during development.
 
-Assets are also already handled: `spritestudio.rpy` declares
-`build.classify('**.ssab' / '**.wav' / '**.mp3', 'all')`, so your `.ssab` packs,
-textures and uncompressed audio are packaged without touching `options.rpy`.
+Assets are handled too: `spritestudio.rpy` declares `build.classify('**.ssab',
+'all')`, so your `.ssab` packs (and their co-located textures) are packaged
+without touching `options.rpy`. Uncompressed **audio** (`.wav` / `.mp3`) is the
+game's responsibility — classify it in your own `options.rpy` if you use SS Audio
+events (the demo does; see `game/options.rpy`).
 
 > **⚠️ Each target platform needs its own native library.**
 > The Brain is a compiled binary, so a package can only *run* on a platform whose
@@ -172,9 +175,10 @@ so you should not need to touch `options.rpy`:
 * **The converter (`libssconverter.*`) is never bundled.** It is an import- /
   dev-time tool (`auto_importer`, gated on `config.developer`); a shipped game
   never loads it.
-* Stale `__pycache__` is dropped. In this repo, developer-only cruft (`docs/`,
-  `dist/`, root `*.md` / `*.txt`, …) is excluded too — guarded so it only affects
-  this repo, not a downstream game that vendors `game/spritestudio/`.
+* Stale `__pycache__` is dropped. (This repo's own developer cruft — `renpy-sdk/`,
+  `SpriteStudio-SDK/`, `scripts/`, `docs/`, `dist/`, root `*.md` / `*.txt`, … — is
+  excluded from the *demo's* build by `game/options.rpy`, not by the library, so a
+  downstream game that vendors `game/spritestudio/` is never affected by it.)
 
 **Optional — pack assets into a `.rpa` archive.** Ren'Py ships game files loose
 by default. To bundle them into a single archive instead, declare an archive and
@@ -192,7 +196,70 @@ init -20 python:
 The demo's `options.rpy` already does this behind a `ss_pack_assets_into_rpa`
 toggle (set it `False` to distribute the assets loose).
 
-## Mobile (Android / iOS)
+## Android Export
 
-*(To be added later — both require building the Android/iOS native libraries and
-placing them under `game/spritestudio/libs/{android/<abi>,ios}/`.)*
+Android export uses Ren'Py's standard **RAPT** toolchain (the Ren'Py Android
+Packaging Tool). Like the desktop target and unlike Web, **no post-export steps
+are required**: the native "Brain" `.so` under
+`game/spritestudio/libs/android/<arch>/` is bundled into the app and
+`ssruntime.py` loads it at runtime.
+
+> **⚠️ Android needs its own native libraries, one per ABI.**
+> The Brain is a compiled binary, so the app only runs on an ABI whose `.so` is
+> present. They go under the SDK's **arch tokens** (`arm64` / `arm32` / `x86_64`),
+> **not** the Android ABI names (`arm64-v8a` / `armeabi-v7a`) — this path is a
+> ctypes load path inside `game/`, not the APK's `lib/<abi>/`:
+>
+> | Device | Path |
+> |---|---|
+> | 64-bit phones/tablets (most) | `libs/android/arm64/libssruntime.so` |
+> | Older 32-bit phones          | `libs/android/arm32/libssruntime.so` |
+> | x86_64 emulators             | `libs/android/x86_64/libssruntime.so` |
+>
+> Get them with `scripts/build-runtime.* platform=android build=release` (from
+> source; needs the Android NDK toolchain) or `scripts/download-sdk.*` (prebuilt).
+
+### One-time setup
+
+1. **Fetch RAPT** — the extra download the Android target needs (like Web needs
+   `fetch-renpy-web.*`):
+   ```bash
+   scripts/fetch-renpy-android.sh          # Windows: scripts\fetch-renpy-android.ps1
+   ```
+2. **Install the Android SDK & generate signing keys** — both are interactive, so
+   do them once from the launcher GUI:
+   ```bash
+   renpy-sdk/renpy.sh renpy-sdk/launcher   # -> Android
+   ```
+   * **Install SDK** — downloads the Android SDK / NDK / JDK into `renpy-sdk/rapt/Sdk/`.
+   * **Generate Keys** — creates `android.keystore` (and `bundle.keystore`) in the
+     project root, used to sign the package.
+
+### Automated build (recommended)
+
+Use the helper script, which checks the prerequisites above and runs the export.
+It auto-fetches the Ren'Py SDK and RAPT if missing:
+
+```bash
+scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]   # default dest: dist
+# Windows:
+scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+```
+
+* `--bundle` builds an `.aab` App Bundle (for Play upload) instead of a Universal
+  `.apk`; `--install` / `--launch` push and start it on a connected device (`adb`).
+
+### Manual build
+
+```bash
+renpy-sdk/renpy.sh renpy-sdk/launcher android_build . --dest dist
+```
+
+Or from the launcher GUI: select the project → **Android** → **Build**. As with
+desktop, `build.name` must be set (this demo's `options.rpy` already does).
+
+## iOS Export
+
+*(To be added later — requires building the iOS native library
+(`libssruntime.xcframework`) and placing it under `game/spritestudio/libs/ios/`;
+`scripts/build-runtime.* platform=ios` produces it.)*

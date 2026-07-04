@@ -20,6 +20,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $Dest = Join-Path $RootDir "renpy-sdk"
 $BaseUrl = "https://www.renpy.org/dl"
+$VersionFile = Join-Path $RootDir "scripts/RENPY_VERSION.txt"
 
 if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
     Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
@@ -27,7 +28,13 @@ if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
 }
 
 # --- resolve version ------------------------------------------------------
+# priority: CLI arg > $env:RENPY_VERSION > scripts\RENPY_VERSION.txt (the pin all
+# fetch-renpy-* scripts share) > latest stable resolved from latest.html.
 $Version = if ($Args.Count -ge 1) { $Args[0] } elseif ($env:RENPY_VERSION) { $env:RENPY_VERSION } else { "" }
+if (-not $Version -and (Test-Path $VersionFile)) {
+    $Version = (Get-Content $VersionFile -Raw).Trim()
+    if ($Version) { Write-Host "Using pinned version from scripts\RENPY_VERSION.txt: $Version" }
+}
 if (-not $Version) {
     Write-Host "Resolving latest stable Ren'Py version..."
     $html = (Invoke-WebRequest -Uri "https://www.renpy.org/latest.html" -UseBasicParsing).Content
