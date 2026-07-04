@@ -1,8 +1,8 @@
 # SSPlayer runtime helpers — small, escapable sugar over SSPlayer for the most
 # common "play something" patterns, so creators don't hand-roll timing logic.
 #
-#   $ ss_show_effect("ss_assets/ParticleEffect/e038.ssab", "hit",
-#                    at=Transform(xpos=400, ypos=300), wait=True)   # cutscene beat
+#   $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
+#                  at=Transform(xpos=400, ypos=300), wait=True)     # cutscene beat
 #   $ d = ss_duration("ss_assets/Ringo/Ringo.ssab", "attack1")      # one playthrough (s)
 #
 # These are thin compositions of documented Ren'Py APIs (show/hide/pause/sound)
@@ -29,22 +29,25 @@ init -9 python:
         except Exception:
             return 0.0
 
-    def ss_show_effect(ssab, anim=None, at=None, tag=None, layer="master",
-                       wait=False, hide=True, speed=1.0, **kwargs):
-        """Show a one-shot SpriteStudio effect/animation (plays once).
+    def ss_play_once(ssab, anim=None, at=None, tag=None, layer="master",
+                     wait=False, hide=True, speed=1.0, **kwargs):
+        """Show a SpriteStudio animation played ONCE (loop=1): an effect, a
+        full-screen cutscene, any one-shot pack.
 
-        `at`    : a Transform/ATL for placement (e.g. Transform(xpos=.., ypos=..)).
+        `at`    : a Transform/ATL for placement/scale (e.g. Transform(xalign=.5,
+                  yalign=.5, zoom=1.5) to center + scale up a full-screen cutscene).
         `tag`   : the show tag (default derived from the .ssab stem).
         `wait`  : block for one playthrough (a cutscene beat), then hide.
         `hide`  : when waiting, hide afterwards (set False to leave the last frame).
         `**kwargs` go to SSPlayer (size, on_audio, ...).
 
-        Non-blocking by default: it shows the effect (it freezes on its last
-        frame with loop=1); hide it yourself, or pass wait=True for a beat.
+        Non-blocking by default: it shows the animation (it freezes on its last
+        frame with loop=1); hide it yourself with :func:`ss_hide_once`, or pass
+        wait=True for a beat.
         """
         if tag is None:
             stem = ssab.replace("\\", "/").rsplit("/", 1)[-1]
-            tag = "ss_fx_" + (stem[:-len(".ssab")] if stem.endswith(".ssab") else stem).lower()
+            tag = "ss_once_" + (stem[:-len(".ssab")] if stem.endswith(".ssab") else stem).lower()
         d = SSPlayer(ssab, animation=anim, loop=1, speed=speed, **kwargs)
         renpy.show(tag, what=d, at_list=([at] if at is not None else []), layer=layer)
         if wait:
@@ -53,8 +56,12 @@ init -9 python:
                 renpy.hide(tag, layer=layer)
         return tag
 
-    def ss_hide_effect(tag, layer="master"):
-        """Hide an effect previously shown by :func:`ss_show_effect`."""
+    def ss_hide_once(tag, layer="master"):
+        """Hide an animation previously shown by :func:`ss_play_once`.
+
+        Kept as the paired public helper even though the bundled demo never calls
+        it — a creator who shows a non-waiting one-shot (``wait=False``) needs it
+        to take the animation back down."""
         renpy.hide(tag, layer=layer)
 
     def ss_auto_audio(player, frame, audio):

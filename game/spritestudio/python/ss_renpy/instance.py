@@ -103,13 +103,16 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
 
 
 def build_subplayer(owner, part, depth):
-    """Build a parent-driven :class:`SSInternalPlayer` for one Instance ``part``.
+    """Resolve one Instance ``part``'s pack + animation, then have ``owner`` build
+    a parent-driven child player for it.
 
-    Resolves the referenced pack — *internal* (same ``.ssab``, another animation)
-    or *external* (``owner._loader(pack_name)`` per ``external_instances``, which
-    also merges that pack's textures into the shared map) — then spins up a child
-    player that shares the owner's lib / rm / loader / texmap / base_dir. Returns
-    ``None`` (so the caller skips the slot) when the pack/animation can't resolve.
+    The referenced pack is *internal* (same ``.ssab``, another animation) or
+    *external* (``owner._loader(pack_name)`` per ``external_instances``, which also
+    merges that pack's textures into the shared map). Construction of the child
+    (shared lib / rm / loader / texmap / base_dir) is delegated to
+    :meth:`SSInternalPlayer.make_child`, so this module no longer reaches into the
+    owner's private construction surface. Returns ``None`` (caller skips the slot)
+    when the pack/animation can't resolve.
     """
     if depth > MAX_DEPTH:
         return None
@@ -125,19 +128,11 @@ def build_subplayer(owner, part, depth):
     if not child_data:
         return None
 
-    # Lazy import breaks the player <-> instance module import cycle: player
-    # imports InstanceRig at load time; we only need SSInternalPlayer at runtime.
-    from ss_renpy.player import SSInternalPlayer
-    try:
-        child = SSInternalPlayer(
-            child_data, lib=owner._lib, base_dir=owner.base_dir,
-            resource_manager=owner._rm, sub_frame=owner.sub_frame,
-            enable_events=False, parent_driven=True,
-            loader=owner._loader, texmap=owner._texmap, depth=depth)
-        if not child.set_animation(ref_anim):
-            child.close()
-            return None
-    except Exception:
+    child = owner.make_child(child_data, depth)
+    if child is None:
+        return None
+    if not child.set_animation(ref_anim):
+        child.close()
         return None
     return child
 

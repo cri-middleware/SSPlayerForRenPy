@@ -639,12 +639,28 @@ def bulk_part_colors(fd: FrameData):
     blob = p0._tab.Bytes[base:base + n * _PC_SIZE]
     out = [_decode_pc_record(rec) for rec in _PC_REC.iter_unpack(blob)]
     if _pc_fastpath is None:
+        # Validate the WHOLE record against the accessor path, not just the LT
+        # corner: docs/07 §2 warns SizeOf() cannot catch a same-size field
+        # reorder, so a partial check could let RT/LB/RB decode wrong while the
+        # fast path still reports "validated OK". The four corners live at
+        # struct offsets 4/12/20/28 (see _PC_REC).
         ref_b = clamp_pc_blend(p0.BlendType())
-        ref_lt = _read_corner(p0.Lt(SsAttributePartColorKeyValueColor()))
+        ref_corners = (
+            _read_corner(p0.Lt(SsAttributePartColorKeyValueColor())),
+            _read_corner(p0.Rt(SsAttributePartColorKeyValueColor())),
+            _read_corner(p0.Lb(SsAttributePartColorKeyValueColor())),
+            _read_corner(p0.Rb(SsAttributePartColorKeyValueColor())),
+        )
         got_b, got_corners = out[0]
-        if (got_b != ref_b or got_corners[0].rate != ref_lt.rate
-                or any(abs(got_corners[0].rgba[i] - ref_lt.rgba[i]) > 1e-6
-                       for i in range(4))):
+        ok = (got_b == ref_b)
+        if ok:
+            for gc, rc in zip(got_corners, ref_corners):
+                if (gc.rate != rc.rate
+                        or any(abs(gc.rgba[i] - rc.rgba[i]) > 1e-6
+                               for i in range(4))):
+                    ok = False
+                    break
+        if not ok:
             _pc_fastpath = False
             return None
         _pc_fastpath = True
@@ -851,9 +867,14 @@ def _draw_batch_list(fd: FrameData):
             out = list(_DB_REC.iter_unpack(
                 b0._tab.Bytes[base:base + n * _DB_SIZE]))
             if _db_fastpath is None:
+                # Validate all 8 fields (incl. VertexCount@8 / IndexCount@10)
+                # against the accessor: docs/07 §2 warns SizeOf() cannot catch a
+                # same-size field reorder, so every decoded field is checked even
+                # though the walk itself ignores vcount/icount.
                 r = out[0]
                 if (r[0] == b0.StartRank() and r[1] == b0.Count()
-                        and r[2] == b0.TextureHash() and r[5] == b0.BlendType()
+                        and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
+                        and r[4] == b0.IndexCount() and r[5] == b0.BlendType()
                         and r[6] == b0.Kind() and r[7] == b0.Flags()):
                     _db_fastpath = True
                 else:

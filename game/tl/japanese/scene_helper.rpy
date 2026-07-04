@@ -14,9 +14,9 @@ translate japanese helper_msg3:
 translate japanese helper_msg4:
     "頭の ♪ は head パーツに追従しているのです。"
 
-# 3. ss_show_effect
+# 3. ss_play_once
 translate japanese helper_msg5:
-    "ss_show_effect(wait=True) は、エフェクトが終わるまで“間”を取ってくれます。"
+    "ss_play_once(wait=True) は、再生が終わるまで“間”を取ってくれます。"
 
 # 4. ss_duration
 translate japanese helper_msg6:

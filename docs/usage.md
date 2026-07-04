@@ -175,11 +175,11 @@ image boss = SSPlayer(
 
 ## 6. Utilities
 
-### One-Shot Effects Made Easy (`ss_show_effect`)
-Useful for cutscene direction. With `wait=True`, it waits until playback finishes and automatically disappears.
+### One-Shot Playback Made Easy (`ss_play_once`)
+Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
 ```renpy
-$ ss_show_effect("ss_assets/ParticleEffect/e038.ssab", "hit",
-                 at=Transform(xpos=640, ypos=360), wait=True)
+$ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
+               at=Transform(xpos=640, ypos=360), wait=True)
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 

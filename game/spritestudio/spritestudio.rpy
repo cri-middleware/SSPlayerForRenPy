@@ -110,7 +110,6 @@ init -10 python:
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
-    SS_USE_MATRIX_TRANSFORM = False  # transform backend: true shear via 4x4
     # Mask / clipping (09_mask). Needs the mesh backend + custom shaders +
     # offscreen Render-to-texture; set False to draw masked parts plainly
     # (geometry stays correct, the mask is simply not applied). The coverage
@@ -984,6 +983,36 @@ init -10 python:
         def images(self):
             return list(self._cache.values())
 
+    def _ss_pack_pc_mesh(parts, ox, oy, tw, th):
+        """Pack a run of Normal / Shape parts into flat (geometry, attributes,
+        indices) arrays for the ``_SS_PC_LAYOUT`` mesh (a_tex_coord + a_ss_color +
+        a_ss_varg) — the per-vertex build shared by the batched, masked and
+        user-shader mesh draws (previously copy-pasted in all three).
+
+        Per vertex: world position offset to screen px by (ox, oy); UV normalized
+        by the atlas size (tw, th); per-corner PartColor RGBA + the shader ``varg``
+        triple. Triangles are rebased by the running vertex count, so ``parts`` may
+        be a single part (masked / user-shader draw) or a whole same-texture run
+        (batched draw). Returns ``(geometry, attributes, indices, nverts)``.
+        """
+        geometry = []
+        attributes = []
+        indices = []
+        base = 0
+        for mp in parts:
+            nuv = framedata.normalize_uvs(mp.uvs, tw, th)
+            for idx in range(len(mp.positions)):
+                x, y = mp.positions[idx]
+                geometry += [ox + x, oy + y]
+                u, v = nuv[idx]
+                c = mp.colors[idx]
+                vx, vy, vz = framedata.partcolor_varg(mp.color_blend, mp.rates[idx])
+                attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+            for (i, j, k) in mp.triangles:
+                indices += [base + i, base + j, base + k]
+            base += len(mp.positions)
+        return geometry, attributes, indices, base
+
     class SSPlayer(renpy.Displayable):
         """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
 
@@ -1819,25 +1848,11 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                pts = mp.positions
-                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
-                tris = mp.triangles
-                mesh = _SS_Mesh2(_SS_PC_LAYOUT, len(pts), len(tris))
-                geometry = []
-                attributes = []
-                for idx in range(len(pts)):
-                    x, y = pts[idx]
-                    geometry += [ox + x, oy + y]
-                    u, v = nuv[idx]
-                    c = mp.colors[idx]
-                    vx, vy, vz = framedata.partcolor_varg(
-                        mp.color_blend, mp.rates[idx])
-                    attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                    [mp], ox, oy, tw, th)
+                mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
                 mesh.set_attribute_data(attributes)
-                indices = []
-                for tri in tris:
-                    indices += [tri[0], tri[1], tri[2]]
                 mesh.set_triangle_data(indices)
 
                 rv = renpy.Render(width, height)
@@ -1888,25 +1903,11 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                pts = mp.positions
-                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
-                tris = mp.triangles
-                mesh = _SS_Mesh2(_SS_PC_LAYOUT, len(pts), len(tris))
-                geometry = []
-                attributes = []
-                for idx in range(len(pts)):
-                    x, y = pts[idx]
-                    geometry += [ox + x, oy + y]
-                    u, v = nuv[idx]
-                    c = mp.colors[idx]
-                    vx, vy, vz = framedata.partcolor_varg(
-                        mp.color_blend, mp.rates[idx])
-                    attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                    [mp], ox, oy, tw, th)
+                mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
                 mesh.set_attribute_data(attributes)
-                indices = []
-                for tri in tris:
-                    indices += [tri[0], tri[1], tri[2]]
                 mesh.set_triangle_data(indices)
 
                 rv = renpy.Render(width, height)
@@ -1961,24 +1962,9 @@ init -10 python:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return False
-                geometry = []
-                attributes = []
-                indices = []
-                base = 0
-                for mp in parts:
-                    nuv = framedata.normalize_uvs(mp.uvs, tw, th)
-                    for idx in range(len(mp.positions)):
-                        x, y = mp.positions[idx]
-                        geometry += [ox + x, oy + y]
-                        u, v = nuv[idx]
-                        c = mp.colors[idx]
-                        vx, vy, vz = framedata.partcolor_varg(
-                            mp.color_blend, mp.rates[idx])
-                        attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
-                    for (i, j, k) in mp.triangles:
-                        indices += [base + i, base + j, base + k]
-                    base += len(mp.positions)
-                mesh = _SS_Mesh2(_SS_PC_LAYOUT, base, len(indices) // 3)
+                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                    parts, ox, oy, tw, th)
+                mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
                 mesh.set_attribute_data(attributes)
                 mesh.set_triangle_data(indices)

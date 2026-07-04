@@ -26,9 +26,9 @@ init python:
             rec = _ss_get_index().find(name)
             d["path"] = rec.rel_path
             d["anims"] = list(rec.anim_names)
-            full = _ss_os.path.join(renpy.config.gamedir, *rec.rel_path.split("/"))
-            with open(full, "rb") as fh:
-                meta = SsabMeta(fh.read())
+            # Read via the archive-aware loader (like the rest of the library), so
+            # the detail pane also works for packs shipped inside a .rpa.
+            meta = SsabMeta(_ss_open_bytes(rec.rel_path))
             ai = meta.animations()
             d["fps"] = ai[0].fps if ai else 0
             d["has_effects"] = bool(meta.effect_parts()) or bool(meta.effects())

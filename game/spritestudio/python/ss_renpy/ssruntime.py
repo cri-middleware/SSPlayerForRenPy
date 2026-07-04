@@ -460,6 +460,14 @@ class SSRuntime:
             self._res, self._ssab_bytes = prev_res, prev_bytes  # restore
             raise RuntimeError("ss_resource_create failed")
         if not L.ss_runtime_bind_resource(self._ctx, self._res):
+            # Bind failed: destroy the resource we just created (else it leaks)
+            # and restore the previous handle + its backing bytes, which :455
+            # already overwrote. Without the restore, ``self._ssab_bytes`` drops
+            # the only reference to ``prev_bytes`` while the context may still
+            # borrow it via ``prev_res`` -> use-after-free. (The happy path is
+            # unchanged; this only runs on the rare bind failure.)
+            L.ss_resource_destroy(self._res)
+            self._res, self._ssab_bytes = prev_res, prev_bytes
             raise RuntimeError("ss_runtime_bind_resource failed")
         # New resource is bound and live; only now release the old borrow source.
         if prev_res:

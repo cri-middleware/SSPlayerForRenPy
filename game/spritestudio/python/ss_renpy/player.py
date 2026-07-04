@@ -125,6 +125,12 @@ class SSInternalPlayer:
         self.animation: Optional[str] = None
         self.loop = -1
         self.speed = 1.0
+        # Playback direction / ping-pong persist across set_animation like
+        # loop/speed: setup_animation resets them to forward/normal, so we track
+        # them here and re-apply (docs/06 NOTE 150). 0 = forward, 1 = reverse;
+        # style 0 = normal, 1 = ping-pong.
+        self._direction = 0
+        self._style = 0
 
         # rigs / events (built lazily on first set_animation)
         self._instances: Optional[InstanceRig] = None
@@ -269,6 +275,14 @@ class SSInternalPlayer:
         self._rt.set_loop(self.loop)
         if self.speed != 1.0:
             self._rt.set_animation_speed(self.speed)
+        # ...and playback direction / ping-pong (also reset by setup_animation,
+        # docs/06 NOTE): re-apply when non-default so a reverse / ping-pong mode
+        # survives an animation switch — including host sequence chaining, which
+        # calls set_animation for each queued clip — mirroring how loop/speed
+        # persist. (Section is intentionally NOT carried: it is a per-animation
+        # frame range, meaningless against a different clip.)
+        if self._direction or self._style:
+            self._rt.set_playback_direction(self._direction, self._style)
         # Textures for this pack (set_animation owns texture loading). External
         # instance packs' textures are acquired by the loader as they load.
         self._acquire_textures(self._own_images)
@@ -306,14 +320,41 @@ class SSInternalPlayer:
         """Re-arm this player's Instance/Effect slots (parent calls on replay)."""
         self._reset_slots()
 
+    def make_child(self, child_data: bytes, depth: int):
+        """Build a parent-driven child player that shares this player's resources.
+
+        The Instance rig (``ss_renpy.instance``) resolves *which* pack/animation a
+        child part references; this factory owns *how* a child is built from the
+        owner — inheriting lib, ResourceManager, external-pack loader, the shared
+        texmap and base_dir, running parent-driven (the parent seeks it) with its
+        own timeline events suppressed (root-only). Keeping construction here
+        means the instance module no longer reaches into the owner's private
+        attributes. Returns ``None`` on construction failure.
+        """
+        try:
+            return SSInternalPlayer(
+                child_data, lib=self._lib, base_dir=self.base_dir,
+                resource_manager=self._rm, sub_frame=self.sub_frame,
+                enable_events=False, parent_driven=True,
+                loader=self._loader, texmap=self._texmap, depth=depth)
+        except Exception:
+            return None
+
     def render_at(self, frame_no, looped, dt_s, sub_frame=None):
         """Pose to an externally-stepped ``frame_no`` (no head advance) and return
         this player's z-ordered, world-space draw items.
 
         Used when this player is an Instance child: the parent's instance slot
         already computed ``frame_no``; we evaluate that frame and recurse into
-        this child's own Instance/Effect parts. Never raises; on a draw-plan
-        failure it returns Normal/Mesh-only."""
+        this child's own Instance/Effect parts. Never raises: a draw-plan failure
+        returns Normal/Mesh-only, and a native/parse failure returns an empty
+        list rather than propagating into the parent's frame build."""
+        try:
+            return self._render_at(frame_no, looped, dt_s, sub_frame)
+        except Exception:
+            return []
+
+    def _render_at(self, frame_no, looped, dt_s, sub_frame=None):
         rt = self._rt
         sf = self.sub_frame if sub_frame is None else sub_frame
         disp = frame_no if sf else math.floor(frame_no)
@@ -342,6 +383,13 @@ class SSInternalPlayer:
     def stop(self) -> None:
         if self._rt:
             self._rt.stop()
+        # A *commanded* stop is not a natural end. `finished` is derived from the
+        # play->stop edge (`_was_playing and not is_playing`) in update(); if we
+        # left the latch set, the next update() after stop() would report
+        # FramePlan.finished, which the host maps to sequence-advance / on_finished
+        # (spritestudio.rpy). Clearing it keeps `finished` meaning "the Brain ended
+        # playback on its own" — the only edge the host should act on.
+        self._was_playing = False
 
     def set_loop(self, count: int) -> None:
         self.loop = count
@@ -362,6 +410,10 @@ class SSInternalPlayer:
             self._rt.set_animation_section(start, end)
 
     def set_playback_direction(self, direction: int, style: int = 0) -> None:
+        # Remember it so set_animation() can re-apply after setup_animation resets
+        # it (docs/06 NOTE); works whether called before or after set_animation.
+        self._direction = direction
+        self._style = style
         if self._rt:
             self._rt.set_playback_direction(direction, style)
 
@@ -380,13 +432,24 @@ class SSInternalPlayer:
         events, observe the looped / finished edges, then materialise the
         z-ordered world-space draw plan. It does NOT decide what to play next —
         sequence chaining is the host's policy (it reads ``FramePlan.finished``
-        and calls ``set_animation`` itself). Never raises; on a draw-plan failure
-        it falls back to Normal/Mesh-only.
+        and calls ``set_animation`` itself).
+
+        Never raises: a draw-plan failure falls back to Normal/Mesh-only, and a
+        native/parse failure (update_ms, world_matrices, get_frame_data_view,
+        parse) degrades to an empty FramePlan instead of crashing the host's
+        render() — the previous frame stays on screen and the next tick retries.
         """
         if self._parent_driven:
             # An Instance child is seeked by its parent via render_at(); its own
             # per-tick update is a no-op (mirrors Godot's setParentDriven).
             return FramePlan()
+        try:
+            return self._advance(dt_ms)
+        except Exception:
+            return FramePlan()
+
+    def _advance(self, dt_ms: float) -> FramePlan:
+        """Body of :meth:`update` (wrapped by it for the never-raises contract)."""
         rt = self._rt
         dt_s = dt_ms / 1000.0
         frame_no = rt.update_ms(dt_ms)

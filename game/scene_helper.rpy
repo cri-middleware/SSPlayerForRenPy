@@ -1,5 +1,5 @@
 # Helper-showcase scene: the convenience layer — SSCharacter (talking), size +
-# attachments, and the ss_show_effect / ss_duration helpers, all in one scene.
+# attachments, and the ss_play_once / ss_duration helpers, all in one scene.
 # (Reached from the start menu in script.rpy.)
 
 # SSCharacter registers an image under `tag` and returns a talking Character.
@@ -42,15 +42,15 @@ label ringo_helper_demo:
     with dissolve
     "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg4
 
-    # 3. One-shot effect via the helper (blocks for one playthrough = a beat).
-    $ ss_show_effect("ss_assets/ParticleEffect/e040b.ssab",
-                     at=Transform(xalign=0.5, yalign=0.4), wait=True)
-    "ss_show_effect(wait=True) holds the beat until the effect finishes playing." id helper_msg5
+    # 3. One-shot playback via the helper (blocks for one playthrough = a beat).
+    $ ss_play_once("ss_assets/ParticleEffect/e040b.ssab",
+                   at=Transform(xalign=0.5, yalign=0.4), wait=True)
+    "ss_play_once(wait=True) holds the beat until playback finishes." id helper_msg5
     hide ringo_point
     with dissolve
 
     # 4. ss_duration times a beat to a motion WITHOUT removing the sprite
-    #    (contrast beat 3's ss_show_effect, which hides the effect when done).
+    #    (contrast beat 3's ss_play_once, which hides the animation when done).
     #    Clear the lip-flap idle/talk attributes so only `dance` selects the anim.
     show ringo_talk dance -idle -talk:
         yoffset 200

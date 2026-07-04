@@ -48,7 +48,6 @@ class ConverterResult:
     ErrorUnknown = -99
 
 _LOG_CB_TYPE = C.CFUNCTYPE(None, C.c_char_p)
-_log_cb_ref = None
 
 def _declare(lib: C.CDLL) -> None:
     P = C.c_void_p
@@ -92,7 +91,13 @@ class SsConverter:
         self._lib = C.CDLL(lib_path)
         _declare(self._lib)
         self._ctx = self._lib.ss_converter_create()
-        
+        # Hold the ctypes log-callback trampoline for THIS converter's lifetime.
+        # It used to be a module global, so a second converter (or an overlapping
+        # convert) overwrote it and could free a trampoline still in use by a
+        # running background conversion thread. Per-instance keeps it alive as
+        # long as the ctx that invokes it.
+        self._log_cb = None
+
     def __del__(self):
         if hasattr(self, "_ctx") and self._ctx:
             self._lib.ss_converter_destroy(self._ctx)
@@ -100,18 +105,17 @@ class SsConverter:
 
     def convert(self, sspj_path: str, output_dir: str, on_log: Optional[Callable[[str], None]] = None):
         """Starts the conversion process in a background thread."""
-        global _log_cb_ref
         if on_log:
             def cb(msg_ptr):
                 if msg_ptr:
                     on_log(msg_ptr.decode('utf-8', errors='replace'))
-            _log_cb_ref = _LOG_CB_TYPE(cb)
+            self._log_cb = _LOG_CB_TYPE(cb)
         else:
-            _log_cb_ref = C.cast(None, _LOG_CB_TYPE)
-            
+            self._log_cb = C.cast(None, _LOG_CB_TYPE)
+
         sspj_bytes = sspj_path.encode('utf-8')
         out_bytes = output_dir.encode('utf-8')
-        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, _log_cb_ref)
+        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, self._log_cb)
 
     def is_running(self) -> bool:
         """Checks if the converter is currently running."""
