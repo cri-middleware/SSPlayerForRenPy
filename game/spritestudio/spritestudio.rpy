@@ -38,7 +38,25 @@
 # ─────────────────────────────────────────────────────────────────────────
 
 init -10 python:
-    import os, sys, math, time
+    import os
+    import sys, math, time
+
+    # Ensure custom asset extensions and uncompressed audio are packaged.
+    # (Ren'Py's web builder skips .wav/.mp3 and unknown extensions by default).
+    # These are library-relevant, so they apply to any game using SSPlayer.
+    build.classify('**.ssab', 'all')
+    build.classify('**.wav', 'all')
+    build.classify('**.mp3', 'all')
+
+    # Exclude THIS development repo's tooling / build dirs from the package.
+    # Guarded by the SpriteStudio-SDK submodule so a downstream game that only
+    # vendors game/spritestudio/ — and may legitimately have its own top-level
+    # `scripts/` or `tools/` — is NOT affected by these repo-specific excludes.
+    if os.path.isdir(os.path.join(config.basedir, "SpriteStudio-SDK")):
+        for _ss_dev_pat in ('renpy-sdk/**', 'SpriteStudio-SDK/**',
+                            'SpriteStudio_Source/**', 'web_out/**', 'web_out.zip',
+                            '.git/**', 'tools/**', 'scripts/**'):
+            build.classify(_ss_dev_pat, None)
 
     # This library lives at <gamedir>/spritestudio/ by convention. If you drop
     # it somewhere else, set `store.spritestudio_root` in an earlier init block
@@ -863,7 +881,7 @@ init -10 python:
             # Hash via the Brain's own fnv1a so the keys match the draw plan's
             # PartAttributeShader.id_hash byte-for-byte (mirrors Godot).
             _SS_USER_SHADER_BY_HASH = {
-                _SS_LIB.ss_runtime_hash_string(_ss.encode("utf-8")): "ss.user_" + _key
+                ssruntime.hash_string(_ss): "ss.user_" + _key
                 for _ss, _key in _SS_USER_NAME_MAP
             }
         except Exception as e:

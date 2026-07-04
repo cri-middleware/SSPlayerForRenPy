@@ -30,7 +30,16 @@
 > **パフォーマンスについて** — 描画は `ctypes` と Creator-Defined Displayable を介して行われるため、メッシュの頂点数が極端に多いアニメーションや、大量のパーティクルが多数重なるエフェクトでは、フレームレートに影響が出る可能性があります。
 
 > [!WARNING]
-> **プラットフォーム** — デスクトップ (Windows, macOS, Linux) は現状動作します。モバイルは目前、Web は別統合が必要です。
-> - ネイティブランタイム（Rust の "Brain"）は全ターゲット向けにビルドされます — SDK のリリースワークフローが `macos` / `windows/x86_64` / `linux/x86_64` / `android/{arm64,arm32,x86_64}` / `ios`（`.xcframework`）/ `web`（WASM）を生成します。
+> **プラットフォーム** — デスクトップ (Windows, macOS, Linux) は現状動作します。モバイルは目前、Web は JS/WASM でサポートされています。
+> - ネイティブランタイム（Rust の "Brain"）は全ターゲット向けにビルドされます — SDK のリリースワークフローが `macos` / `windows/x86_64` / `linux/x86_64` / `android/{arm64,arm32,x86_64}` / `ios`（`.xcframework`） を生成します。
 > - ライブラリローダ（`ss_renpy/ssruntime.py`）はこれらのレイアウトを既に解決します（Android → `android/<abi>`、iOS はアプリへ静的リンクされたイメージにフォールバック）。**Android / iOS** で残るのは、ネイティブビルドの同梱と Ren'Py のモバイルパッケージングの配線（iOS は `.xcframework` を Xcode プロジェクトへリンク）です。
-> - **Web** はこの方式を使えません — WASM ランタイムは `ctypes` でロードできないため、別途（非 ctypes）の統合が必要です。
+> - **Web 対応について**:
+>   Web (WASM) は `ctypes` ではロードできないため、Pyodide の機能を利用した非 ctypes バインディング（`ssruntime_web.py`）で統合されています。
+>   ブラウザ上で実行する場合は、WASM モジュールを Ren'Py (Pyodide) 起動前にロードしておく必要があります。ゲームの Web ビルド後、`index.html` に以下のスクリプトブロックを追加してください。
+>   ```html
+>   <script type="module">
+>     import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
+>     window.ssruntime = ss;
+>     window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
+>   </script>
+>   ```

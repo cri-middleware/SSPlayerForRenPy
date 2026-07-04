@@ -866,3 +866,6 @@ __marimo__/
 /log.txt
 /errors.txt
 /traceback.txt
+web_out/
+web_out.zip
+progressive_download.txt

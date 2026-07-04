@@ -79,7 +79,10 @@ try {
             "linux"   { & sh ./scripts/release-linux.sh $BUILD_MODE; $SrcDir = "target/$BUILD_MODE" }
             "android" { & sh ./scripts/release-android.sh $BUILD_MODE; $SrcDir = "" }
             "ios"     { & sh ./scripts/release-ios-xcframework.sh $BUILD_MODE; $SrcDir = "" }
-            "web"     { & sh ./scripts/release-emscripten.sh $BUILD_MODE; $SrcDir = "target/wasm32-unknown-unknown/$BUILD_MODE" }
+            "web" {
+                & "$SdkDir/scripts/release-web.ps1" "$BUILD_MODE"
+                $SrcDir = "web_skip"
+            }
             default   { Write-Error "unknown platform '$PLATFORM'" }
         }
     }
@@ -94,6 +97,9 @@ if (Test-Path "$SdkDir/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md") {
 
 # --- 2. placement ---------------------------------------------------------
 switch ($PLATFORM) {
+    "web" {
+        # Already copied in Phase 1
+    }
     "ios" {
         $dest = Join-Path $LibRoot "ios"; New-Item -ItemType Directory -Force -Path $dest | Out-Null
         Remove-Item -Recurse -Force "$dest/libssruntime.xcframework" -ErrorAction SilentlyContinue
@@ -114,7 +120,6 @@ switch ($PLATFORM) {
     }
     default {
         switch ($PLATFORM) {
-            "web"   { $sub = "web";              $name = "libssruntime.a";     $cname = "" }
             "macos" { $sub = "macos";            $name = "libssruntime.dylib"; $cname = "libssconverter.dylib" }
             "linux" { $sub = "linux/$ARCH";      $name = "libssruntime.so";    $cname = "libssconverter.so" }
             "windows" { $sub = "windows/$ARCH";  $name = "ssruntime.dll";      $cname = "ssconverter.dll" }

@@ -30,7 +30,16 @@ Restrictions and unimplemented features of the current SpriteStudio Player for R
 > **Performance** — Because rendering is routed through `ctypes` and Creator-Defined Displayables, your frame rate may be affected by animations with an extremely high mesh vertex count, or by many particle effects overlapping at once.
 
 > [!WARNING]
-> **Platforms** — Desktop (Windows, macOS, Linux) works today. Mobile is close, and Web needs a separate integration:
-> - The native runtime (the Rust "Brain") builds for every target — the SDK release workflow produces `macos`, `windows/x86_64`, `linux/x86_64`, `android/{arm64,arm32,x86_64}`, `ios` (`.xcframework`), and `web` (WASM).
-> - The library loader (`ss_renpy/ssruntime.py`) already resolves all of those layouts (Android → `android/<abi>`; iOS falls back to the statically-linked app image). What remains for **Android / iOS** is bundling the native build and wiring Ren'Py's mobile packaging (for iOS, linking the `.xcframework` into the Xcode project).
-> - **Web** cannot use this path at all — a WASM runtime is not loadable through `ctypes`, so it needs a separate (non-ctypes) integration.
+> **Platform** — Desktop (Windows, macOS, Linux) works natively. Mobile (Android, iOS) supports native packaging. Web is supported via JS/WASM bindings.
+> - The native runtime (Rust "Brain") is built for all targets — the SDK release workflow generates `macos` / `windows` / `linux` / `android` / `ios` (`.xcframework`).
+> - The library loader (`ss_renpy/ssruntime.py`) already resolves these layouts (e.g. Android → `android/<abi>`, iOS falls back to static linking). What remains for **Android / iOS** is bundling the native builds and wiring up Ren'Py's mobile packaging.
+> - **Web Support**:
+>   Web (WASM) cannot be loaded via `ctypes`. It is integrated via a non-ctypes binding (`ssruntime_web.py`) utilizing Pyodide's `import js` feature.
+>   To run in a browser, you must load the WASM module before Ren'Py (Pyodide) starts. After building your Web export, add the following script block to your `index.html`:
+>   ```html
+>   <script type="module">
+>     import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
+>     window.ssruntime = ss;
+>     window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
+>   </script>
+>   ```

@@ -68,6 +68,7 @@ These steps are for those who want to build and modify from scratch, including t
 1. **Python (3.x)**: For tools and various scripts.
 2. **Rust Environment (`rustup`)**: Mandatory for building the runtime library from source code. Please install it from the official site ([rustup.rs](https://rustup.rs/)).
 3. **`flatc` (FlatBuffers Compiler)**: Only needed if you are rebuilding the binding definitions (auto-generation) of the playback data.
+4. **`wasm-opt` (Binaryen)**: Required if you are building the Web (WASM) target.
 
 ### 2.2 Complete Setup of Repository and Submodules
 To fetch all dependent crates, initialize the submodules with `--recursive`.

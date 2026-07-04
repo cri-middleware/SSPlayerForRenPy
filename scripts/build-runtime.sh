@@ -141,8 +141,10 @@ case "$PLATFORM" in
     cp -R "$T/xcframework/static/libssruntime.xcframework" "$LIB_ROOT/ios/"
     echo "   -> game/spritestudio/libs/ios/libssruntime.xcframework" ;;
   web)
-    bash "$SDK_DIR/scripts/release-emscripten.sh" "$BUILD_MODE"
-    place web "$T/wasm32-unknown-unknown/$BUILD_MODE/libssruntime.a" ;;
+    bash "$SDK_DIR/scripts/release-web.sh" "$BUILD_MODE"
+    mkdir -p "$LIB_ROOT/web"
+    cp -R "$SDK_DIR/pkg/runtime-web/$BUILD_MODE/"* "$LIB_ROOT/web/"
+    echo "   -> game/spritestudio/libs/web/" ;;
   *) echo "build-runtime.sh: unknown platform '$PLATFORM'" >&2; exit 2 ;;
 esac
 echo "build-runtime.sh: done."
