@@ -125,26 +125,67 @@ class ss_event_instance_info(C.Structure):
     ]
 
 
+def _arch_token() -> str:
+    """Normalise ``platform.machine()`` to the arch tokens the SDK release layout
+    uses: ``x86_64`` / ``arm64`` / ``arm32`` (else the raw machine string)."""
+    m = platform.machine().lower()
+    if m in ("x86_64", "amd64", "x64"):
+        return "x86_64"
+    if m in ("arm64", "aarch64"):
+        return "arm64"
+    if m.startswith("armv7") or m.startswith("armv8l") \
+            or m in ("arm", "armeabi", "armeabi-v7a"):
+        return "arm32"
+    return m or "unknown"
+
+
+def _is_android() -> bool:
+    """True on Android, where ``sys.platform`` is otherwise ``"linux"``.
+
+    Detected via the Android-only API added in CPython 3.7, with an env fallback
+    the OS always sets — so Android routes to ``android/<abi>`` rather than the
+    generic ``linux/<arch>``."""
+    if hasattr(sys, "getandroidapilevel"):
+        return True
+    return bool(os.environ.get("ANDROID_ROOT") and os.environ.get("ANDROID_DATA"))
+
+
+def _is_ios() -> bool:
+    """True on iOS. Modern CPython reports ``sys.platform == "ios"``; some hosts
+    still report ``"darwin"``, so an explicit ``SS_IOS`` env marker also counts."""
+    return sys.platform == "ios" or bool(os.environ.get("SS_IOS"))
+
+
+def _is_web() -> bool:
+    """True on the Emscripten/WASM (Ren'Py Web) target."""
+    return sys.platform == "emscripten" or platform.machine().lower().startswith("wasm")
+
+
 def platform_subdir() -> str:
     """Per-platform/arch subdirectory under the ``libs`` dir.
 
-    Layout mirrors the SSPlayerForUnity plugin convention (``<platform>/<arch>``,
-    macOS universal needs no arch split). Several platforms share a filename
-    (Windows x64/arm64 both ``ssruntime.dll``; Linux both ``libssruntime.so``),
-    so the directory disambiguates:
+    Matches the layout produced by the SDK release workflow
+    (``SpriteStudio-SDK/.github/workflows/release.yml``, ``package`` job → the
+    dynamic-libs package), so a bundled release drop resolves without renaming:
 
-        macos/                 (universal arm64+x86_64 dylib)
-        windows/x86_64  windows/arm64
-        linux/x86_64    linux/arm64
-        # reserved (separate Ren'Py integration): android/<abi>, ios/, web/
+        macos/                          (universal dylib; no arch split)
+        windows/x86_64                  (ssruntime.dll)
+        linux/x86_64                    (libssruntime.so)
+        android/{arm64,arm32,x86_64}    (libssruntime.so)
+        ios/                            (libssruntime.xcframework — see load_library)
+        web/                            (wasm — not loadable via ctypes)
+
+    NOTE Android must be checked before the generic Linux branch: its
+    ``sys.platform`` is also ``"linux"``, but its ``.so`` lives under
+    ``android/<abi>`` (abi ∈ arm64 / arm32 / x86_64), not ``linux/<arch>``.
     """
-    m = platform.machine().lower()
-    if m in ("x86_64", "amd64", "x64"):
-        arch = "x86_64"
-    elif m in ("arm64", "aarch64"):
-        arch = "arm64"
-    else:
-        arch = m or "unknown"
+    arch = _arch_token()
+    if _is_android():
+        return os.path.join("android", arch)
+    if _is_ios():
+        return "ios"
+    if _is_web():
+        return "web"
     if sys.platform == "darwin":
         return "macos"
     if sys.platform.startswith("win"):
@@ -153,10 +194,13 @@ def platform_subdir() -> str:
 
 
 def library_filename() -> str:
+    """Shared-library filename for the host (matches the release dynamic libs)."""
     if sys.platform.startswith("win"):
         return "ssruntime.dll"
-    if sys.platform == "darwin":
+    if sys.platform == "darwin" and not _is_ios():
         return "libssruntime.dylib"
+    # Linux and Android ship ``libssruntime.so``; iOS ships an ``.xcframework``
+    # that is normally static-linked into the app (handled in load_library).
     return "libssruntime.so"
 
 
@@ -300,6 +344,16 @@ def _declare(lib: C.CDLL) -> None:
         fn = getattr(f, name)
         fn.argtypes = [P]
         fn.restype = C.c_int32
+    # Effective playback direction (forward incl. ping-pong leg + Backward
+    # setting; the *speed-sign* is NOT folded in — the caller compares it, see
+    # docs/00 "オーディオの逆再生非対応"). Optional: older prebuilt runtimes may not
+    # export it, so bind tolerantly and let the wrapper assume forward when
+    # absent.
+    try:
+        f.ss_runtime_is_playing_forward.argtypes = [P]
+        f.ss_runtime_is_playing_forward.restype = C.c_bool
+    except AttributeError:
+        pass
 
     # events
     f.ss_runtime_get_passed_event_count.argtypes = [P]
@@ -356,11 +410,28 @@ def load_library(path: str | None = None, base_dir: str | None = None,
     Pass ``path`` for an explicit library file, or ``base_dir`` to resolve it
     via :func:`default_library_path` (per-platform/arch layout). The returned
     ``CDLL`` is cached on the module so repeated calls reuse it.
+
+    Platform notes (see the bundle layout in :func:`platform_subdir`):
+      * **Web (WASM)** cannot be loaded through ctypes at all — that target needs
+        a separate integration, so we fail fast with a clear message.
+      * **iOS** ships the runtime as an ``.xcframework`` that is normally
+        static-linked into the app, so its symbols live in the main image; when
+        no standalone library file is present we load the process itself
+        (``CDLL(None)``) instead of a path.
     """
     global _LIB
+    load_target = path
     if path is None:
-        path = default_library_path(base_dir)
-    lib = C.CDLL(path)
+        if _is_web():
+            raise OSError(
+                "libssruntime on Web (WASM) cannot be loaded via ctypes; the web "
+                "target needs a separate (non-ctypes) integration.")
+        resolved = default_library_path(base_dir)
+        if _is_ios() and not os.path.exists(resolved):
+            load_target = None          # CDLL(None) -> statically-linked symbols
+        else:
+            load_target = resolved
+    lib = C.CDLL(load_target)
     _declare(lib)
     if log:
         _install_log_callback(lib)
@@ -555,6 +626,22 @@ class SSRuntime:
     def is_looped(self) -> bool:
         """True if the last :meth:`update` crossed a loop boundary (per-update)."""
         return bool(self._lib.ss_runtime_is_looped(self._ctx))
+
+    @property
+    def is_playing_forward(self) -> bool:
+        """True when the head is advancing forward on the timeline.
+
+        Accounts for the Backward direction setting and the current ping-pong
+        leg (往路/復路) but NOT the animation-speed sign — callers that support a
+        negative speed must XOR that in (docs/00). Assumes forward when the
+        native runtime does not export the query (older builds)."""
+        fn = getattr(self._lib, "ss_runtime_is_playing_forward", None)
+        if fn is None:
+            return True
+        try:
+            return bool(fn(self._ctx))
+        except Exception:
+            return True
 
     @property
     def fps(self) -> int:

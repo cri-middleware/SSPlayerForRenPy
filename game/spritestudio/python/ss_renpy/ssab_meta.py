@@ -55,6 +55,26 @@ class CellMapInfo:
 
 
 @dataclass(frozen=True)
+class SoundFileInfo:
+    """One entry of a pack ``SoundList`` (docs/11 §4 audio integration).
+
+    ``file_path`` is the audio file **as stored** in the ``.ssab`` — an
+    ssab-relative reference (docs/05 §3.0: no normalisation), which the host
+    joins with the pack base dir just like a cellmap ``image_path``.
+    ``time_total`` is the clip length in milliseconds. ``list_name_hash`` +
+    ``name_hash`` are exactly the pair an :class:`~ss_renpy.events.AudioEvent`
+    carries (``sound_list_name_hash`` / ``sound_name_hash``), so they resolve
+    an event straight to its file."""
+    list_name: str
+    list_name_hash: int
+    name: str
+    name_hash: int
+    file_path: str
+    file_path_hash: int
+    time_total: int
+
+
+@dataclass(frozen=True)
 class PartInfo:
     """Static per-part data (index == ``PartState.part_index`` == slot_index).
 
@@ -273,6 +293,51 @@ class SsabMeta:
             if c.image_path:
                 m[c.name_hash] = c.image_path
                 m[c.image_path_hash] = c.image_path
+        return m
+
+    # -- audio (docs/11 §4) --------------------------------------------
+    def sound_files(self) -> list[SoundFileInfo]:
+        """Every ``SoundFile`` across the pack's ``SoundList``s, in file order.
+
+        The runtime plays no audio (docs/00) — it only *reports* Audio triggers;
+        the Player resolves and plays them. This surfaces the pack's sound
+        table so the host can (a) preload the files at setup and (b) resolve an
+        :class:`~ss_renpy.events.AudioEvent` to a concrete file."""
+        out: list[SoundFileInfo] = []
+        for i in range(self._root.SoundListsLength()):
+            sl = self._root.SoundLists(i)
+            if sl is None:
+                continue
+            ln, lh = _s(sl.Name()), sl.NameHash()
+            for j in range(sl.TableDataLength()):
+                sf = sl.TableData(j)
+                if sf is None:
+                    continue
+                out.append(SoundFileInfo(
+                    list_name=ln, list_name_hash=lh,
+                    name=_s(sf.Name()), name_hash=sf.NameHash(),
+                    file_path=_s(sf.FilePath()), file_path_hash=sf.FilePathHash(),
+                    time_total=sf.TimeTotal()))
+        return out
+
+    def has_audio(self) -> bool:
+        """True if the pack defines any playable sound file (docs/11 §4 'lazy
+        initialization' gate — the host spins up audio only when this is true)."""
+        return any(sf.file_path for sf in self.sound_files())
+
+    def sound_file_map(self) -> dict:
+        """Map an Audio event's identifying hashes → its ssab-relative file path.
+
+        Keyed by BOTH ``(sound_list_name_hash, sound_name_hash)`` and (as a
+        fallback) the bare ``sound_name_hash`` — the belt-and-suspenders keying
+        :meth:`texture_hash_map` uses, so an :class:`~ss_renpy.events.AudioEvent`
+        resolves whichever pair it carries even if two lists reuse a name."""
+        m: dict = {}
+        for sf in self.sound_files():
+            if not sf.file_path:
+                continue
+            m[(sf.list_name_hash, sf.name_hash)] = sf.file_path
+            m.setdefault(sf.name_hash, sf.file_path)
         return m
 
 

@@ -43,6 +43,16 @@ init python:
 
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
+        # Stop the outgoing preview's audio: it is held in a variable and swapped,
+        # so Ren'Py never hides it (no `_hide`). The library reaper also catches a
+        # closed/switched preview shortly, but this makes a Sound pack quiet
+        # immediately when you pick another.
+        _old = getattr(store, "ss_browser_player", None)
+        if _old is not None:
+            try:
+                _old.ss_stop_audio()
+            except Exception:
+                pass
         store.ss_browser_pack = name
         d = _ss_browser_detail(name)
         store.ss_browser_detail = d

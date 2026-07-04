@@ -30,8 +30,20 @@ init python:
     # are clipped to the preview window — drag repositions them within the window.
     SS_PICKER_BOX = (820, 380)
 
+    def _ss_picker_stop_audio():
+        # Held-and-swapped preview player: stop its sound before we replace it, so
+        # a Sound pack does not keep playing after you pick another (the library
+        # reaper also catches it shortly, this is the immediate + recommended way).
+        old = getattr(store, "ss_picker_player", None)
+        if old is not None:
+            try:
+                old.ss_stop_audio()
+            except Exception:
+                pass
+
     def ss_picker_select(rel_path, anims):
         """Select a pack by its .ssab path: build a live SSPlayer for its 1st anim."""
+        _ss_picker_stop_audio()
         store.ss_picker_pack = rel_path
         try:
             store.ss_picker_anims = list(anims)
@@ -56,6 +68,7 @@ init python:
         rel = store.ss_picker_pack
         if not rel:
             return
+        _ss_picker_stop_audio()
         try:
             store.ss_picker_player = SSPlayer(rel, animation=anim, size=SS_PICKER_BOX)
         except Exception as e:

@@ -147,6 +147,99 @@ init -10 python:
     # control flow (jumps, sound) prefer draining ss_poll_events() from a screen.
     SS_ENABLE_EVENTS = True
 
+    # Play SS Audio timeline events through Ren'Py's audio system (docs/11 §4 +
+    # docs/00). When on, the displayable resolves each Audio event to its sound
+    # file (via the pack's SoundList), preloads the files at setup if the pack
+    # carries any (lazy: nothing happens for packs with no audio), and plays each
+    # trigger — forward playback only (reverse / ping-pong return legs and
+    # negative speed are skipped; most decoders can't play audio backwards) and
+    # honouring loop_num as a *play count*. The `on_audio` callback still fires as
+    # a notification regardless. Requires SS_ENABLE_EVENTS (audio arrives as a
+    # timeline event); set False to leave all playing to `on_audio`.
+    SS_ENABLE_AUDIO = True
+    # A Ren'Py channel plays ONE stream, so a single channel makes simultaneous SS
+    # Audio events cut each other off. To play them in PARALLEL we register a pool
+    # of channels (mixer "sfx") and hand each trigger an idle one (round-robin
+    # when all are busy). Size the pool for the most sounds a pack fires at once;
+    # the same sound repeated by loop_num still queues on one channel (sequential,
+    # not parallel — it is one clip played N times). SSPlayer(audio_channel="…")
+    # overrides the pool with a single fixed channel for that instance.
+    SS_AUDIO_CHANNELS = 8
+    # Mixer the pool channels use, so SS audio obeys the player's volume slider /
+    # mute for that mixer (affinity with Ren'Py's channel system). "sfx" is a
+    # built-in mixer; change to "music"/"voice"/a custom mixer to reclassify.
+    SS_AUDIO_MIXER = "sfx"
+    _SS_AUDIO_POOL = []      # registered channel names (filled at init, below)
+    _SS_AUDIO_RR = [0]       # round-robin cursor (list = mutable across calls)
+
+    def _ss_next_audio_channel():
+        """Pick a pooled channel for one Audio trigger: an idle one if any, else
+        round-robin the oldest — so simultaneous events play in parallel instead
+        of stomping one channel. Falls back to the built-in "sound" channel when
+        the pool is empty (audio left unregistered)."""
+        pool = _SS_AUDIO_POOL
+        if not pool:
+            return "sound"
+        n = len(pool)
+        start = _SS_AUDIO_RR[0] % n
+        for k in range(n):
+            chan = pool[(start + k) % n]
+            try:
+                if renpy.music.get_playing(chan) is None:
+                    _SS_AUDIO_RR[0] = (start + k + 1) % n
+                    return chan
+            except Exception:
+                pass
+        # All busy — steal the oldest (round-robin) so a new trigger still sounds.
+        chan = pool[start]
+        _SS_AUDIO_RR[0] = (start + 1) % n
+        return chan
+
+    # Channel playback is not bound to the displayable, and Ren'Py gives NO hide
+    # hook when a player is swapped out of a screen (the Shift+B browser and the
+    # feature viewer both `add`-a-displayable-held-in-a-variable, then swap the
+    # variable — the old player is simply dropped, so `_hide` never fires and its
+    # sound would play on). This off-screen reaper is the safety net: while a
+    # player has live audio it keeps redrawing (see render()), so an on-screen
+    # player's `_audio_last_render` stays fresh; one that stopped being rendered
+    # goes stale and gets its audio stopped. Registered as a periodic callback
+    # (~20Hz) below, so it covers every removal path, not just `hide`/`scene`.
+    # The registry of players-with-sound is a STRONG set (a class attribute of
+    # SSPlayer, see the class body) — a weak set would let a swapped-out player be
+    # garbage-collected before the reaper could quiet it (the exact orphaned-audio
+    # bug). A class attribute is not part of the saved store (pickled by class
+    # reference), so it never bloats saves the way a `store` global would.
+    SS_AUDIO_OFFSCREEN_STOP = 0.25   # seconds un-rendered before audio is cut
+
+    def _ss_audio_reaper():
+        """Periodic: stop / prune audio for tracked players (see above). Never raises."""
+        live = getattr(SSPlayer, "_audio_live", None)
+        if not live:
+            return
+        try:
+            now = renpy.display.core.get_time()
+        except Exception:
+            return
+        for p in list(live):
+            try:
+                used = p._audio_channels_used
+                if not used:
+                    live.discard(p)
+                    continue
+                # Off-screen (live audio but no recent render) -> stop it all.
+                if now - getattr(p, "_audio_last_render", 0.0) > SS_AUDIO_OFFSCREEN_STOP:
+                    p._stop_audio()
+                    continue
+                # On-screen: drop channels whose sound has ended so the player can
+                # go idle again (get_playing is None once a clip finishes).
+                still = set(c for c in used
+                            if renpy.music.get_playing(c) is not None)
+                p._audio_channels_used = still
+                if not still:
+                    live.discard(p)
+            except Exception:
+                pass
+
     # Register premultiplied gl_blend_func entries for the SS framebuffer
     # BlendTypes Ren'Py doesn't ship. Ren'Py's gl_blend_func gives the same raw
     # glBlendFuncSeparate/glBlendEquationSeparate access WebGL has, so we mirror
@@ -1024,12 +1117,19 @@ init -10 python:
         a small ``ss_*`` playback / control / query API.
         """
 
+        # Players with SS audio currently sounding, read by _ss_audio_reaper to
+        # stop the sound of any that stopped being rendered (hidden / scene-changed
+        # / swapped out of a screen). A STRONG set on purpose: a weak one would let
+        # a swapped-out player be GC'd before it could be quieted. On the class (not
+        # a store global) so it is never saved/rolled back with the game state.
+        _audio_live = set()
+
         def __init__(self, ssab, animation=None, sprites_subdir=None,
                      loop=-1, speed=1.0, sub_frame=True, size=None,
                      attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
-                     aliases=None, **kwargs):
+                     aliases=None, audio_channel=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
             self.ssab = ssab
             self.kwargs = kwargs
@@ -1095,6 +1195,24 @@ init -10 python:
             self.on_finished = on_finished
             self.on_looped = on_looped
             self.on_started = on_started
+            # How SS Audio events pick a Ren'Py channel (when SS_ENABLE_AUDIO):
+            #   None      -> the shared parallel pool (ss_audio_*, sfx mixer):
+            #                simultaneous sounds get distinct channels. Default.
+            #   "name"    -> always this one channel (may cut itself off).
+            #   callable  -> f(player, frame, audio) -> channel name, or None to
+            #                fall back to the pool: route a game's own channels.
+            # (A callable, like on_*, must be a module-level fn to pickle/rollback.)
+            self._audio_channel = audio_channel
+            # Setup-time audio preload runs once per built core (see _ensure /
+            # _preload_audio); reset when the core is rebuilt (reshow / unpickle).
+            self._audio_preloaded = False
+            # Channels this instance has played SS audio on, so hide/stop can quiet
+            # exactly this player's sound (channel playback outlives the displayable
+            # otherwise — a hidden/scene-changed sprite would keep sounding).
+            self._audio_channels_used = set()
+            # Last render time while audio was live — the off-screen reaper reads
+            # it to tell an on-screen player (kept redrawing) from a swapped-out one.
+            self._audio_last_render = 0.0
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
@@ -1118,6 +1236,8 @@ init -10 python:
             state["_last_st"] = None
             state["_warned"] = set()
             state["_prewarm_pending"] = None   # GPU textures are gone too; re-warm
+            state["_audio_preloaded"] = False  # core is rebuilt; preload re-runs
+            state["_audio_channels_used"] = set()
             return state
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
@@ -1204,6 +1324,7 @@ init -10 python:
                 on_looped=self.on_looped,
                 on_started=self.on_started,
                 aliases=self.aliases,
+                audio_channel=self._audio_channel,
                 **self.kwargs
             )
             rv._duplicatable = False
@@ -1236,6 +1357,10 @@ init -10 python:
                 enable_events=SS_ENABLE_EVENTS,
             )
             self._start_initial()
+            # Preload this pack's audio once, at setup, if it has any (docs/11 §4
+            # "事前ロード" + lazy init: no-op for packs with no sound). Done here,
+            # before the first update() fires any Audio event.
+            self._preload_audio()
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -1315,7 +1440,126 @@ init -10 python:
             for s in fe.signals:
                 self._call_cb(self.on_signal, fe.frame_index, s)
             for a in fe.audios:
+                # Play it ourselves (docs/11 §4: the Player, not the runtime,
+                # plays audio) AND notify: on_audio stays a notification hook so a
+                # game can react (subtitles, ...) without owning playback.
+                if SS_ENABLE_AUDIO:
+                    self._play_audio(fe.frame_index, a)
                 self._call_cb(self.on_audio, fe.frame_index, a)
+
+        # -- audio (docs/11 §4 + docs/00) ----------------------------------
+        def _audio_full_path(self, file_ref):
+            """Join an ssab-relative sound reference with this pack's base dir
+            (like a texture path) and confirm Ren'Py can load it; "" if not."""
+            if not file_ref:
+                return ""
+            path = (self._base_dir + "/" + file_ref) if self._base_dir else file_ref
+            try:
+                if not renpy.loadable(path):
+                    return ""
+            except Exception:
+                pass
+            return path
+
+        def _preload_audio(self):
+            """Warm this pack's sound files at setup, once (docs/11 §4 preload).
+
+            Ren'Py streams + decodes audio on `play`; there is no public API to
+            pre-decode a sound, so "preload" here means resolving each file and
+            reading its bytes through the loader (archive-aware) so the archive
+            index and OS page cache are warm — the first `renpy.sound.play` is a
+            warm open, not a cold disk/archive lookup. Lazy: does nothing for a
+            pack with no audio, or when SS_ENABLE_AUDIO is off. Idempotent per
+            built core; never raises."""
+            if self._audio_preloaded:
+                return
+            self._audio_preloaded = True
+            if not SS_ENABLE_AUDIO or self._core is None:
+                return
+            try:
+                if not self._core.meta.has_audio():
+                    return
+            except Exception:
+                return
+            seen = set()
+            for sf in self._core.meta.sound_files():
+                path = self._audio_full_path(sf.file_path)
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                try:
+                    _ss_open_bytes(path)     # read via loader -> warms the cache
+                except Exception as e:
+                    self._warn_once(("audio-preload", path),
+                                    "audio preload failed for %r (%r)" % (path, e))
+
+        def _play_audio(self, frame, audio):
+            """Play one SS Audio timeline event (docs/11 §4 + docs/00). Never raises.
+
+            Forward-only: skip when the effective direction is backward — the
+            runtime's is_playing_forward (direction + ping-pong leg) XOR a
+            negative speed (docs/00: most decoders can't play audio in reverse).
+            ``loop_num`` is a *play count* (SS has no infinite loop), realised by
+            queueing the file that many times on the channel."""
+            try:
+                forward = self._core.is_playing_forward()
+                if self.speed < 0:
+                    forward = not forward
+                if not forward:
+                    return
+                path = self._audio_full_path(audio.file_path)
+                if not path:
+                    # Unresolved: no matching SoundFile, or the file is missing
+                    # from the deployed pack. Warn once so it is diagnosable.
+                    self._warn_once(("audio-unresolved", audio.sound_name),
+                                    "audio %r has no loadable file (base=%r, "
+                                    "file=%r) — skipped" % (audio.sound_name,
+                                    self._base_dir, audio.file_path))
+                    return
+                count = audio.loop_num if (audio.loop_num or 0) >= 1 else 1
+                chan = self._resolve_audio_channel(frame, audio)
+                renpy.sound.play([path] * count, channel=chan)
+                # Remember it so _hide()/ss_stop_audio()/the reaper can quiet this
+                # player, and register for the off-screen reaper (keeps its
+                # last-render fresh while on screen).
+                self._audio_channels_used.add(chan)
+                try:
+                    self._audio_last_render = renpy.display.core.get_time()
+                except Exception:
+                    pass
+                SSPlayer._audio_live.add(self)
+            except Exception as e:
+                self._warn_once(("audio-play", getattr(audio, "sound_name", "")),
+                                "audio playback failed (%r)" % (e,))
+
+        def _stop_audio(self, fadeout=0.0):
+            """Stop SS audio this player started (channels it has played on). Used
+            on hide / scene change (via _hide) and by ss_stop_audio(). Because the
+            channel pool is shared, this can in rare cases also cut a sound another
+            SSPlayer round-robin'd onto the same channel; on a scene change every
+            player is hidden so all pooled sound stops, which is the intent. Never
+            raises."""
+            for chan in list(self._audio_channels_used):
+                try:
+                    renpy.music.stop(channel=chan, fadeout=fadeout)
+                except Exception:
+                    pass
+            self._audio_channels_used.clear()
+            SSPlayer._audio_live.discard(self)
+
+        def _resolve_audio_channel(self, frame, audio):
+            """Resolve which Ren'Py channel this event plays on (see __init__):
+            a callable routes per-event, a string is a fixed channel, and None (or
+            a callable returning None) uses the shared parallel pool."""
+            ch = self._audio_channel
+            if callable(ch):
+                try:
+                    ch = ch(self, frame, audio)
+                except Exception as e:
+                    self._warn_once(("audio-route", id(self._audio_channel)),
+                                    "audio_channel callable raised: %r" % (e,))
+                    ch = None
+            return ch or _ss_next_audio_channel()
 
         def _call_cb(self, cb, *args):
             if cb is None:
@@ -1451,6 +1695,14 @@ init -10 python:
                     except Exception:
                         pass
 
+            # While this player has sound playing, mark it rendered *now* and keep
+            # redrawing even if the animation itself is idle: the off-screen reaper
+            # reads _audio_last_render to tell a still-shown player (which keeps
+            # refreshing this) from one swapped out of a screen (which stops
+            # rendering and gets its audio cut). The reaper prunes finished
+            # channels, so this lapses once the sound ends and the sprite idles.
+            if self._audio_channels_used:
+                self._audio_last_render = renpy.display.core.get_time()
             # Keep requesting redraws only while something is actually moving; an
             # idle sprite (paused / stopped / play-once finished, no live rigs)
             # renders an identical frame, so we let it go quiescent until a
@@ -1458,6 +1710,14 @@ init -10 python:
             # it. is_animating() stays True while effects / instances run.
             if core.is_animating():
                 renpy.redraw(self, 0)
+            elif self._audio_channels_used:
+                # Animation is idle but a sound is still playing: keep the
+                # displayable barely alive so the off-screen reaper can still see
+                # it is shown — but SLOWLY. A full-rate redraw here would rebuild an
+                # unchanged frame ~60x/s for the whole clip (e.g. a multi-second
+                # SE over a finished pose); ~10fps is well inside the reaper's
+                # SS_AUDIO_OFFSCREEN_STOP (0.25s) window and ~6x cheaper.
+                renpy.redraw(self, 0.1)
             if SS_PROFILE:
                 _ss_prof_tick(_geom, _draw, time.perf_counter() - _t0, bool(plan.items))
             return r
@@ -2079,10 +2339,27 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            # Disabled: Eagerly predicting unused textures causes mid-animation 
+            # Disabled: Eagerly predicting unused textures causes mid-animation
             # stutters when the background thread finishes decoding massive PNGs
             # and stalls the main thread to upload them to the GPU.
             return []
+
+        # -- hide / destroy: stop this player's audio -----------------------
+        def _handles_event(self, event):
+            # Opt into the hide/replace notification. With config.fast_unhandled_event
+            # (default True) Ren'Py skips _hide() for a displayable that does not
+            # claim the event, so without this our _hide would never run and the
+            # sprite's audio would outlive it on a `scene` / `hide` / re-show.
+            return event in ("hide", "replaced", "replace")
+
+        def _hide(self, st, at, kind):
+            # Fired when this displayable is hidden (`hide`/`scene`), replaced by a
+            # re-show of the same tag, or its screen hides. Channel playback is not
+            # tied to the displayable, so stop the sound we started, then report
+            # ready-to-remove (None = no lingering hide animation). Only meaningful
+            # when we own playback (SS_ENABLE_AUDIO); harmless otherwise.
+            self._stop_audio()
+            return None
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
@@ -2151,6 +2428,15 @@ init -10 python:
                 # stop() may jump the head (e.g. back to the start frame); re-arm
                 # so the change is shown even if the loop had gone quiescent.
                 renpy.redraw(self, 0)
+            # Stopping the player also silences the audio it triggered (the sound
+            # is on independent channels, so it would otherwise keep playing).
+            self._stop_audio()
+
+        def ss_stop_audio(self, fadeout=0.0):
+            """Stop SS audio this player is currently sounding (docs/11 §4). Called
+            automatically on hide / scene change and ss_stop(); call it directly to
+            cut the sound early or with a `fadeout` (seconds)."""
+            self._stop_audio(fadeout=fadeout)
 
         def ss_is_playing(self):
             return bool(self._core and self._core.is_playing())
@@ -2238,3 +2524,30 @@ init -10 python:
 
     # Back-compat alias for the pre-rename class name (README / older scripts).
     SpriteStudioDisplayable = SSPlayer
+
+
+# Register the SS Audio channel pool. register_channel() is only allowed during
+# the init phase, so this runs here (a normal `init python`, after the library's
+# `init -10` defs and after Ren'Py's built-in mixers) rather than lazily at play
+# time. Deliberately non-invasive: a private `ss_audio_*` namespace on the chosen
+# mixer, created ONLY when SS_ENABLE_AUDIO is on, so it never disturbs the game's
+# own sound / music / voice channels — while giving zero-config parallel playback
+# to anyone who just wants sound. A dev reload re-runs this and register_channel
+# cleanly replaces the existing channels.
+init python:
+    if SS_ENABLE_AUDIO:
+        _SS_AUDIO_POOL = ["ss_audio_%d" % _i
+                          for _i in range(max(1, SS_AUDIO_CHANNELS))]
+        for _c in _SS_AUDIO_POOL:
+            try:
+                renpy.music.register_channel(_c, mixer=SS_AUDIO_MIXER, loop=False)
+            except Exception as _e:
+                renpy.log("ss: could not register audio channel %r (%r)"
+                          % (_c, _e))
+        # Register the off-screen audio reaper as a periodic callback (~20Hz), so
+        # a player swapped out of a screen (no `_hide`) still stops sounding.
+        # Drop any stale copy first (a dev reload redefines the function).
+        renpy.config.periodic_callbacks[:] = [
+            _cb for _cb in renpy.config.periodic_callbacks
+            if getattr(_cb, "__name__", "") != "_ss_audio_reaper"]
+        renpy.config.periodic_callbacks.append(_ss_audio_reaper)

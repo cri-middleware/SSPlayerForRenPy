@@ -59,16 +59,22 @@ def _static_expectation(resolver: events.EventResolver):
 
 
 def _playthrough(rt, resolver, fps, end_frame, *, extra_steps=4):
-    """Step one frame at a time to the end, collecting every fired record."""
+    """Step one frame at a time to the end, collecting every fired record.
+
+    Also returns the ``is_playing_forward`` reading after the first forward
+    update — the signal the host uses to gate audio (docs/00)."""
     dt = 1.0 / float(fps)
     collected = []
+    forward_after_first = None
     # +extra to be sure we cross the final frame's [end, end+1) window.
-    for _ in range(end_frame + extra_steps):
+    for i in range(end_frame + extra_steps):
         rt.update(dt)
+        if i == 0:
+            forward_after_first = rt.is_playing_forward
         collected.extend(resolver.collect(rt))
         if rt.is_end_frame_reached:
             break
-    return collected
+    return collected, forward_after_first
 
 
 def verify_pack(pack: str) -> list[str]:
@@ -85,6 +91,14 @@ def verify_pack(pack: str) -> list[str]:
     if not anims:
         return [f"{name}: no animations"]
     anim = anims[0]
+
+    # Pack sound table (docs/11 §4): the map the resolver uses to fill each
+    # AudioEvent.file_path, and the set the host preloads.
+    sound_map = meta.sound_file_map()
+    sfiles = meta.sound_files()
+    if sfiles:
+        print(f"  {name}: has_audio={meta.has_audio()} sound_files="
+              f"{[sf.file_path for sf in sfiles]}")
 
     resolver = events.EventResolver(data, anim.name)
     if not resolver.available:
@@ -110,11 +124,16 @@ def verify_pack(pack: str) -> list[str]:
     rt.set_loop(1)
     rt.play()
 
-    collected = _playthrough(rt, resolver, anim.fps, anim.end_frame)
+    collected, forward_after_first = _playthrough(
+        rt, resolver, anim.fps, anim.end_frame)
 
     # (2) exactly-once + frame_index correctness over one non-looping pass.
     if not rt.is_end_frame_reached:
         fails.append(f"{name}: is_end_frame_reached never tripped")
+    # Forward playback must report forward (the audio gate, docs/00).
+    if forward_after_first is not True:
+        fails.append(f"{name}: is_playing_forward was {forward_after_first!r} "
+                     f"during forward playback (audio gate would misfire)")
     got = sorted((fe.frame_index, *_kind_counts(fe)) for fe in collected)
     want = sorted(exp.values())
     if got != want:
@@ -146,8 +165,18 @@ def verify_pack(pack: str) -> list[str]:
                              f"{a.part_index} has empty sound_name")
             if not isinstance(a.loop_num, int):
                 fails.append(f"{name}@f{fe.frame_index}: Audio loop_num not int")
+            # (3b) each Audio event resolves to its ssab-relative file via the
+            # pack's SoundList (docs/11 §4) — this is what the host plays.
+            want_fp = sound_map.get((a.sound_list_name_hash, a.sound_name_hash)) \
+                or sound_map.get(a.sound_name_hash, "")
+            if not a.file_path:
+                fails.append(f"{name}@f{fe.frame_index}: Audio {a.sound_name!r} "
+                             f"did not resolve to a file path")
+            elif a.file_path != want_fp:
+                fails.append(f"{name}@f{fe.frame_index}: Audio {a.sound_name!r} "
+                             f"file {a.file_path!r} != map {want_fp!r}")
             print(f"    Audio    f{fe.frame_index} part={a.part_index} "
-                  f"name={a.sound_name!r} loop={a.loop_num} "
+                  f"name={a.sound_name!r} loop={a.loop_num} file={a.file_path!r} "
                   f"hash={a.sound_name_hash}/{a.sound_list_name_hash}")
 
     # (4) looping replays the events and is_looped trips at the wrap.

@@ -68,13 +68,17 @@ class AudioEvent:
 
     The runtime only *reports* the trigger; actually playing the sound is the
     Player's job (``docs/00_limitations`` → "サウンド再生"). ``sound_name`` is the
-    alias; the two hashes address ``SoundList`` / ``SoundFile`` for resolution.
-    """
+    alias; the two hashes address ``SoundList`` / ``SoundFile``. ``file_path`` is
+    that entry resolved to its ssab-relative audio file (empty when the pack
+    carries no matching ``SoundFile``, or when decoded without a sound map — the
+    host joins it with the pack base dir to play). ``loop_num`` is a *play count*
+    (docs/11 §4: SS has no infinite loop — ``n`` means play ``n`` times)."""
     part_index: int
     sound_name: str
     sound_name_hash: int
     sound_list_name_hash: int
     loop_num: int
+    file_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -154,7 +158,7 @@ def _signal_event(es) -> SignalEvent:
                        command_id=command_id, params=params)
 
 
-def _audio_event(ea) -> AudioEvent:
+def _audio_event(ea, sound_map=None) -> AudioEvent:
     v = ea.Value()
     name = ""
     name_hash = list_hash = loop = 0
@@ -163,16 +167,27 @@ def _audio_event(ea) -> AudioEvent:
         name_hash = v.SoundNameHash()
         list_hash = v.SoundListNameHash()
         loop = v.LoopNum()
+    # Resolve to the concrete audio file when a sound map is supplied — try the
+    # (list, name) pair first, then the bare name hash (matching sound_file_map).
+    file_path = ""
+    if sound_map:
+        file_path = sound_map.get((list_hash, name_hash)) \
+            or sound_map.get(name_hash, "")
     return AudioEvent(part_index=ea.PartIndex(), sound_name=name,
                       sound_name_hash=name_hash, sound_list_name_hash=list_hash,
-                      loop_num=loop)
+                      loop_num=loop, file_path=file_path)
 
 
-def parse_events_per_frame(epf) -> FrameEvents:
-    """Turn one ``EventsPerFrame`` FlatBuffer record into a :class:`FrameEvents`."""
+def parse_events_per_frame(epf, sound_map=None) -> FrameEvents:
+    """Turn one ``EventsPerFrame`` FlatBuffer record into a :class:`FrameEvents`.
+
+    ``sound_map`` (``ss_renpy.ssab_meta.SsabMeta.sound_file_map()`` or ``None``)
+    resolves each Audio event's ``file_path``; without it audio decodes with an
+    empty ``file_path`` (name + hashes still populated)."""
     users = [_user_event(epf.Users(i)) for i in range(epf.UsersLength())]
     signals = [_signal_event(epf.Signals(i)) for i in range(epf.SignalsLength())]
-    audios = [_audio_event(epf.Audios(i)) for i in range(epf.AudiosLength())]
+    audios = [_audio_event(epf.Audios(i), sound_map)
+              for i in range(epf.AudiosLength())]
     return FrameEvents(frame_index=epf.FrameIndex(), users=users,
                        signals=signals, audios=audios)
 
@@ -196,6 +211,14 @@ class EventResolver:
             if _s(a.Name()) == animation_name:
                 self._anim = a
                 break
+        # Pack-global audio table (docs/11 §4), built once so every resolved
+        # Audio event carries its file path. Guarded: a pack with no / malformed
+        # sound lists just yields an empty map (audio then decodes file-path-less).
+        try:
+            from ss_renpy.ssab_meta import SsabMeta
+            self._sound_map = SsabMeta(ssab_bytes).sound_file_map()
+        except Exception:
+            self._sound_map = {}
 
     @property
     def available(self) -> bool:
@@ -212,7 +235,8 @@ class EventResolver:
             return None
         if event_idx < 0 or event_idx >= self._anim.EventsLength():
             return None
-        return parse_events_per_frame(self._anim.Events(event_idx))
+        return parse_events_per_frame(self._anim.Events(event_idx),
+                                      self._sound_map)
 
     def collect(self, rt) -> list[FrameEvents]:
         """Drain the events the last ``update`` passed through, in order.

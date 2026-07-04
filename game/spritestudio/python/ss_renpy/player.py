@@ -224,6 +224,15 @@ class SSInternalPlayer:
     def is_pausing(self) -> bool:
         return bool(self._rt and self._rt.is_pausing)
 
+    def is_playing_forward(self) -> bool:
+        """Whether the head is advancing forward (direction + ping-pong leg;
+        NOT the speed sign — see :attr:`ssruntime.SSRuntime.is_playing_forward`).
+
+        The host uses this to gate audio: SS audio must only play while the
+        timeline moves forward (docs/00 "オーディオの逆再生非対応"). Assumes forward
+        when there is no runtime."""
+        return bool(self._rt.is_playing_forward) if self._rt else True
+
     @property
     def frame_no(self) -> float:
         return self._rt.frame_no if self._rt else 0.0

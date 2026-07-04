@@ -61,7 +61,21 @@ init python:
     def ss_pack_name(entry):
         return entry[1]
 
+    def ss_stop_current_audio():
+        # We hold the player in a variable and swap it, so Ren'Py never hides the
+        # old one (no `_hide`). Stop its audio explicitly so it doesn't play on
+        # after we switch away (the library reaper would also catch it within a
+        # fraction of a second, but this is immediate and the recommended pattern
+        # when you keep + replace an SSPlayer reference yourself).
+        old = getattr(store, "ss_current", None)
+        if old is not None:
+            try:
+                old.ss_stop_audio()
+            except Exception:
+                pass
+
     def ss_switch(delta):
+        ss_stop_current_audio()
         store.ss_index = (store.ss_index + delta) % len(SS_DEMO_PACKS)
         store.ss_current = ss_make(SS_DEMO_PACKS[store.ss_index])
         store.ss_event_log = []
@@ -78,6 +92,7 @@ init python:
         except ValueError:
             idx = 0
         new_idx = (idx + delta) % len(names)
+        ss_stop_current_audio()
         store.ss_current = ss_make(SS_DEMO_PACKS[store.ss_index], animation=names[new_idx])
         store.ss_event_log = []
         renpy.restart_interaction()
@@ -119,6 +134,9 @@ label viewer_demo:
     $ ss_event_log = []
     $ ss_current = ss_make(SS_DEMO_PACKS[0])
     call screen ss_demo
+    # Leaving the viewer: quiet any sound the current pack was playing (the
+    # displayable is dropped without a hide, so stop it explicitly).
+    $ ss_stop_current_audio()
     return
 
 screen ss_demo():

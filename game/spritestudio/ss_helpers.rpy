@@ -65,15 +65,20 @@ init -9 python:
         renpy.hide(tag, layer=layer)
 
     def ss_auto_audio(player, frame, audio):
-        """Default `on_audio` handler: play an SS audio-track event via renpy.sound.
+        """`on_audio` handler that plays an SS Audio event by its resolved file.
 
-        Pass to SSPlayer as `on_audio=ss_auto_audio`. Best-effort: `audio.sound_name`
-        must resolve to a playable file in your project; otherwise wire your own
-        handler that maps SS sound names to your audio files / channels.
-        """
+        Only needed when the built-in playback is OFF (`SS_ENABLE_AUDIO = False`):
+        by default SSPlayer already resolves + plays Audio events itself (forward-
+        only, honouring loop_num, with setup-time preload), so wiring this too
+        would play every sound twice. When you do use it, prefer the resolved
+        `audio.file_path` (ssab-relative → joined with the pack dir) and fall back
+        to the bare `audio.sound_name`; best-effort, swallows errors."""
         try:
-            name = getattr(audio, "sound_name", None)
-            if name:
-                renpy.sound.play(name)
+            base = getattr(player, "_base_dir", "")
+            ref = getattr(audio, "file_path", "") or getattr(audio, "sound_name", "")
+            if not ref:
+                return
+            path = (base + "/" + ref) if (base and getattr(audio, "file_path", "")) else ref
+            renpy.sound.play(path)
         except Exception:
             pass
