@@ -142,7 +142,11 @@ case "$PLATFORM" in
   ios)
     bash "$SDK_DIR/scripts/release-ios-xcframework.sh" "$BUILD_MODE"
     mkdir -p "$LIB_ROOT/ios"; rm -rf "$LIB_ROOT/ios/libssruntime.xcframework"
-    cp -R "$T/xcframework/static/libssruntime.xcframework" "$LIB_ROOT/ios/"
+    # Ship the DYNAMIC xcframework (bare dylibs, @rpath id): a consuming app adds
+    # it once with "Embed & Sign" and dyld loads it at launch, so ssruntime.py's
+    # CDLL(None) resolves the Brain — no per-symbol force_load / dead-strip
+    # workarounds a *static* lib would need inside a stripped Ren'Py app.
+    cp -R "$T/xcframework/dynamic/libssruntime.xcframework" "$LIB_ROOT/ios/"
     echo "   -> game/spritestudio/libs/ios/libssruntime.xcframework" ;;
   web)
     bash "$SDK_DIR/scripts/release-web.sh" "$BUILD_MODE"

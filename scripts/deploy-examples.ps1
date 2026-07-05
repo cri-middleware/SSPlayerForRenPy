@@ -34,7 +34,11 @@ if (-not $SdkDir -or -not (Test-Path (Join-Path $SdkDir "Cargo.toml"))) {
 $pythonCmd = ""
 $RenpyLibDir = Join-Path $RootDir "renpy-sdk\lib"
 if (Test-Path $RenpyLibDir) {
-    $RenpyPythonDirs = Get-ChildItem -Path $RenpyLibDir -Directory -Filter "py3-*"
+    # Ren'Py ships a python per platform (py3-mac-universal / py3-linux-<arch> /
+    # py3-windows-x86_64). Pick the one matching THIS host — an unfiltered py3-*
+    # grabs py3-linux first and can't execute on macOS/Windows.
+    $plat = if ($IsMacOS) { "py3-mac-*" } elseif ($IsLinux) { "py3-linux-*" } else { "py3-windows-*" }
+    $RenpyPythonDirs = Get-ChildItem -Path $RenpyLibDir -Directory -Filter $plat
     if ($RenpyPythonDirs.Count -gt 0) {
         $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python.exe"
         if (-not (Test-Path $bundledPython)) {

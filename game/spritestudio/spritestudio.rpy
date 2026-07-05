@@ -54,7 +54,13 @@ init -10 python:
     build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')
     build.classify('**/spritestudio/libs/linux/aarch64/**', 'linux_arm')
     build.classify('**/spritestudio/libs/android/**', 'android')
-    build.classify('**/spritestudio/libs/ios/**', 'ios')
+    # iOS: the Brain is a dynamic xcframework linked + embedded into the app via
+    # Xcode (Embed & Sign), NOT loaded from the game tree at runtime — so exclude
+    # it from the packaged data, or it ships twice (once embedded, once dead
+    # weight under base/). Instead it is added to the Xcode target via Embed &
+    # Sign — scripts/deploy-ios.sh generates the project and the demo/consumer
+    # both do that one step by hand (docs/export.md -> iOS Export).
+    build.classify('**/spritestudio/libs/ios/**', None)
     build.classify('**/spritestudio/libs/web/**', 'web')
 
     # This library lives at <gamedir>/spritestudio/ by convention. If you drop
@@ -74,6 +80,15 @@ init -10 python:
     from ss_renpy.ssab_meta import SsabMeta
     from ss_renpy.player import SSInternalPlayer
     from ss_renpy.resource import ResourceManager
+
+    # iOS (incl. the Simulator) reports sys.platform == "darwin", so the
+    # engine-independent runtime can't tell it apart from desktop macOS on its
+    # own — it would try to dlopen the macOS .dylib and fail. Only the host knows
+    # the real target: Ren'Py sets renpy.ios there. Flip the SS_IOS marker that
+    # ssruntime_native._is_ios() already honors so it routes to the static
+    # xcframework (loaded via CDLL(None)) instead of libs/macos/.
+    if getattr(renpy, "ios", False):
+        os.environ["SS_IOS"] = "1"
 
     # Load the native library once, from spritestudio/libs/<platform-arch>/.
     _SS_LIB = ssruntime.load_library(base_dir=os.path.join(_SS_ROOT, "libs"))

@@ -39,7 +39,15 @@ if [ -z "$SDK_DIR" ] || [ ! -f "$SDK_DIR/Cargo.toml" ]; then
   exit 1
 fi
 PYTHON_CMD=""
-RENPY_PYTHON_DIR=$(ls -d "$ROOT_DIR/renpy-sdk/lib/py3-"* 2>/dev/null | head -n 1 || true)
+# Ren'Py ships a python per platform (py3-mac-universal / py3-linux-<arch> /
+# py3-windows-x86_64). Pick the one matching THIS host — a bare `py3-* | head`
+# grabs py3-linux first and dies with "cannot execute binary file" on macOS.
+case "$(uname -s)" in
+  Darwin) PY_DIR_GLOB="py3-mac-*" ;;
+  Linux)  PY_DIR_GLOB="py3-linux-$(uname -m)*" ;;
+  *)      PY_DIR_GLOB="py3-windows-*" ;;
+esac
+RENPY_PYTHON_DIR=$(ls -d "$ROOT_DIR"/renpy-sdk/lib/$PY_DIR_GLOB 2>/dev/null | head -n 1 || true)
 if [ -n "$RENPY_PYTHON_DIR" ] && [ -x "$RENPY_PYTHON_DIR/python" ]; then
     PYTHON_CMD="$RENPY_PYTHON_DIR/python"
 elif [ -n "$RENPY_PYTHON_DIR" ] && [ -x "$RENPY_PYTHON_DIR/python.exe" ]; then

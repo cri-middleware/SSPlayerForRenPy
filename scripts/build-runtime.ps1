@@ -103,7 +103,10 @@ switch ($PLATFORM) {
     "ios" {
         $dest = Join-Path $LibRoot "ios"; New-Item -ItemType Directory -Force -Path $dest | Out-Null
         Remove-Item -Recurse -Force "$dest/libssruntime.xcframework" -ErrorAction SilentlyContinue
-        Copy-Item -Recurse -Force "$SdkDir/target/xcframework/static/libssruntime.xcframework" "$dest/"
+        # DYNAMIC xcframework (bare dylibs, @rpath id): added once with "Embed &
+        # Sign", dyld loads it at launch so ssruntime.py's CDLL(None) resolves the
+        # Brain — no force_load / dead-strip workarounds a static lib would need.
+        Copy-Item -Recurse -Force "$SdkDir/target/xcframework/dynamic/libssruntime.xcframework" "$dest/"
         Write-Host "   -> game\spritestudio\libs\ios\libssruntime.xcframework"
     }
     "android" {

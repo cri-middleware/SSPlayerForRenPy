@@ -1,53 +1,117 @@
 # Exporting your Game
 
-This guide describes how to export games incorporating the SpriteStudio Player for Ren'Py to various platforms.
+How to export a game that uses the SpriteStudio Player for Ren'Py. This covers
+only what is **SSPlayer-specific**; for the generic build mechanics it links to
+Ren'Py's own documentation.
+
+Common to every platform: the native "Brain" library lives under
+`game/spritestudio/libs/<platform-arch>/`, and `spritestudio.rpy` auto-classifies
+your `**.ssab` packs (and co-located textures) into the build via
+`build.classify` — no `options.rpy` edit needed. Uncompressed **audio**
+(`.wav` / `.mp3`) for SS Audio timeline events is your game's responsibility:
+`build.classify('**.wav', 'all')` / `'**.mp3'` in your own `options.rpy` (the demo
+does this in `game/options.rpy`).
+
+## Desktop Export (Windows / macOS / Linux)
+
+Standard Ren'Py [Build Distributions](https://www.renpy.org/doc/html/build.html) —
+no SSPlayer-specific post-steps.
+
+> **⚠️ Each platform needs its own native library** under `game/spritestudio/libs/`:
+> `macos/libssruntime.dylib`, `windows/x86_64/ssruntime.dll`,
+> `linux/x86_64/libssruntime.so`. Ren'Py bundles it and `ssruntime.py` resolves it
+> at runtime. **Only macOS ships in this repo** — get the others with
+> `scripts/download-sdk.*` (prebuilt) or `scripts/build-runtime.*` (source), or the
+> package builds but SSPlayer throws at load.
+
+Helper (builds for your host OS, unpacks a ready-to-run app):
+
+```bash
+scripts/deploy-desktop.sh [dest_dir]      # Windows: scripts\deploy-desktop.ps1
+```
+
+Run the `.sh` on a Mac for a working build out of the box. `build.name` must be
+set (the demo's `options.rpy` does), or the `.app` won't launch. For distribution,
+code-sign / notarize per Ren'Py's docs (unsigned `.dylib`s are Gatekeeper-blocked).
+
+**Optional — pack assets into a `.rpa`:** register the archive *before* the
+library's `**.ssab` rule (an earlier init than −10); the demo's `options.rpy` has
+a `ss_pack_assets_into_rpa` toggle.
+
+## Android Export
+
+Standard Ren'Py [RAPT](https://www.renpy.org/doc/html/android.html) — no
+SSPlayer-specific post-steps.
+
+> **⚠️ One `.so` per ABI, under the SDK's arch tokens — NOT Android's ABI names.**
+> The path is a ctypes load path inside `game/`, not the APK's `lib/<abi>/`:
+> `libs/android/arm64/libssruntime.so` (most 64-bit devices), `arm32/` (old
+> phones), `x86_64/` (emulators). Get them with
+> `scripts/build-runtime.* platform=android build=release` (needs the NDK) or
+> `scripts/download-sdk.*` (prebuilt).
+
+One-time: `scripts/fetch-renpy-android.*` for RAPT, then **Install SDK** and
+**Generate Keys** once from the launcher GUI (→ Android; interactive, per Ren'Py's
+docs).
+
+```bash
+scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
+# Windows: scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+```
+
+`--bundle` → `.aab` (Play upload); `--install` / `--launch` push and start on a
+connected device via `adb`.
+
+## iOS Export
+
+Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates an
+**Xcode project** (the `.ipa` is built from Xcode). **macOS + Xcode required.**
+
+> **⚠️ The Brain is a *dynamic* `libssruntime.xcframework`, added to the app target
+> as "Embed & Sign".** `ssruntime.py` loads it via ctypes `CDLL(None)`, so it must
+> be a loaded image; Embed & Sign links it (dyld loads it at launch) and signs it
+> into the bundle — the same treatment renios gives `MetalANGLE.xcframework`. Get it
+> at `game/spritestudio/libs/ios/` with `scripts/build-runtime.sh platform=ios
+> build=release` or `scripts/download-sdk.sh`. A *static* xcframework links but gets
+> dead-stripped → `CDLL(None)` fails at runtime, so use the dynamic one.
+
+One-time: `scripts/fetch-renpy-ios.sh` (renios; macOS-only, so no `.ps1`).
+
+1. **Generate the Xcode project** — `scripts/deploy-ios.sh [dest_dir] [--recreate]
+   [--open]` (also fetches SDK/renios, picks create vs. populate), or the stock
+   launcher: `renpy-sdk/renpy.sh renpy-sdk/launcher ios_create . <xcode-project-dir>`.
+2. **Embed the Brain, once** — in Xcode: app target → **General** → **Frameworks,
+   Libraries, and Embedded Content** → **+** → *Add Files…* →
+   `game/spritestudio/libs/ios/libssruntime.xcframework` (`deploy-ios` also stages
+   a copy at `<project>/Frameworks/`) → **Embed & Sign**. Ren'Py has no hook to
+   auto-link third-party native code, so this one manual step is unavoidable; it
+   persists across `ios_populate` re-runs.
+3. **Build** — pick a **Simulator** and **Run** (no signing), or set your signing
+   team and **Product > Archive** for a device `.ipa`.
 
 ## Web Export
 
-You can output a web-playable game using Ren'Py's standard Web export feature (Pyodide/WASM).
-This library automatically uses a non-ctypes JS binding (`ssruntime_web.py`) internally, so no Python code changes are required.
+Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html)
+(Pyodide/WASM). SSPlayer auto-switches to a non-ctypes JS binding
+(`ssruntime_web.py`) — no code changes needed.
 
-> **⚠️ A raw Ren'Py Web export will NOT run on its own.**
-> The Web renderer loads a separate WASM module (`ssruntime.js` / `ssruntime_bg.wasm`).
-> Ren'Py's exporter does not know about it, so **every export requires two manual
-> post-steps** — editing `index.html` (§3) and placing the WASM assets as real
-> files (§4). Without them the browser console throws
-> `Cannot read properties of undefined (reading 'SSRuntimeContext')`
-> (i.e. `window.ssruntime` was never loaded) and nothing renders.
-> The exporter **regenerates `index.html` and repacks `game.zip` on every run**,
-> so these two steps must be **re-applied after each export**.
+> **⚠️ A raw Web export will NOT run.** The renderer needs a separate WASM module
+> (`ssruntime.js` / `ssruntime_bg.wasm`) that Ren'Py's exporter doesn't know about,
+> so **every export needs the two post-steps below**. Ren'Py regenerates
+> `index.html` and repacks `game.zip` on every run, so **re-apply them after each
+> export**. Without them the console throws
+> `Cannot read properties of undefined (reading 'SSRuntimeContext')`.
 
-### Automated build (recommended)
-
-Use the helper script, which runs the export and applies both post-steps (§3 and
-§4) for you. It is idempotent, so it is safe to re-run:
+Helper (runs the export **and** applies both post-steps; idempotent):
 
 ```bash
-scripts/deploy-web.sh [dest_dir]      # default dest: web_out
-# Windows:
-scripts\deploy-web.ps1 [dest_dir]
+scripts/deploy-web.sh [dest_dir]      # default web_out; Windows: scripts\deploy-web.ps1
 ```
 
-Then serve `dest_dir` over HTTP (see [Testing](#testing) below). If you prefer to
-do it by hand, follow the manual steps instead.
+To do it by hand after a `web_build` export:
 
-### Manual steps
-
-1. **Setup the Web Build Environment**
-   Install the necessary Ren'Py packages for Web export.
-   (Download from the Ren'Py Launcher or run `scripts/fetch-renpy-web.sh` in the project.)
-
-2. **Run the Export**
-   From the Ren'Py Launcher, go to the "Web (Beta)" menu and select "Build Web Application" to run the export.
-   (For CLI, run `./renpy.sh launcher web_build <project_dir> --dest <out>`.)
-
-3. **⚠️ Required: Add the JS/WASM Load Script to `index.html`**
-   Open the generated `index.html` in the output folder and add the following code
-   **before** Ren'Py's initialization (immediately before the
-   `<script src="renpy-pre.js"></script>` tag).
-   This loads the WASM bindings that do SSPlayer rendering *before* the game starts.
-   **This edit is mandatory and is lost on every re-export — re-add it each time.**
-
+1. **Edit `index.html`** — add this **before** the `<script src="renpy-pre.js">`
+   tag so the WASM bindings load before the game starts:
    ```html
    <script type="module">
      import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
@@ -55,211 +119,12 @@ do it by hand, follow the manual steps instead.
      window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
    </script>
    ```
+2. **Copy the WASM assets as real files** — `ssruntime.js` and `ssruntime_bg.wasm`
+   from `game/spritestudio/libs/web/` into the same path in the output (e.g.
+   `web_out/game/spritestudio/libs/web/`). The export zips `game/` into `game.zip`,
+   so the browser can't `import` them from inside it; the step-1 path must match.
 
-4. **⚠️ Required: Deploy Web Assets (`ssruntime.js` / `ssruntime_bg.wasm`)**
-   The export process zips the `game` directory into `game.zip`, so a browser's
-   ES-module `import` in `index.html` **cannot** read the runtime from inside it.
-   Therefore you must **copy** `ssruntime.js` and `ssruntime_bg.wasm` from
-   `game/spritestudio/libs/web/` into the same path in the output folder as **real
-   files** (e.g., `web_out/game/spritestudio/libs/web/`). The import path in §3
-   must match this location exactly.
-
-### Testing
-
-* **Serve over HTTP, not `file://`.** ES modules and WASM will not load from the
-  filesystem. Any static server works, but it must send the right MIME types:
-  `.js` → `application/javascript`, `.wasm` → `application/wasm`. Ren'Py's own web
-  server (`renpy.sh launcher web_build <dir> --launch`, or the launcher's
-  "Web (Beta)" page) already does this.
-* **Clear the Service Worker when re-testing.** A Ren'Py web build registers a
-  service worker that caches `game.zip`. After a re-export the browser may serve
-  the *old* build. In DevTools → Application, **Unregister** the service worker
-  and **Clear site data**, then hard-reload (or use a private window).
-
-### Implementation Details
-
-* **Packaging `.ssab` and audio (`.wav` / `.mp3`) Files**
-   By default during web exports, Ren'Py only includes specific file extensions (like `.png` or `.ogg`) in the output archive (`game.zip`).
-   The library defines `build.classify('**.ssab', 'all')` in `spritestudio.rpy`, so your SpriteStudio packs are always included — no `options.rpy` edit needed for those.
-   **Uncompressed audio is the game's call, not the library's:** if your game plays SpriteStudio **Audio** timeline events from `.wav` / `.mp3` files, add `build.classify('**.wav', 'all')` and `build.classify('**.mp3', 'all')` to your own `options.rpy` (this demo does exactly that — see `game/options.rpy`). Otherwise the web builder drops them.
-
-## Desktop Export (Windows / macOS / Linux)
-
-Desktop export uses Ren'Py's standard **Build Distributions** feature. Unlike the
-Web target, **no post-export steps are required**: the native "Brain" library
-(`libssruntime.dylib` / `ssruntime.dll` / `libssruntime.so`) lives *inside*
-`game/`, so Ren'Py bundles it into the app automatically and `ssruntime.py`
-resolves it at runtime from `game/spritestudio/libs/<platform-arch>/` — the same
-layout used during development.
-
-Assets are handled too: `spritestudio.rpy` declares `build.classify('**.ssab',
-'all')`, so your `.ssab` packs (and their co-located textures) are packaged
-without touching `options.rpy`. Uncompressed **audio** (`.wav` / `.mp3`) is the
-game's responsibility — classify it in your own `options.rpy` if you use SS Audio
-events (the demo does; see `game/options.rpy`).
-
-> **⚠️ Each target platform needs its own native library.**
-> The Brain is a compiled binary, so a package can only *run* on a platform whose
-> library is present under `game/spritestudio/libs/`:
->
-> | Package | Needs | Path |
-> |---|---|---|
-> | `mac`   | `libssruntime.dylib` (universal) | `libs/macos/` |
-> | `win`   | `ssruntime.dll`      | `libs/windows/x86_64/` |
-> | `linux` | `libssruntime.so`    | `libs/linux/x86_64/` |
->
-> **This repository currently ships only the macOS library.** A `win`/`linux`
-> package built without the matching binary still *builds*, but SSPlayer throws at
-> load time (the resolved `.dll`/`.so` path does not exist). Obtain the other
-> platforms' libraries first with `scripts/download-sdk.*` (prebuilt) or
-> `scripts/build-runtime.*` (from source), then re-run the export.
-
-### Automated build (recommended)
-
-Use the helper script, which builds the package matching your **host OS** and
-unpacks it into a ready-to-run app. It is idempotent, so it is safe to re-run:
-
-```bash
-scripts/deploy-desktop.sh [dest_dir]     # default dest: dist
-#   macOS -> dist/<name>.app         (double-click / `open`)
-#   Linux -> dist/<name>-linux-x86_64/ (run its <name>.sh)
-# Windows (.exe):
-scripts\deploy-desktop.ps1 [dest_dir]    # -> dist\<name>-win\<name>.exe
-```
-
-The script errors out with a hint if the native library for the host platform is
-missing. Because only the macOS library ships here, run the `.sh` **on a Mac** for
-a working build out of the box.
-
-### Manual build
-
-From the project root (builds the `mac` package; swap `--package` for `win` /
-`linux` on those hosts):
-
-```bash
-renpy-sdk/renpy.sh renpy-sdk/launcher distribute . \
-  --package mac --format app-zip --no-update --destination dist
-```
-
-Or from the Ren'Py Launcher GUI: select the project → **Build Distributions** →
-tick **Macintosh** → **Build**.
-
-The result is `dist/<name>-mac.zip` containing a self-contained `.app`. The native
-library lands at
-`<name>.app/Contents/Resources/autorun/game/spritestudio/libs/macos/libssruntime.dylib`,
-and the app loads it with no further wiring.
-
-> **⚠️ `build.name` must be set, or the app won't launch.** With no `build.name`,
-> Ren'Py leaves `CFBundleExecutable` (and the `Contents/MacOS/` launcher binary)
-> empty, producing a degenerate `-mac.zip` whose `.app` cannot start. This demo's
-> `options.rpy` already sets `define build.name = "SSPlayerForRenPy"`; your own
-> game must set its own (e.g. `define build.name = "MyGame"` → `MyGame-1.0`).
-
-### macOS distribution note
-
-A locally built `.app` runs fine on your own machine. If you **distribute** it
-(users download it), macOS Gatekeeper quarantines the unsigned `.dylib` and the
-app is blocked. For release you must **code-sign and notarize** the app (Ren'Py's
-launcher supports passing a signed app via `--macapp`; see Ren'Py's
-"Signing a Mac App" documentation).
-
-### Packaging details
-
-`spritestudio.rpy` keeps desktop builds lean automatically (via `build.classify`),
-so you should not need to touch `options.rpy`:
-
-* **Only the target platform's native library ships.** Each `libs/<platform>/`
-  subtree is tagged with its Ren'Py platform (`macos/`→`mac`, `windows/x86_64/`→
-  `windows`, `linux/x86_64/`→`linux`, …), so a `mac` build carries just the
-  `.dylib` — not the Windows `.dll`, Linux `.so`, or Web `.wasm`.
-* **The converter (`libssconverter.*`) is never bundled.** It is an import- /
-  dev-time tool (`auto_importer`, gated on `config.developer`); a shipped game
-  never loads it.
-* Stale `__pycache__` is dropped. (This repo's own developer cruft — `renpy-sdk/`,
-  `SpriteStudio-SDK/`, `scripts/`, `docs/`, `dist/`, root `*.md` / `*.txt`, … — is
-  excluded from the *demo's* build by `game/options.rpy`, not by the library, so a
-  downstream game that vendors `game/spritestudio/` is never affected by it.)
-
-**Optional — pack assets into a `.rpa` archive.** Ren'Py ships game files loose
-by default. To bundle them into a single archive instead, declare an archive and
-classify the assets into it. SSPlayer loads packs through `renpy.loader.load`, so
-they work identically loose or archived. Because `build.classify` is
-first-match-wins by registration order, register the archive pattern *before* the
-library's `**.ssab`→`all` (init −10) — i.e. at an earlier init priority:
-
-```renpy
-init -20 python:
-    build.archive("ssdata", "all")
-    build.classify("game/ss_assets/**", "ssdata")   # -> game/ssdata.rpa
-```
-
-The demo's `options.rpy` already does this behind a `ss_pack_assets_into_rpa`
-toggle (set it `False` to distribute the assets loose).
-
-## Android Export
-
-Android export uses Ren'Py's standard **RAPT** toolchain (the Ren'Py Android
-Packaging Tool). Like the desktop target and unlike Web, **no post-export steps
-are required**: the native "Brain" `.so` under
-`game/spritestudio/libs/android/<arch>/` is bundled into the app and
-`ssruntime.py` loads it at runtime.
-
-> **⚠️ Android needs its own native libraries, one per ABI.**
-> The Brain is a compiled binary, so the app only runs on an ABI whose `.so` is
-> present. They go under the SDK's **arch tokens** (`arm64` / `arm32` / `x86_64`),
-> **not** the Android ABI names (`arm64-v8a` / `armeabi-v7a`) — this path is a
-> ctypes load path inside `game/`, not the APK's `lib/<abi>/`:
->
-> | Device | Path |
-> |---|---|
-> | 64-bit phones/tablets (most) | `libs/android/arm64/libssruntime.so` |
-> | Older 32-bit phones          | `libs/android/arm32/libssruntime.so` |
-> | x86_64 emulators             | `libs/android/x86_64/libssruntime.so` |
->
-> Get them with `scripts/build-runtime.* platform=android build=release` (from
-> source; needs the Android NDK toolchain) or `scripts/download-sdk.*` (prebuilt).
-
-### One-time setup
-
-1. **Fetch RAPT** — the extra download the Android target needs (like Web needs
-   `fetch-renpy-web.*`):
-   ```bash
-   scripts/fetch-renpy-android.sh          # Windows: scripts\fetch-renpy-android.ps1
-   ```
-2. **Install the Android SDK & generate signing keys** — both are interactive, so
-   do them once from the launcher GUI:
-   ```bash
-   renpy-sdk/renpy.sh renpy-sdk/launcher   # -> Android
-   ```
-   * **Install SDK** — downloads the Android SDK / NDK / JDK into `renpy-sdk/rapt/Sdk/`.
-   * **Generate Keys** — creates `android.keystore` (and `bundle.keystore`) in the
-     project root, used to sign the package.
-
-### Automated build (recommended)
-
-Use the helper script, which checks the prerequisites above and runs the export.
-It auto-fetches the Ren'Py SDK and RAPT if missing:
-
-```bash
-scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]   # default dest: dist
-# Windows:
-scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
-```
-
-* `--bundle` builds an `.aab` App Bundle (for Play upload) instead of a Universal
-  `.apk`; `--install` / `--launch` push and start it on a connected device (`adb`).
-
-### Manual build
-
-```bash
-renpy-sdk/renpy.sh renpy-sdk/launcher android_build . --dest dist
-```
-
-Or from the launcher GUI: select the project → **Android** → **Build**. As with
-desktop, `build.name` must be set (this demo's `options.rpy` already does).
-
-## iOS Export
-
-*(To be added later — requires building the iOS native library
-(`libssruntime.xcframework`) and placing it under `game/spritestudio/libs/ios/`;
-`scripts/build-runtime.* platform=ios` produces it.)*
+**Testing:** serve over HTTP (not `file://`) with correct MIME types (`.js` →
+`application/javascript`, `.wasm` → `application/wasm`) — Ren'Py's own web server
+does this. After re-exporting, **unregister the cached service worker / clear site
+data**, or the browser serves the old build.
