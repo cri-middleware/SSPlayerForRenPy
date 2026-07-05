@@ -8,10 +8,11 @@
 
 ## ✨ SpriteStudio Player の特長
 
-- **エディタで作り込むアニメ。ATL の手書きは不要。** SpriteStudio 7 は**ラスター（ビットマップ画像）ベースの2Dアニメーション**専用エディタで、ボーン階層・メッシュ変形・パーティクルエフェクトに対応します。動きはビジュアルに作り込み、プレイヤーはそれを再生するだけ。アニメーションそのものを長くて複雑な ATL (Animation and Transformation Language) で書く必要はありません。
-- **動画（ムービー）の軽量な代替に。** Ren'Py の演出で多用される動画——`.webm` / `.ogv` / `.mp4` などを `Movie` で再生するオープニングムービー、動く背景、エフェクトのカットイン——を、軽量なネイティブ再生で置き換えます。実行時に自由に拡大縮小でき、シームレスにループし、ただ流れるだけでなくゲームの状態に反応します。重い動画ファイルは不要です。
-- **手持ちの素材（PNG / WebP）をそのまま活用。** テクスチャは Ren'Py 標準の画像パイプラインで読み込むため、PNG も WebP もプロジェクト内の他の画像とまったく同じように扱えます。
+- **立ち絵が“生きる”。** 呼吸・まばたき、なびく髪や衣装、斬撃・魔法のエフェクトまで——動きは専用エディタ（SpriteStudio 7）でビジュアルに作り込み、プレイヤーはそれを再生するだけ。ボーン階層・メッシュ変形・パーティクルに対応し、長くて複雑な ATL の手書きは要りません。
+- **動画（ムービー）の軽量な代替に。** Ren'Py の演出で多用される動画——`.webm` / `.ogv` / `.mp4` などを `Movie` で再生するオープニングムービー、動く背景、エフェクトのカットイン——を、軽量なネイティブ再生で置き換えます。実行時に自由に拡大縮小でき、シームレスにループし、ただ流れるだけでなくゲームの状態に反応します。
 - **ATL・`Transform` とも共存。** `SSPlayer` は Ren'Py 標準の Displayable なので、ATL が活きる場面はそのまま活かせます。アニメーション全体を、通常の画像と同じように配置・スライドイン・ズーム・フェードできます。
+- **フレームレートに縛られない滑らかな動き。** **サブフレーム補間**により、実際の表示タイミングちょうどの位置でフレームを生成します。固定フレームレートで焼き込まれた動画と違い、ディスプレイのリフレッシュレートや再生速度に追従した、より滑らかな表示が得られます。
+- **エディタから実行画面まで、シームレスな更新。** **オートインポーター機能**により、開発中は `SpriteStudio_Source/` に `.sspj` を置いて編集し、Ren'Py を再読み込み（**Shift+R**）するだけ。変更のあったプロジェクトだけが自動で再コンバートされ、そのまま実行画面に反映されます。書き出しの手作業は要りません。
 
 ## 📚 ドキュメント (Documentation)
 
@@ -28,7 +29,9 @@
 
 ---
 
-## 🎮 1. クイックスタート (利用者向け)
+## 🎮 1. クイックスタート
+
+### 導入方法
 
 ビルド済みのパッケージを利用し、負担なく手軽に導入できる方法です。
 
@@ -41,12 +44,15 @@ screen demo():
 ```
 ※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
 
-## 🛠 2. カスタマー向け: Playerのカスタマイズ
-Ren'Py側のPythonコードやRen'Pyスクリプトを改修したいが、Rust製のSDKコアはビルドせずに既存のものを利用したい方向けの環境構築です。
+### 動作確認
+
+同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
 
 **macOS / Linux (`*.sh`):**
 ```bash
-git submodule update --init
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
+cd SSPlayerForRenPy
+git submodule update --init --recursive
 scripts/download-sdk.sh
 scripts/fetch-renpy-sdk.sh
 scripts/deploy-examples.sh
@@ -55,7 +61,9 @@ scripts/run-demo.sh
 
 **Windows (`*.ps1`):**
 ```powershell
-git submodule update --init
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
+cd SSPlayerForRenPy
+git submodule update --init --recursive
 scripts\download-sdk.ps1
 scripts\fetch-renpy-sdk.ps1
 scripts\deploy-examples.ps1
@@ -65,7 +73,7 @@ scripts\run-demo.ps1
 ※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
 ※詳細は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
 
-## ⚙️ 3. SDK・Player開発者向け: フルビルド環境
+## ⚙️ 2. SDK・Player開発者向け: フルビルド環境
 アニメーション計算のコア部分を担うRust製サブモジュール (`SpriteStudio-SDK`) も含めて開発・コントリビュートを行いたい方向けの手順です。
 
 **macOS / Linux:**
@@ -79,7 +87,8 @@ scripts/build-runtime.sh
 git submodule update --init --recursive
 scripts\build-runtime.ps1
 ```
-- 仕様の詳細や正しい実装方法については、**必ず `SpriteStudio-SDK/libs/ssruntime/docs/` にあるPlayer移植ドキュメント（ポーティングガイド）を参照**してください。
+
+- 動作確認の `scripts/download-sdk.*`（ビルド済みコアの取得）の代わりに `scripts/build-runtime.*` を実行し、コアを自前でビルドします。以降の `fetch-renpy-sdk` / `deploy-examples` / `run-demo` は[動作確認](#-1-クイックスタート)と同じ手順です。
 
 ## 📄 ライセンス (License)
 

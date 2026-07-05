@@ -17,7 +17,10 @@ is the map, not the manual.
 - **Read the porting guide (§6) before C-API / playback / render work.**
 
 ## 2. Architecture — the canonical 3-layer stack
-1. **`ssruntime.py`** (`game/spritestudio/python/ss_renpy/`) — ctypes FFI to the Brain.
+1. **`ssruntime.py`** (`game/spritestudio/python/ss_renpy/`) — platform router +
+   shared runtime constants. It delegates `SSRuntime` to `ssruntime_native.py`
+   (ctypes FFI to the Brain) on desktop/mobile, or `ssruntime_web.py`
+   (Pyodide/JS binding) on Web (`sys.platform == "emscripten"`).
 2. **`SSInternalPlayer`** (`ss_renpy/player.py`) — engine-independent playback
    **core**. Plays ONE animation (`set_animation` / `play` / `update(dt_ms) →
    FramePlan`); reports `finished` / `looped` as *observations only* — it never
@@ -42,10 +45,13 @@ external-instance packs are **co-located** in that directory. Loading goes throu
 `renpy.loader.load` / `Image`, so packs work loose or inside a `.rpa` archive.
 
 ## 3. Hard constraints
-- **Script roles:** `build-runtime.*` builds native binaries; `download-sdk.*`
-  fetches prebuilt ones; `deploy-examples.*` builds ONLY playback data;
-  `generate-runtime-code.*` regenerates the flatc bindings; `fetch-renpy-sdk.*` →
-  `renpy-sdk/`; `run-demo.*` launches the demo. (all under `scripts/`)
+- **Script roles** (all under `scripts/`): `build-runtime.*` builds native
+  binaries; `download-sdk.*` fetches prebuilt ones; `download-flatbuffers.*`
+  fetches `flatc`; `generate-runtime-code.*` regenerates the flatc bindings;
+  `deploy-examples.*` builds ONLY playback data; `run-demo.*` launches the demo.
+  **Platform pipelines:** `fetch-renpy-sdk.*` → desktop `renpy-sdk/` and
+  `fetch-renpy-{android,ios,web}.*` fetch the per-platform Ren'Py SDKs;
+  `deploy-{desktop,android,ios,web}.*` export the game for each target.
 - **Coordinates:** use the Context API (`ss_context_set_coordinate_system`). Do
   **not** hand-roll a second Y-flip.
 - **Engine-independent Python:** see the §2 invariants.
@@ -86,12 +92,16 @@ sign-off via `Shift+B` or `scripts/run-demo.*`.
 | Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` | — |
 
 Run all: `for t in tools/verify_*.py tools/m0_smoke.py; do python3 "$t"; done`.
-Lint the whole project (compiles every `.rpy`, runs init blocks — catches shader
-registration + Python errors): `renpy-sdk/renpy.sh . lint`.
+For a headless *eyeball* of geometry/colour and mask logic (not the GL2 path),
+`tools/render_png.py` / `tools/render_mask_png.py` software-rasterize the same
+core to PNG/GIF via Pillow. Lint the whole project (compiles every `.rpy`, runs
+init blocks — catches shader registration + Python errors): `renpy-sdk/renpy.sh . lint`.
 
 **Not rendered yet:** Text / NineSlice batch kinds (draw empty); animation
-blend / mixing (doc 12); Instance/Effect timeline-event kinds. Audio is
-**report-only** (the host plays it). See `docs/00_limitations.ja.md`.
+blend / mixing (doc 12); nested Instance/Effect timeline-event kinds (root
+UserData/Signal/Audio only). **Audio** *is* played by `SSPlayer` — on the `sfx`
+mixer via a round-robin channel pool (`ss_stop_audio`), with reverse-play muted
+and seeks not scrubbed. See `docs/limitations.md` (JA: `docs/ja/limitations.md`).
 
 ## 6. The porting guide (READ FIRST for Brain / render work)
 The SDK ships a **Japanese** porting guide (no English build in this submodule) at
@@ -103,7 +113,6 @@ The SDK ships a **Japanese** porting guide (no English build in this submodule) 
   **12** animation blending · **13** special attrs (UV / Flip)
 - **15** troubleshooting · **16** editor integration & conversion
 
-**Reference ports:** `SSPlayerForGodot` (closest architecture; source of the
-`ss-*` user shaders and the coverage-bitmap mask) and `SSPlayerForWeb`
-(`GeometryBuilder.ts` = the render math). Tip: run the `tests/overall/overall.sspj`
-packs at each step — if it matches the editor, that step is done.
+**Reference ports** when a behaviour is unclear: `SSPlayerForGodot` (closest
+architecture; source of the `ss-*` shaders and the coverage-bitmap mask) and
+`SSPlayerForWeb` (`GeometryBuilder.ts` = the render math).

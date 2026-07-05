@@ -8,10 +8,11 @@ An extension (player) that plays **[OPTPiX SpriteStudio 7](https://www.webtech.c
 
 ## ✨ Why SpriteStudio Player?
 
-- **Editor-crafted animation, not hand-written ATL.** SpriteStudio 7 is a dedicated editor for **raster-based 2D animation** — bone hierarchies, mesh deformation, particle effects. You build the motion visually and the player just plays it, so there's no long, complex ATL (Animation and Transformation Language) to hand-write for the animation itself.
-- **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back. No bloated video files.
-- **Uses the art you already have (PNG / WebP).** Textures load through Ren'Py's standard image pipeline, so PNG and WebP work exactly like every other image in your project.
+- **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio 7) and the player just plays it. With bone rigs, mesh deformation, and particles, there's no long, complex ATL to hand-write.
+- **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back.
 - **Still composes with ATL & `Transform`.** `SSPlayer` is a standard Ren'Py Displayable, so you keep ATL where it shines — position, slide, zoom, or fade the whole animated sprite exactly like any other image.
+- **Smooth motion, not locked to a frame rate.** **Sub-frame interpolation** renders each frame at the exact display time. Unlike video baked at a fixed frame rate, motion follows your display's refresh rate and playback speed for smoother movement.
+- **A seamless edit-to-runtime loop.** The **Auto Importer** watches `SpriteStudio_Source/` during development: edit a `.sspj`, reload Ren'Py (**Shift+R**), and only the changed project is re-converted automatically and shows up live in your game — no manual export step.
 
 ## 📚 Documentation
 
@@ -28,7 +29,9 @@ For detailed specifications, import procedures, and API references, please visit
 
 ---
 
-## 🎮 1. Quick Start (For Users)
+## 🎮 1. Quick Start
+
+### Setup
 
 This is the easiest way to integrate the player using a pre-built package.
 
@@ -41,12 +44,15 @@ screen demo():
 ```
 *For details, see the [Setup Guide](docs/setup.md) and [Usage & Control](docs/usage.md).*
 
-## 🛠 2. Customizing the Player (For Customers)
-If you want to modify the Ren'Py scripts or Python code but prefer to use the pre-built native Rust SDK core, follow these steps to set up your environment.
+### Verifying It Works
+
+Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
 
 **macOS / Linux (`*.sh`):**
 ```bash
-git submodule update --init
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
+cd SSPlayerForRenPy
+git submodule update --init --recursive
 scripts/download-sdk.sh
 scripts/fetch-renpy-sdk.sh
 scripts/deploy-examples.sh
@@ -55,7 +61,9 @@ scripts/run-demo.sh
 
 **Windows (`*.ps1`):**
 ```powershell
-git submodule update --init
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
+cd SSPlayerForRenPy
+git submodule update --init --recursive
 scripts\download-sdk.ps1
 scripts\fetch-renpy-sdk.ps1
 scripts\deploy-examples.ps1
@@ -65,7 +73,7 @@ scripts\run-demo.ps1
 *Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
 *For details, see the [Build Guide](docs/build.md).*
 
-## ⚙️ 3. Full Build Environment (For SDK/Player Developers)
+## ⚙️ 2. Full Build Environment (For SDK/Player Developers)
 If you want to develop and contribute to the core animation module (`SpriteStudio-SDK`), follow these steps.
 
 **macOS / Linux:**
@@ -79,7 +87,8 @@ scripts/build-runtime.sh
 git submodule update --init --recursive
 scripts\build-runtime.ps1
 ```
-*For detailed specifications, be sure to read the Player Porting Guide located in `SpriteStudio-SDK/libs/ssruntime/docs/`.*
+
+- Run `scripts/build-runtime.*` in place of the `scripts/download-sdk.*` step from Verifying It Works — this builds the core yourself instead of fetching the pre-built one. The following `fetch-renpy-sdk` / `deploy-examples` / `run-demo` steps are the same as in [Verifying It Works](#-1-quick-start).
 
 ## 📄 License
 
