@@ -1,6 +1,13 @@
 # Build & Customization Guide
 
 This is a guide for developers who wish to modify and customize the code in this repository.
+
+> **Just want to use the player in your own game?** You don't need this guide —
+> see the [Setup Guide](setup.md) and [Usage](usage.md). This page is for working
+> *inside this repository*: customizing the player code or rebuilding the native
+> libraries. (The "Customer" role below still means a developer — one who edits
+> only the Ren'Py-side code — not an end user.)
+
 Set up one of the following two environments depending on your goals:
 
 - **Customer**: Those who want to customize only the Python/Ren'Py code on the Ren'Py side, without building the SDK core (native library).
@@ -111,3 +118,62 @@ scripts\generate-runtime-code.ps1
 
 ### 2.6 SDK Development Rules
 - Since `SpriteStudio-SDK` represents core specifications, do not force unreasonable workarounds for the convenience of the Player (Ren'Py side). If a specification change is needed, please raise it as an issue on the SDK repository itself.
+
+---
+
+## 3. Building Platform Exports (Helper Scripts)
+
+The repository ships helper scripts under `scripts/` that run a full platform
+export of the demo and apply any SSPlayer-specific post-steps automatically — the
+developer-side counterpart of the manual instructions in the
+[Export Guide](export.md). They drive the Ren'Py SDK fetched above.
+
+> These scripts are for working **inside this repository**. A game author
+> exporting their own project uses the stock Ren'Py launcher instead — see the
+> [Export Guide](export.md).
+
+### 3.1 Prerequisites
+- The native library for the **target** platform placed under
+  `game/spritestudio/libs/` — `scripts/download-sdk.*` (prebuilt) or
+  `scripts/build-runtime.*` (source). Desktop / mobile / web each need their own,
+  e.g. `build-runtime.* platform=android build=release`, `platform=ios`,
+  `platform=web`.
+- The Ren'Py SDK (`scripts/fetch-renpy-sdk.*`); the deploy scripts fetch it on
+  demand if it is missing.
+- Platform-specific toolchains, one-time:
+    - **Android**: `scripts/fetch-renpy-android.*` (RAPT), then **Install SDK** and
+      **Generate Keys** once from the launcher GUI (→ Android).
+    - **iOS**: `scripts/fetch-renpy-ios.sh` (renios; macOS-only).
+    - **Web**: `scripts/fetch-renpy-web.*` (Ren'Py Web support).
+
+### 3.2 Export Commands
+
+**macOS / Linux (`*.sh`):**
+```bash
+scripts/deploy-desktop.sh [dest_dir]                       # host-OS desktop app (mac / linux)
+scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
+scripts/deploy-ios.sh     [dest_dir] [--recreate] [--open] # generates an Xcode project (macOS only)
+scripts/deploy-web.sh     [dest_dir]                       # runs the export + both Web post-steps
+```
+
+**Windows (`*.ps1`):**
+```powershell
+scripts\deploy-desktop.ps1 [dest_dir]                      # win desktop app
+scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+scripts\deploy-web.ps1     [dest_dir]
+# (iOS export is macOS-only; there is no deploy-ios.ps1)
+```
+
+- **Desktop**: builds for the host OS (`.sh`: mac / linux; `.ps1`: win) and unpacks
+  a ready-to-run app. Only the platform whose native library is present can be
+  built to run.
+- **Android**: `--bundle` → `.aab` (Play upload); `--install` / `--launch` push and
+  start on a connected device via `adb`.
+- **iOS**: generates / refreshes the Xcode project; the Brain still needs the
+  one-time **Embed & Sign** in Xcode (see the [Export Guide](export.md)).
+- **Web**: idempotent; re-run after each export, then serve over HTTP with the
+  right MIME types.
+
+For the SSPlayer-specific requirements these scripts encode (per-ABI `.so`, the
+dynamic iOS xcframework, the Web WASM injection, `.rpa` ordering), see the
+[Export Guide](export.md).

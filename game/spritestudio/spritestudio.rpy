@@ -31,13 +31,12 @@ init -10 python:
     import os
     import sys, math, time
 
-    # Packaging (build.classify): the library classifies only its OWN files —
-    # its `.ssab` pack format and its per-platform native libraries. build.classify
-    # is FIRST-MATCH-WINS by registration order, and this runs at init -10, so a
-    # game can override any of it from an EARLIER init in its options.rpy (the demo
-    # does exactly that — see game/options.rpy for asset archiving, the `**.wav` /
-    # `**.mp3` audio rules, and this repo's dev-file excludes).
-    build.classify('**.ssab', 'all')            # the SpriteStudio pack format
+    # Packaging (build.classify): the library classifies only its OWN files — its
+    # per-platform native libraries (below). The `.ssab` / `.ssqb` pack formats hold
+    # the GAME's own assets, so shipping those is the game's responsibility, done in
+    # its options.rpy alongside the audio rules (see game/options.rpy) — NOT here.
+    # build.classify is FIRST-MATCH-WINS by registration order, and this runs at
+    # init -10, so a game can override any of it from an EARLIER init in options.rpy.
 
     # Native libraries: ship ONLY the target platform's binary, mirroring Ren'Py's
     # own per-platform lib tagging (renpy/common/00build.rpy). Without this a mac

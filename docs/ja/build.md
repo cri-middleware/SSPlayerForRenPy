@@ -1,6 +1,13 @@
 # 開発・ビルド・カスタマイズガイド (Build & Customization)
 
 本リポジトリのコードを改修してカスタマイズを行いたい開発者向けの手順です。
+
+> **プレイヤーを自分のゲームで使いたいだけの方**は、このガイドは不要です —
+> [導入ガイド (Setup)](setup.md) と [再生と制御 (Usage)](usage.md) を参照してください。
+> このページは*本リポジトリ内での作業*（プレイヤーのコードのカスタマイズや、
+> ネイティブライブラリの再ビルド）向けです。（下記の「カスタマー」も開発者
+> ＝ Ren'Py 側コードのみを編集する人の意味で、エンドユーザーではありません。）
+
 目的に応じて、以下の2つのいずれかの環境を構築してください。
 
 - **カスタマー**: SDK本体（ネイティブライブラリ）のビルドは行わず、Ren'Py側のPython/Ren'Pyコードのみをカスタマイズしたい方
@@ -17,7 +24,7 @@ Rust製のネイティブライブラリをビルドする必要がないため�
 ### 1.2 リポジトリの準備
 デモ用のテストデータ等を取得するため、サブモジュールを初期化します。ここではネイティブのビルド環境は不要なため、`--recursive` オプションは**付けません**。
 ```bash
-git clone https://github.com/Naruto/SSPlayerForRenPy.git
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
 git submodule update --init
 ```
@@ -73,7 +80,7 @@ Rust製の `SpriteStudio-SDK` のコードを含めてフルスクラッチで�
 ### 2.2 リポジトリとサブモジュールの完全な準備
 依存する全てのクレート等を含めて取得するため、`--recursive` を付けてサブモジュールを初期化します。
 ```bash
-git clone https://github.com/Naruto/SSPlayerForRenPy.git
+git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
 git submodule update --init --recursive
 ```
@@ -111,3 +118,59 @@ scripts\generate-runtime-code.ps1
 
 ### 2.6 SDK開発のルール
 - `SpriteStudio-SDK` はコア仕様であるため、Player側（Ren'Py側）の都合で無理なワークアラウンドを入れないでください。仕様変更が必要な場合はSDK本体側のイシューとして提起してください。
+
+---
+
+## 3. 各プラットフォームへのエクスポート (ヘルパースクリプト)
+
+本リポジトリには、デモの各プラットフォーム向けエクスポートを実行し、SSPlayer 固有の
+後処理を自動で適用する `scripts/` 以下のヘルパースクリプトが含まれています。これは
+[エクスポートガイド](export.md) に記載した手動手順の**開発者向けの対応物**で、上記で
+取得した Ren'Py SDK を利用します。
+
+> これらのスクリプトは**本リポジトリ内での作業**用です。自分のゲームをエクスポートする
+> 制作者は標準の Ren'Py ランチャーを使ってください（[エクスポートガイド](export.md) 参照）。
+
+### 3.1 前提条件
+- **対象**プラットフォームのネイティブライブラリが `game/spritestudio/libs/` に配置済み
+  であること — `scripts/download-sdk.*`（ビルド済み）または `scripts/build-runtime.*`
+  （ソース）。デスクトップ / モバイル / Web はそれぞれ専用が必要です。例:
+  `build-runtime.* platform=android build=release`、`platform=ios`、`platform=web`。
+- Ren'Py SDK（`scripts/fetch-renpy-sdk.*`）。deploy スクリプトは無ければ自動取得します。
+- プラットフォーム固有ツールチェーン（一度だけ）:
+    - **Android**: `scripts/fetch-renpy-android.*`（RAPT）取得後、launcher GUI（→ Android）
+      から **Install SDK** と **Generate Keys** を実施。
+    - **iOS**: `scripts/fetch-renpy-ios.sh`（renios。macOS 専用）。
+    - **Web**: `scripts/fetch-renpy-web.*`（Ren'Py の Web サポート）。
+
+### 3.2 エクスポートコマンド
+
+**macOS / Linux (`*.sh`):**
+```bash
+scripts/deploy-desktop.sh [dest_dir]                       # ホスト OS のデスクトップアプリ (mac / linux)
+scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
+scripts/deploy-ios.sh     [dest_dir] [--recreate] [--open] # Xcode プロジェクトを生成 (macOS 専用)
+scripts/deploy-web.sh     [dest_dir]                       # エクスポート + Web の 2 つの後処理を実行
+```
+
+**Windows (`*.ps1`):**
+```powershell
+scripts\deploy-desktop.ps1 [dest_dir]                      # win デスクトップアプリ
+scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+scripts\deploy-web.ps1     [dest_dir]
+# (iOS エクスポートは macOS 専用のため deploy-ios.ps1 はありません)
+```
+
+- **デスクトップ**: ホスト OS 向けにビルド（`.sh`: mac / linux、`.ps1`: win）し、そのまま
+  実行できる形に展開します。ネイティブライブラリがあるプラットフォームのみ実行可能な形で
+  ビルドできます。
+- **Android**: `--bundle` は `.aab`（Play アップロード用）、`--install` / `--launch` は
+  `adb` で端末へ転送・起動します。
+- **iOS**: Xcode プロジェクトを生成 / 更新します。Brain は Xcode での一度きりの
+  **Embed & Sign** が別途必要です（[エクスポートガイド](export.md) 参照）。
+- **Web**: 冪等です。エクスポートのたびに再実行し、正しい MIME タイプで HTTP 配信して
+  ください。
+
+各スクリプトが内部で扱う SSPlayer 固有の要件（ABI ごとの `.so`、動的な iOS xcframework、
+Web の WASM 注入、`.rpa` の順序）については [エクスポートガイド](export.md) を参照して
+ください。

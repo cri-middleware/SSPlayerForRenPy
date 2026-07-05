@@ -4,13 +4,21 @@ SpriteStudio Player for Ren'Py を組み込んだゲームを各プラットフ�
 エクスポートする手順です。ここでは **SSPlayer 固有** の点だけを扱い、汎用的な
 ビルド手順は Ren'Py 公式ドキュメントへのリンクに委ねます。
 
-全プラットフォーム共通: ネイティブ「頭脳 (Brain)」ライブラリは
-`game/spritestudio/libs/<platform-arch>/` に置かれ、`spritestudio.rpy` が
-`build.classify` で `**.ssab` パック（および同じ場所のテクスチャ）をビルドへ自動同梱
-します（`options.rpy` の編集不要）。SS Audio タイムラインイベント用の非圧縮**オーディオ**
-(`.wav` / `.mp3`) はゲーム側の責務です。ご自身の `options.rpy` に
-`build.classify('**.wav', 'all')` / `'**.mp3'` を追加してください（本デモは
-`game/options.rpy` で対応済み）。
+> このページは、標準の Ren'Py ランチャーで**自分のゲーム**をエクスポートする
+> **ゲーム制作者**向けです。本リポジトリ内で作業する場合（デモやネイティブ
+> ライブラリのビルド）は、以下の各エクスポートを自動化する開発者向けヘルパー
+> スクリプトを [ビルドガイド](build.md) にまとめています。
+
+全プラットフォーム共通: ネイティブ「頭脳 (Brain)」ライブラリは、ビルド対象の
+プラットフォーム向けに `game/spritestudio/libs/<platform-arch>/` へ置かれている
+必要があります（Ren'Py がパッケージへ同梱し、`ssruntime.py` が実行時に解決します）。
+**アセット**の同梱はゲーム側の責務です（アセットはライブラリではなくゲームの
+コンテンツだからです）。`.ssab` パック（`.ssqb` シーケンスパックがあればそれも。また
+SS Audio タイムラインイベントを使う場合は非圧縮の `.wav` / `.mp3`）を、ご自身の
+`options.rpy` で classify してください。特に Web エクスポートは、明示分類しないと
+未知の拡張子を落とします。`build.classify('**.ssab', 'all')` と `'**.ssqb'`（オーディオを
+使うなら `'**.wav'` / `'**.mp3'` も）を追加してください（本デモは `game/options.rpy` で
+対応済み）。
 
 ## デスクトップ向けエクスポート (Windows / macOS / Linux)
 
@@ -20,47 +28,30 @@ Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html
 > **⚠️ 各プラットフォームごとに専用のネイティブライブラリが必要です。**
 > `game/spritestudio/libs/` 以下に `macos/libssruntime.dylib`、
 > `windows/x86_64/ssruntime.dll`、`linux/x86_64/libssruntime.so`。Ren'Py が同梱し、
-> `ssruntime.py` が実行時に解決します。**本リポジトリには macOS 用のみ同梱**。他は
-> `scripts/download-sdk.*`（ビルド済み）または `scripts/build-runtime.*`（ソース）で
-> 用意してください。無いままビルドすると起動は通っても SSPlayer がロード時に落ちます。
+> `ssruntime.py` が実行時に解決します。ビルド対象プラットフォームのライブラリが
+> 無いままビルドすると、起動は通っても SSPlayer がロード時に落ちます。
 
-ヘルパー（ホスト OS 用パッケージをビルドし、そのまま実行できる形に展開）:
+`build.name` の設定は必須です（未設定だと `.app` が起動しません。デモは設定済み）。
+配布時は Ren'Py のドキュメントに従いコード署名・公証を行ってください（未署名 `.dylib`
+は Gatekeeper にブロックされます）。
 
-```bash
-scripts/deploy-desktop.sh [dest_dir]      # Windows: scripts\deploy-desktop.ps1
-```
-
-そのまま動くビルドを得るには `.sh` を **Mac 上で** 実行してください。`build.name` の
-設定は必須です（未設定だと `.app` が起動しません。デモは設定済み）。配布時は Ren'Py の
-ドキュメントに従いコード署名・公証を行ってください（未署名 `.dylib` は Gatekeeper に
-ブロックされます）。
-
-**任意 — アセットを `.rpa` にまとめる:** ライブラリの `**.ssab` ルール（init −10）より
-**前**にアーカイブを登録します。デモの `options.rpy` に `ss_pack_assets_into_rpa`
-トグルがあります。
+**任意 — アセットを `.rpa` にまとめる:** アセットをアーカイブへ振り分けるため、
+`**.ssab` / オーディオの classify ルールより**前**にアーカイブを登録します
+（build.classify は first-match-wins）。デモの `options.rpy` に `ss_pack_assets_into_rpa`
+トグルがあるので参考にできます。
 
 ## Android 向けエクスポート
 
 Ren'Py 標準の [RAPT](https://www.renpy.org/doc/html/android.html) を使います。
-SSPlayer 固有の後処理はありません。
+SSPlayer 固有の後処理はありません。launcher GUI（→ Android）から **Install SDK** と
+**Generate Keys** を一度だけ実施してください（Ren'Py のドキュメント参照）。
 
 > **⚠️ ABI ごとに `.so` が 1 つ必要。配置は SDK の arch トークンで、Android の ABI 名
 > ではありません。** これは APK の `lib/<abi>/` ではなく `game/` 内の ctypes ロード
 > パスだからです: `libs/android/arm64/libssruntime.so`（大半の 64bit 端末）、`arm32/`
-> （旧端末）、`x86_64/`（エミュレータ）。取得は
-> `scripts/build-runtime.* platform=android build=release`（NDK 必要）または
-> `scripts/download-sdk.*`（ビルド済み）。
+> （旧端末）、`x86_64/`（エミュレータ）。
 
-一度だけ: `scripts/fetch-renpy-android.*` で RAPT を取得し、launcher GUI（→ Android）
-から **Install SDK** と **Generate Keys** を実施（対話式。Ren'Py のドキュメント参照）。
-
-```bash
-scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
-# Windows: scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
-```
-
-`--bundle` は `.aab`（Play アップロード用）、`--install` / `--launch` は `adb` で端末へ
-転送・起動します。
+`.aab`（Play アップロード用）でビルドすることも、`.apk` を得ることもできます。
 
 ## iOS 向けエクスポート
 
@@ -71,20 +62,14 @@ Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使いま�
 > 「Embed & Sign」で追加します。** `ssruntime.py` は ctypes の `CDLL(None)` で読み込む
 > ため、ロード済みイメージである必要があります。Embed & Sign はリンク（dyld が起動時に
 > ロード）とバンドルへの署名付きコピーを行います（renios が `MetalANGLE.xcframework` に
-> 対して行うのと同じ扱い）。`game/spritestudio/libs/ios/` に
-> `scripts/build-runtime.sh platform=ios build=release` または
-> `scripts/download-sdk.sh` で用意してください。**静的** xcframework はリンクはできますが
-> dead-strip されて `CDLL(None)` が実行時に失敗するので、動的版を使います。
+> 対して行うのと同じ扱い）。**静的** xcframework はリンクはできますが dead-strip されて
+> `CDLL(None)` が実行時に失敗するので、動的版を使います。
 
-一度だけ: `scripts/fetch-renpy-ios.sh`（renios。macOS 専用のため `.ps1` はありません）。
-
-1. **Xcode プロジェクトを生成** — `scripts/deploy-ios.sh [dest_dir] [--recreate]
-   [--open]`（SDK/renios の自動取得、create/populate の判定も実施）、または標準ランチャー:
-   `renpy-sdk/renpy.sh renpy-sdk/launcher ios_create . <xcode-project-dir>`。
+1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（→ iOS → Xcode プロジェクトを作成）、
+   または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
 2. **Brain を一度だけ埋め込む** — Xcode で app ターゲット → **General** → **Frameworks,
    Libraries, and Embedded Content** → **+** → *Add Files…* →
-   `game/spritestudio/libs/ios/libssruntime.xcframework`（`deploy-ios` は
-   `<project>/Frameworks/` にもコピーを配置します）→ **Embed & Sign**。Ren'Py には
+   `game/spritestudio/libs/ios/libssruntime.xcframework` → **Embed & Sign**。Ren'Py には
    サードパーティのネイティブコードを自動リンクする仕組みがないため、この 1 手だけは手動
    です（以降の `ios_populate` 再実行でも維持されます）。
 3. **ビルド** — **シミュレータ**を選んで **Run**（署名不要）、または signing team を設定し
@@ -103,13 +88,7 @@ Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.htm
 > 再適用**してください。行わないと console に
 > `Cannot read properties of undefined (reading 'SSRuntimeContext')` が出ます。
 
-ヘルパー（エクスポートと 2 つの後処理を**まとめて**実行。冪等）:
-
-```bash
-scripts/deploy-web.sh [dest_dir]      # 既定 web_out。Windows: scripts\deploy-web.ps1
-```
-
-`web_build` エクスポート後に手作業で行う場合:
+`web_build` エクスポート後に:
 
 1. **`index.html` を編集** — ゲーム起動前に WASM バインディングを読み込むため、
    `<script src="renpy-pre.js">` タグの**直前**に以下を追加:

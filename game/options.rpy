@@ -41,7 +41,7 @@ init -20 python:
     # Keep this development repo's tooling / build output / docs out of the
     # packaged demo. Registered FIRST so a stray asset (.ssab / .wav / …) sitting
     # inside one of these dev dirs is excluded rather than swept in by the
-    # library's `**.ssab -> all` or the `**.wav/**.mp3 -> all` rules below.
+    # `**.ssab / **.ssqb -> all` / `**.wav/**.mp3 -> all` rules below.
     # (`*.md` / `*.txt` match root-level files only — `*` does not cross `/` — so
     # bundled licences under game/…/libs/ are kept.) These are demo/repo-specific
     # paths, which is exactly why they live here and not in the reusable library.
@@ -55,11 +55,14 @@ init -20 python:
         build.archive("ssdata", "all")            # "all" tag: in every package
         build.classify("game/ss_assets/**", "ssdata")
 
-    # Ren'Py's web build drops uncompressed audio and unknown extensions, so make
-    # sure the demo's SpriteStudio audio ships. Registered AFTER the archive above
-    # so audio under game/ss_assets/ still lands in ssdata.rpa when the toggle is
-    # on. (The library only classifies its own **.ssab format; generic audio is
-    # the game's call — hence these live here. A downstream game that plays SS
-    # Audio events must add the same two lines to its own options.rpy.)
+    # Ren'Py's web build drops uncompressed audio and unknown extensions (incl. the
+    # `.ssab` / `.ssqb` SpriteStudio pack formats), so classify the demo's assets
+    # explicitly. These are the GAME's own content — not the reusable library's
+    # files — so they live here, not in spritestudio.rpy. Registered AFTER the
+    # archive above so assets under game/ss_assets/ still land in ssdata.rpa when
+    # the toggle is on. A downstream game must add `**.ssab` / `**.ssqb` to its own
+    # options.rpy (and the `**.wav` / `**.mp3` lines too if it plays SS Audio events).
+    build.classify('**.ssab', 'all')          # the SpriteStudio pack format
+    build.classify('**.ssqb', 'all')          # the SpriteStudio sequence pack
     build.classify('**.wav', 'all')
     build.classify('**.mp3', 'all')

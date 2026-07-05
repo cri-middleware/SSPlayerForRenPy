@@ -30,16 +30,6 @@ Restrictions and unimplemented features of the current SpriteStudio Player for R
 > **Performance** — Because rendering is routed through `ctypes` and Creator-Defined Displayables, your frame rate may be affected by animations with an extremely high mesh vertex count, or by many particle effects overlapping at once.
 
 > [!WARNING]
-> **Platform** — Desktop (Windows, macOS, Linux) works natively. Mobile (Android, iOS) supports native packaging. Web is supported via JS/WASM bindings.
-> - The native runtime (Rust "Brain") is built for all targets — the SDK release workflow generates `macos` / `windows` / `linux` / `android` / `ios` (`.xcframework`).
-> - The library loader (`ss_renpy/ssruntime.py`) already resolves these layouts (e.g. Android → `android/<abi>`, iOS falls back to static linking). What remains for **Android / iOS** is bundling the native builds and wiring up Ren'Py's mobile packaging.
-> - **Web Support**:
->   Web (WASM) cannot be loaded via `ctypes`. It is integrated via a non-ctypes binding (`ssruntime_web.py`) utilizing Pyodide's `import js` feature.
->   To run in a browser, you must load the WASM module before Ren'Py (Pyodide) starts. After building your Web export, add the following script block to your `index.html`:
->   ```html
->   <script type="module">
->     import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
->     window.ssruntime = ss;
->     window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
->   </script>
->   ```
+> **Platform** — All targets are supported: Desktop (Windows / macOS / Linux), Android, iOS, and Web. See `docs/export.md` for how to export to each; the platform-specific constraints to be aware of are:
+> - **iOS** requires macOS + Xcode, and the Brain library must be embedded into the app target once by hand — Ren'Py has no hook to auto-link third-party native code.
+> - **Web** (Pyodide/WASM) can't load the Brain through `ctypes`, so it uses a JS/WASM binding that Ren'Py's exporter doesn't bundle on its own — every Web export needs an extra manual step to load the WASM module before the game starts.
