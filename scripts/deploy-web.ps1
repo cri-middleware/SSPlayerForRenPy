@@ -40,9 +40,21 @@ if (-not (Test-Path (Join-Path $WebAssets "ssruntime.js")) -or -not (Test-Path (
     Write-Error "deploy-web.ps1: web runtime missing under game\spritestudio\libs\web\ — run scripts\download-sdk.ps1 first."; exit 1
 }
 
+# The top-level renpy.exe is a GUI-subsystem binary: launched from a console it
+# prints nothing, doesn't block, and returns exit 0 immediately — so web_build
+# would silently do nothing. Drive Ren'Py through the console python instead
+# (same trick as run-demo.ps1) so we get output, blocking, and a real exit code.
+$PythonExe = Join-Path $RenpySdk "lib/py3-windows-x86_64/python.exe"
+$RenpyPy   = Join-Path $RenpySdk "renpy.py"
+if (Test-Path $PythonExe) {
+    $RenpyExe = $PythonExe; $RenpyPre = @($RenpyPy)
+} else {
+    $RenpyExe = $Renpy;     $RenpyPre = @()
+}
+
 # --- 2. run the Web export ------------------------------------------------
 Write-Host ">> building Web export -> $Dest"
-& $Renpy $Launcher web_build $RootDir --dest $Dest
+& $RenpyExe @RenpyPre $Launcher web_build $RootDir --dest $Dest
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy-web.ps1: web_build failed ($LASTEXITCODE)"; exit 1 }
 
 $Index = Join-Path $Dest "index.html"

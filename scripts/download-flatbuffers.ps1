@@ -11,10 +11,14 @@ Write-Host "Downloading FlatBuffers $FbVersion python runtime..."
 $TmpZip = "$env:TEMP\flatbuffers-$FbVersion.zip"
 $TmpExtract = "$env:TEMP\flatbuffers-extract"
 
+$ProgressPreference = 'SilentlyContinue'
 Invoke-WebRequest -Uri "https://github.com/google/flatbuffers/archive/refs/tags/$FbVersion.zip" -OutFile $TmpZip
+$ProgressPreference = 'Continue'
 
 if (Test-Path $TmpExtract) { Remove-Item -Recurse -Force $TmpExtract }
+$global:ProgressPreference = 'SilentlyContinue'
 Expand-Archive -Path $TmpZip -DestinationPath $TmpExtract
+$global:ProgressPreference = 'Continue'
 
 if (Test-Path $OutDir) { Remove-Item -Recurse -Force $OutDir }
 $ExtractedFbVer = $FbVersion.TrimStart('v')

@@ -37,7 +37,9 @@ if (-not $Version -and (Test-Path $VersionFile)) {
 }
 if (-not $Version) {
     Write-Host "Resolving latest stable Ren'Py version..."
+    $ProgressPreference = 'SilentlyContinue'
     $html = (Invoke-WebRequest -Uri "https://www.renpy.org/latest.html" -UseBasicParsing).Content
+    $ProgressPreference = 'Continue'
     $m = [regex]::Match($html, 'renpy-([0-9]+\.[0-9]+\.[0-9]+)-sdk')
     if ($m.Success) { $Version = $m.Groups[1].Value }
 }
@@ -55,11 +57,15 @@ New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 try {
     $ZipPath = Join-Path $Tmp $Archive
     Write-Host "Downloading $Url ..."
+    $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+    $ProgressPreference = 'Continue'
 
     Write-Host "Extracting into renpy-sdk\ ..."
     if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+    $global:ProgressPreference = 'SilentlyContinue'
     Expand-Archive -Path $ZipPath -DestinationPath $Tmp -Force
+    $global:ProgressPreference = 'Continue'
     # the archive has a single top-level renpy-<ver>-sdk\ dir; move its contents
     # up so the launcher lands at renpy-sdk\renpy.exe.
     $Inner = Join-Path $Tmp "renpy-$Version-sdk"

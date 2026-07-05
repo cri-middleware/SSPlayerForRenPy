@@ -48,6 +48,17 @@ if (-not (Test-Path $Renpy)) {
     Write-Host "deploy-android.ps1: renpy.exe not found in renpy-sdk\ — fetching the SDK first..."
     & (Join-Path $RootDir "scripts/fetch-renpy-sdk.ps1")
 }
+# The top-level renpy.exe is a GUI-subsystem binary: launched from a console it
+# prints nothing, doesn't block, and returns exit 0 immediately — so android_build
+# would silently do nothing. Drive Ren'Py through the console python instead
+# (same trick as run-demo.ps1) so we get output, blocking, and a real exit code.
+$PythonExe = Join-Path $RenpySdk "lib/py3-windows-x86_64/python.exe"
+$RenpyPy   = Join-Path $RenpySdk "renpy.py"
+if (Test-Path $PythonExe) {
+    $RenpyExe = $PythonExe; $RenpyPre = @($RenpyPy)
+} else {
+    $RenpyExe = $Renpy;     $RenpyPre = @()
+}
 # RAPT — the Android packaging tool (fetch on demand)
 if (-not (Test-Path (Join-Path $Rapt "android.py"))) {
     Write-Host "deploy-android.ps1: Ren'Py Android support (RAPT) not found — fetching it first..."
@@ -96,7 +107,7 @@ if ($Launch)  { $Pass += "--launch" }
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 $kind = if ($Bundle) { "App Bundle (.aab)" } else { "package (.apk)" }
 Write-Host ">> building Android $kind -> $Dest"
-& $Renpy $Launcher android_build $RootDir --dest $Dest @Pass
+& $RenpyExe @RenpyPre $Launcher android_build $RootDir --dest $Dest @Pass
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy-android.ps1: android_build failed ($LASTEXITCODE)"; exit 1 }
 
 # --- report ---------------------------------------------------------------

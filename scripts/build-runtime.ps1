@@ -98,7 +98,16 @@ if (Test-Path "$SdkDir/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md") {
 # --- 2. placement ---------------------------------------------------------
 switch ($PLATFORM) {
     "web" {
-        # Already copied in Phase 1
+        # release-web.ps1 emits the wasm-pack bundle to pkg\runtime-web\<mode>;
+        # place its contents into game\spritestudio\libs\web\ (mirrors build-runtime.sh).
+        $webSrc  = Join-Path $SdkDir "pkg/runtime-web/$BUILD_MODE"
+        $webDest = Join-Path $LibRoot "web"
+        if (-not (Test-Path (Join-Path $webSrc "*"))) {
+            Write-Error "build-runtime.ps1: web build produced no output at $webSrc"
+        }
+        New-Item -ItemType Directory -Force -Path $webDest | Out-Null
+        Copy-Item -Recurse -Force (Join-Path $webSrc "*") $webDest
+        Write-Host "   -> game\spritestudio\libs\web\"
     }
     "ios" {
         $dest = Join-Path $LibRoot "ios"; New-Item -ItemType Directory -Force -Path $dest | Out-Null

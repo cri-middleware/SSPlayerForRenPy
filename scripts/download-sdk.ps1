@@ -26,10 +26,14 @@ Write-Host "Downloading SDK..."
 if (-Not (Test-Path $targetDir)) {
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 }
+$ProgressPreference = 'SilentlyContinue'
 Invoke-WebRequest -Uri $url -OutFile $zipFile
+$ProgressPreference = 'Continue'
 
 Write-Host "Extracting SDK..."
+$global:ProgressPreference = 'SilentlyContinue'
 Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
+$global:ProgressPreference = 'Continue'
 Remove-Item $zipFile
 
 Set-Content -Path $currentVersionFile -Value $targetVersion
