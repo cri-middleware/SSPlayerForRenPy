@@ -141,7 +141,8 @@ developer-side counterpart of the manual instructions in the
 - The Ren'Py SDK (`scripts/fetch-renpy-sdk.*`); the deploy scripts fetch it on
   demand if it is missing.
 - Platform-specific toolchains, one-time:
-    - **Android**: `scripts/fetch-renpy-android.*` (RAPT), then **Install SDK** and
+    - **Android**: `scripts/fetch-renpy-android.*` (RAPT), then **Install SDK**,
+      **Configure** (sets the package name in `android.json` — required), and
       **Generate Keys** once from the launcher GUI (→ Android).
     - **iOS**: `scripts/fetch-renpy-ios.sh` (renios; macOS-only).
     - **Web**: `scripts/fetch-renpy-web.*` (Ren'Py Web support).

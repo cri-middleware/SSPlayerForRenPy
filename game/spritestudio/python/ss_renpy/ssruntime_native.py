@@ -139,6 +139,22 @@ def _arch_token() -> str:
     return m or "unknown"
 
 
+def _android_abi() -> str:
+    """NDK / jniLibs ABI name for the host arch.
+
+    The ``android/`` layout under ``libs`` now uses the Android ABI names
+    (``arm64-v8a`` / ``armeabi-v7a`` / ``x86_64``) rather than the SDK arch
+    tokens, because the Android Brain ships in the APK's ``lib/<abi>/`` (jniLibs)
+    and is loaded by soname (see :func:`load_library`) — it is no longer
+    dlopen'd from the game tree — so mirroring the jniLibs names keeps the
+    staging step a straight copy."""
+    return {
+        "arm64": "arm64-v8a",
+        "arm32": "armeabi-v7a",
+        "x86_64": "x86_64",
+    }.get(_arch_token(), _arch_token())
+
+
 def _is_android() -> bool:
     """True on Android, where ``sys.platform`` is otherwise ``"linux"``.
 
@@ -165,17 +181,18 @@ def platform_subdir() -> str:
         macos/                          (universal dylib; no arch split)
         windows/x86_64                  (ssruntime.dll)
         linux/x86_64                    (libssruntime.so)
-        android/{arm64,arm32,x86_64}    (libssruntime.so)
+        android/{arm64-v8a,armeabi-v7a,x86_64}    (libssruntime.so)
         ios/                            (libssruntime.xcframework — see load_library)
         web/                            (wasm — not loadable via ctypes)
 
     NOTE Android must be checked before the generic Linux branch: its
     ``sys.platform`` is also ``"linux"``, but its ``.so`` lives under
-    ``android/<abi>`` (abi ∈ arm64 / arm32 / x86_64), not ``linux/<arch>``.
+    ``android/<abi>`` (abi ∈ arm64-v8a / armeabi-v7a / x86_64 — the NDK/jniLibs
+    names), not ``linux/<arch>``.
     """
     arch = _arch_token()
     if _is_android():
-        return os.path.join("android", arch)
+        return os.path.join("android", _android_abi())
     if _is_ios():
         return "ios"
     if sys.platform == "darwin":
@@ -414,11 +431,19 @@ def load_library(path: str | None = None, base_dir: str | None = None,
     global _LIB
     load_target = path
     if path is None:
-        resolved = default_library_path(base_dir)
-        if _is_ios() and not os.path.exists(resolved):
-            load_target = None          # CDLL(None) -> statically-linked symbols
+        if _is_android():
+            # On Android the Brain ships in the APK's lib/<abi>/ (jniLibs), which
+            # the installer extracts to the app's read-only nativeLibraryDir — the
+            # only place the dynamic linker will dlopen from (W^X since API 29). So
+            # load by soname and let the linker resolve it there; ``base_dir`` (the
+            # in-APK game tree) is not a real filesystem path and is not loadable.
+            load_target = library_filename()   # "libssruntime.so"
         else:
-            load_target = resolved
+            resolved = default_library_path(base_dir)
+            if _is_ios() and not os.path.exists(resolved):
+                load_target = None      # CDLL(None) -> statically-linked symbols
+            else:
+                load_target = resolved
     lib = C.CDLL(load_target)
     _declare(lib)
     if log:

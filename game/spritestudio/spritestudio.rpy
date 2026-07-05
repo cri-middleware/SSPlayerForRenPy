@@ -52,7 +52,11 @@ init -10 python:
     build.classify('**/spritestudio/libs/windows/x86_64/**', 'windows')
     build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')
     build.classify('**/spritestudio/libs/linux/aarch64/**', 'linux_arm')
-    build.classify('**/spritestudio/libs/android/**', 'android')
+    # Android: the Brain ships in the APK's lib/<abi>/ (jniLibs) — staged there at
+    # build time by deploy-android.* — and is loaded by soname at runtime, NOT from
+    # the game tree. So exclude it from the packaged assets (like the iOS xcframework
+    # below), or it would ship twice (once in lib/, once as dead weight in assets/).
+    build.classify('**/spritestudio/libs/android/**', None)
     # iOS: the Brain is a dynamic xcframework linked + embedded into the app via
     # Xcode (Embed & Sign), NOT loaded from the game tree at runtime — so exclude
     # it from the packaged data, or it ships twice (once embedded, once dead
@@ -69,6 +73,36 @@ init -10 python:
         os.path.join(renpy.config.gamedir, "spritestudio")
     # ss_renpy, the generated ss.* bindings, and flatbuffers all live under python/.
     _SS_PY = os.path.join(_SS_ROOT, "python")
+
+    # On Android the game tree lives INSIDE the APK (Ren'Py's asset store), not on
+    # a real filesystem — `renpy.config.gamedir` is not a real path — so importing
+    # ss_renpy straight off `sys.path` fails (ModuleNotFoundError). Extract the
+    # pure-Python package tree (ss_renpy + the generated ss.* bindings + flatbuffers,
+    # all under spritestudio/python/) via Ren'Py's archive-aware loader into the
+    # app's writable private dir, and import from there instead. (The native Brain
+    # is handled separately: it ships in the APK's lib/<abi>/ jniLibs and is loaded
+    # by soname — see ss_renpy/ssruntime_native.load_library.)
+    if getattr(renpy, "android", False):
+        import shutil
+        _rel_py = "spritestudio/python"          # loader paths use "/" on all OSes
+        _dest = os.path.join(os.environ["ANDROID_PRIVATE"], "ss_extracted")
+        _dest_py = os.path.join(_dest, "spritestudio", "python")
+        # Re-extract from scratch each launch so a stale tree from a previous app
+        # version (e.g. a since-removed module) can never shadow the new one; the
+        # tree is small and this runs once at init.
+        if os.path.isdir(_dest):
+            shutil.rmtree(_dest, ignore_errors=True)
+        for _dir, _fn in renpy.loader.listdirfiles():
+            if _fn != _rel_py and not _fn.startswith(_rel_py + "/"):
+                continue
+            _out = os.path.join(_dest, *_fn.split("/"))
+            _outdir = os.path.dirname(_out)
+            if not os.path.isdir(_outdir):
+                os.makedirs(_outdir)
+            with renpy.loader.load(_fn) as _src, open(_out, "wb") as _w:
+                _w.write(_src.read())
+        _SS_PY = _dest_py
+
     if _SS_PY not in sys.path:
         sys.path.insert(0, _SS_PY)
 

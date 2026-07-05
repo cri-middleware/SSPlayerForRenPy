@@ -139,7 +139,8 @@ scripts\generate-runtime-code.ps1
 - Ren'Py SDK（`scripts/fetch-renpy-sdk.*`）。deploy スクリプトは無ければ自動取得します。
 - プラットフォーム固有ツールチェーン（一度だけ）:
     - **Android**: `scripts/fetch-renpy-android.*`（RAPT）取得後、launcher GUI（→ Android）
-      から **Install SDK** と **Generate Keys** を実施。
+      から **Install SDK**、**Configure**（`android.json` にパッケージ名を設定。必須）、
+      **Generate Keys** を実施。
     - **iOS**: `scripts/fetch-renpy-ios.sh`（renios。macOS 専用）。
     - **Web**: `scripts/fetch-renpy-web.*`（Ren'Py の Web サポート）。
 

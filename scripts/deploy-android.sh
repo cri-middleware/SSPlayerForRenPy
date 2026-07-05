@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 #
 # Build a signed Android package (APK by default, or an AAB with --bundle) of the
-# SSPlayer demo using Ren'Py's RAPT toolchain (launcher android_build). Like the
-# desktop target and unlike Web, NO post-export steps are needed: the native
-# "Brain" .so under game/spritestudio/libs/android/<arch>/ is bundled into the
-# app and ssruntime.py resolves it at runtime (arch ∈ arm64 / arm32 / x86_64).
+# SSPlayer demo using Ren'Py's RAPT toolchain (launcher android_build). The native
+# "Brain" .so must land in the APK's lib/<abi>/ (jniLibs) — the only place Android's
+# linker will dlopen from — so this script stages game/spritestudio/libs/android/<abi>/
+# into RAPT's jniLibs before building; ssruntime.py then loads it by soname at
+# runtime (abi ∈ arm64-v8a / armeabi-v7a / x86_64, the NDK names).
 #
 # This script auto-fetches the Ren'Py SDK and RAPT if missing, but it does NOT
-# perform the two INTERACTIVE one-time setup steps (do them once in the launcher
+# perform the three INTERACTIVE one-time setup steps (do them once in the launcher
 # GUI:  renpy-sdk/renpy.sh renpy-sdk/launcher  -> Android):
 #   * Install SDK  : downloads the Android SDK/NDK/JDK into renpy-sdk/rapt/Sdk/
+#   * Configure    : sets the package name / app name in android.json (required)
 #   * Generate Keys: creates android.keystore (+ bundle.keystore) used to sign
 # RAPT itself (the packaging tool) is fetched by scripts/fetch-renpy-android.sh.
 #
@@ -66,18 +68,41 @@ if [ ! -f "$ROOT_DIR/android.keystore" ] || { [ "$BUNDLE" = 1 ] && [ ! -f "$ROOT
   echo "    renpy-sdk/renpy.sh renpy-sdk/launcher    ->  Android  ->  Generate Keys" >&2
   exit 1
 fi
-# Native library for the primary device ABI (arm64). arm32/x86_64 are optional
-# (older phones / emulators); warn but do not block if they are absent.
-if [ ! -f "$LIBS/android/arm64/libssruntime.so" ]; then
+# App configuration (package name in android.json). RAPT's build refuses to run
+# ("Run configure before attempting to build the app.") when package is unset.
+if [ ! -f "$ROOT_DIR/android.json" ] || grep -Eq '"package"[[:space:]]*:[[:space:]]*null' "$ROOT_DIR/android.json"; then
+  echo "deploy-android.sh: app not configured (no package name in android.json)." >&2
+  echo "  Configure it once from the launcher GUI:" >&2
+  echo "    renpy-sdk/renpy.sh renpy-sdk/launcher    ->  Android  ->  Configure" >&2
+  exit 1
+fi
+# Native library for the primary device ABI (arm64-v8a). armeabi-v7a/x86_64 are
+# optional (older phones / emulators); warn but do not block if they are absent.
+if [ ! -f "$LIBS/android/arm64-v8a/libssruntime.so" ]; then
   echo "deploy-android.sh: native library missing for Android:" >&2
-  echo "    game/spritestudio/libs/android/arm64/libssruntime.so" >&2
+  echo "    game/spritestudio/libs/android/arm64-v8a/libssruntime.so" >&2
   echo "  Without it the app builds but SSPlayer fails at load. Get it with" >&2
   echo "  scripts/download-sdk.sh (prebuilt) or scripts/build-runtime.sh platform=android build=release, then re-run." >&2
   exit 1
 fi
-for abi in arm32 x86_64; do
+for abi in armeabi-v7a x86_64; do
   [ -f "$LIBS/android/$abi/libssruntime.so" ] || \
     echo "deploy-android.sh: note — no libs/android/$abi/libssruntime.so; the app will not run on $abi devices/emulators." >&2
+done
+
+# Stage the Brain into RAPT's jniLibs so RAPT bundles it into the APK's lib/<abi>/.
+# Android's linker only dlopen()s native libs the installer extracted to the app's
+# read-only nativeLibraryDir (W^X since API 29) — i.e. libs shipped in lib/<abi>/.
+# RAPT sources jniLibs from prototype/renpyandroid/src/main/jniLibs/<abi>/ (copied
+# into every build), so mirror our per-ABI .so there. Consumers building via the
+# stock launcher must do this copy once by hand — see docs/export.md (Android).
+JNILIBS="$RAPT/prototype/renpyandroid/src/main/jniLibs"
+for abi in arm64-v8a armeabi-v7a x86_64; do
+  so="$LIBS/android/$abi/libssruntime.so"
+  [ -f "$so" ] || continue
+  mkdir -p "$JNILIBS/$abi"
+  cp -f "$so" "$JNILIBS/$abi/libssruntime.so"
+  echo "deploy-android.sh: staged Brain -> jniLibs/$abi/libssruntime.so"
 done
 
 # --- build ----------------------------------------------------------------

@@ -119,12 +119,12 @@ switch ($PLATFORM) {
         Write-Host "   -> game\spritestudio\libs\ios\libssruntime.xcframework"
     }
     "android" {
-        # Use the SDK dynamic-libs arch tokens (arm64/arm32/x86_64) that
-        # ssruntime_native.platform_subdir() resolves — NOT the Android ABI names
-        # (arm64-v8a/armeabi-v7a). These are ctypes dlopen paths inside game\,
-        # not the APK's lib\<abi>\, so they must match the loader / download-sdk.
-        foreach ($t in @(@{triple="aarch64-linux-android";abi="arm64"},
-                         @{triple="armv7-linux-androideabi";abi="arm32"},
+        # Use the Android NDK/jniLibs ABI names (arm64-v8a/armeabi-v7a/x86_64):
+        # on Android the Brain ships in the APK's lib\<abi>\ (jniLibs) and is loaded
+        # by soname, so the on-disk layout mirrors the jniLibs names that
+        # deploy-android.* stages from (and that download-sdk / the SDK produce).
+        foreach ($t in @(@{triple="aarch64-linux-android";abi="arm64-v8a"},
+                         @{triple="armv7-linux-androideabi";abi="armeabi-v7a"},
                          @{triple="x86_64-linux-android";abi="x86_64"})) {
             $src = "$SdkDir/target/$($t.triple)/$BUILD_MODE/libssruntime.so"
             if (Test-Path $src) {

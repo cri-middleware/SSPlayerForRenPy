@@ -43,13 +43,25 @@ Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html
 ## Android 向けエクスポート
 
 Ren'Py 標準の [RAPT](https://www.renpy.org/doc/html/android.html) を使います。
-SSPlayer 固有の後処理はありません。launcher GUI（→ Android）から **Install SDK** と
+launcher GUI（→ Android）から **Install SDK**、**Configure**（パッケージ名を設定）、
 **Generate Keys** を一度だけ実施してください（Ren'Py のドキュメント参照）。
 
-> **⚠️ ABI ごとに `.so` が 1 つ必要。配置は SDK の arch トークンで、Android の ABI 名
-> ではありません。** これは APK の `lib/<abi>/` ではなく `game/` 内の ctypes ロード
-> パスだからです: `libs/android/arm64/libssruntime.so`（大半の 64bit 端末）、`arm32/`
+> **⚠️ Brain は APK の `lib/<abi>/`（jniLibs）にネイティブライブラリとして入れる必要が
+> あります。** Android のリンカは、インストーラが読み取り専用の `nativeLibraryDir` に
+> 展開したネイティブライブラリしか `dlopen()` しません（API 29 以降の W^X 制約）。ゲーム
+> アセット内や書き込み可能領域の `.so` はロードされません。`ssruntime.py` は実行時に
+> soname（`libssruntime.so`）でロードします。**NDK の ABI 名**で ABI ごとに 1 つ配置:
+> `libs/android/arm64-v8a/libssruntime.so`（大半の 64bit 端末）、`armeabi-v7a/`
 > （旧端末）、`x86_64/`（エミュレータ）。
+>
+> **`scripts/deploy-android.*` はこれを RAPT の jniLibs へ自動配置します。**
+> 標準ランチャーでビルドする場合は、RAPT にゲーム側からネイティブコードを注入するフックが
+> 無いため、各 `.so` を一度だけ手動で Ren'Py SDK の RAPT jniLibs にコピーしてください
+> （iOS と同種の一度きりの手作業です）:
+>
+> ```
+> <renpy-sdk>/rapt/prototype/renpyandroid/src/main/jniLibs/<abi>/libssruntime.so
+> ```
 
 `.aab`（Play アップロード用）でビルドすることも、`.apk` を得ることもできます。
 

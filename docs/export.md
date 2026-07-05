@@ -41,14 +41,26 @@ first-match-wins); the demo's `options.rpy` shows this with a
 
 ## Android Export
 
-Standard Ren'Py [RAPT](https://www.renpy.org/doc/html/android.html) — no
-SSPlayer-specific post-steps. Set up RAPT and run **Install SDK** and **Generate
+Standard Ren'Py [RAPT](https://www.renpy.org/doc/html/android.html). Set up RAPT
+and run **Install SDK**, **Configure** (sets the package name), and **Generate
 Keys** once from the launcher GUI (→ Android), per Ren'Py's docs.
 
-> **⚠️ One `.so` per ABI, under the SDK's arch tokens — NOT Android's ABI names.**
-> The path is a ctypes load path inside `game/`, not the APK's `lib/<abi>/`:
-> `libs/android/arm64/libssruntime.so` (most 64-bit devices), `arm32/` (old
-> phones), `x86_64/` (emulators).
+> **⚠️ The Brain must be a native library in the APK's `lib/<abi>/` (jniLibs).**
+> Android's linker only `dlopen()`s native libs the installer extracted to the
+> app's read-only `nativeLibraryDir` (W^X since API 29) — a `.so` under the game
+> assets or in app-writable storage will NOT load. `ssruntime.py` loads it by
+> soname (`libssruntime.so`) at runtime. Ship one per ABI, under the **NDK ABI
+> names**: `libs/android/arm64-v8a/libssruntime.so` (most 64-bit devices),
+> `armeabi-v7a/` (old phones), `x86_64/` (emulators).
+>
+> **`scripts/deploy-android.*` stages these into RAPT's jniLibs automatically.**
+> Building via the **stock launcher** instead? RAPT has no game-tree hook for
+> native code, so copy each `.so` once, by hand, into your Ren'Py SDK's RAPT
+> jniLibs (the same kind of one-time manual step iOS needs):
+>
+> ```
+> <renpy-sdk>/rapt/prototype/renpyandroid/src/main/jniLibs/<abi>/libssruntime.so
+> ```
 
 `--bundle` builds an `.aab` for Play upload; otherwise you get an `.apk`.
 

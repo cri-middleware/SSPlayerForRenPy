@@ -131,11 +131,11 @@ case "$PLATFORM" in
   # --- toolchain-heavy cross builds: delegate to the SDK release scripts ---
   android)
     bash "$SDK_DIR/scripts/release-android.sh" "$BUILD_MODE"
-    # Place under the SDK dynamic-libs arch tokens (arm64/arm32/x86_64) that
-    # ssruntime_native.platform_subdir() resolves — NOT the Android ABI names
-    # (arm64-v8a/armeabi-v7a). These are ctypes dlopen paths inside game/, not
-    # the APK's lib/<abi>/, so they must match the loader / download-sdk layout.
-    for pair in "aarch64-linux-android:arm64" "armv7-linux-androideabi:arm32" "x86_64-linux-android:x86_64"; do
+    # Place under the Android NDK/jniLibs ABI names (arm64-v8a/armeabi-v7a/x86_64):
+    # on Android the Brain ships in the APK's lib/<abi>/ (jniLibs) and is loaded by
+    # soname, so the on-disk layout mirrors the jniLibs names that deploy-android.*
+    # stages from (and that download-sdk / the SDK release package produce).
+    for pair in "aarch64-linux-android:arm64-v8a" "armv7-linux-androideabi:armeabi-v7a" "x86_64-linux-android:x86_64"; do
       tr="${pair%%:*}"; abi="${pair##*:}"
       [ -f "$T/$tr/$BUILD_MODE/libssruntime.so" ] && place "android/$abi" "$T/$tr/$BUILD_MODE/libssruntime.so"
     done ;;

@@ -1,15 +1,17 @@
 #!/usr/bin/env pwsh
 #
 # Build a signed Android package (APK by default, or an AAB with -Bundle) of the
-# SSPlayer demo using Ren'Py's RAPT toolchain (launcher android_build). Like the
-# desktop target and unlike Web, NO post-export steps are needed: the native
-# "Brain" .so under game\spritestudio\libs\android\<arch>\ is bundled into the
-# app and ssruntime.py resolves it at runtime (arch: arm64 / arm32 / x86_64).
+# SSPlayer demo using Ren'Py's RAPT toolchain (launcher android_build). The native
+# "Brain" .so must land in the APK's lib\<abi>\ (jniLibs) — the only place Android's
+# linker will dlopen from — so this script stages game\spritestudio\libs\android\<abi>\
+# into RAPT's jniLibs before building; ssruntime.py then loads it by soname at
+# runtime (abi: arm64-v8a / armeabi-v7a / x86_64, the NDK names).
 #
 # This script auto-fetches the Ren'Py SDK and RAPT if missing, but it does NOT
-# perform the two INTERACTIVE one-time setup steps (do them once in the launcher
+# perform the three INTERACTIVE one-time setup steps (do them once in the launcher
 # GUI:  renpy-sdk\renpy.exe renpy-sdk\launcher  -> Android):
 #   * Install SDK  : downloads the Android SDK/NDK/JDK into renpy-sdk\rapt\Sdk\
+#   * Configure    : sets the package name / app name in android.json (required)
 #   * Generate Keys: creates android.keystore (+ bundle.keystore) used to sign
 # RAPT itself (the packaging tool) is fetched by scripts\fetch-renpy-android.ps1.
 #
@@ -83,19 +85,47 @@ deploy-android.ps1: signing key(s) missing in the project root ($need).
 "@
     exit 1
 }
-# Native library for the primary device ABI (arm64); arm32/x86_64 optional.
-if (-not (Test-Path (Join-Path $Libs "android/arm64/libssruntime.so"))) {
+# App configuration (package name in android.json). RAPT's build refuses to run
+# ("Run configure before attempting to build the app.") when package is unset.
+$Cfg = Join-Path $RootDir "android.json"
+$Pkg = if (Test-Path $Cfg) { (Get-Content $Cfg -Raw | ConvertFrom-Json).package } else { $null }
+if (-not $Pkg) {
+    Write-Error @"
+deploy-android.ps1: app not configured (no package name in android.json).
+  Configure it once from the launcher GUI:
+    renpy-sdk\renpy.exe renpy-sdk\launcher    ->  Android  ->  Configure
+"@
+    exit 1
+}
+# Native library for the primary device ABI (arm64-v8a); armeabi-v7a/x86_64 optional.
+if (-not (Test-Path (Join-Path $Libs "android/arm64-v8a/libssruntime.so"))) {
     Write-Error @"
 deploy-android.ps1: native library missing for Android:
-    game\spritestudio\libs\android\arm64\libssruntime.so
+    game\spritestudio\libs\android\arm64-v8a\libssruntime.so
   Without it the app builds but SSPlayer fails at load. Get it with
   scripts\download-sdk.ps1 (prebuilt) or scripts\build-runtime.ps1 platform=android build=release, then re-run.
 "@
     exit 1
 }
-foreach ($abi in @("arm32", "x86_64")) {
+foreach ($abi in @("armeabi-v7a", "x86_64")) {
     if (-not (Test-Path (Join-Path $Libs "android/$abi/libssruntime.so"))) {
         Write-Warning "deploy-android.ps1: no libs\android\$abi\libssruntime.so; the app will not run on $abi devices/emulators."
+    }
+}
+
+# Stage the Brain into RAPT's jniLibs so RAPT bundles it into the APK's lib\<abi>\.
+# Android's linker only dlopen()s native libs the installer extracted to the app's
+# read-only nativeLibraryDir (W^X since API 29) — i.e. libs shipped in lib\<abi>\.
+# RAPT sources jniLibs from prototype\renpyandroid\src\main\jniLibs\<abi>\ (copied
+# into every build), so mirror our per-ABI .so there. Consumers building via the
+# stock launcher must do this copy once by hand — see docs/export.md (Android).
+$JniLibs = Join-Path $Rapt "prototype/renpyandroid/src/main/jniLibs"
+foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64")) {
+    $so = Join-Path $Libs "android/$abi/libssruntime.so"
+    if (Test-Path $so) {
+        $d = Join-Path $JniLibs $abi; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        Copy-Item $so (Join-Path $d "libssruntime.so") -Force
+        Write-Host "deploy-android.ps1: staged Brain -> jniLibs\$abi\libssruntime.so"
     }
 }
 
