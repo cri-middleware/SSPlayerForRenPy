@@ -65,13 +65,15 @@ if [ ! -d "$RENIOS" ]; then
   echo "deploy-ios.sh: Ren'Py iOS support (renios) not found — fetching it first..."
   "$ROOT_DIR/scripts/fetch-renpy-ios.sh"
 fi
-# Native library — the DYNAMIC xcframework (must contain dylibs). It is not
-# linked automatically; you add it to the target once via Embed & Sign (see the
-# closing message). A static xcframework would link but get dead-stripped.
+# Native library — the DYNAMIC xcframework, whose slices are .framework bundles
+# (App-Store-valid embedding; the binary lives at libssruntime.framework/libssruntime,
+# so there is no bare *.dylib to match on). It is not linked automatically; you add
+# it to the target once via Embed & Sign (see the closing message). A static
+# xcframework (bare libssruntime.a slices) would link but get dead-stripped.
 if [ ! -d "$LIBS/ios/libssruntime.xcframework" ] || \
-   [ -z "$(find "$LIBS/ios/libssruntime.xcframework" -name '*.dylib' -print -quit 2>/dev/null)" ]; then
+   [ -z "$(find "$LIBS/ios/libssruntime.xcframework" -name '*.framework' -type d -print -quit 2>/dev/null)" ]; then
   echo "deploy-ios.sh: iOS native library missing, or not the dynamic xcframework:" >&2
-  echo "    game/spritestudio/libs/ios/libssruntime.xcframework   (must contain *.dylib)" >&2
+  echo "    game/spritestudio/libs/ios/libssruntime.xcframework   (slices must be *.framework bundles)" >&2
   echo "  Get it with scripts/download-sdk.sh (prebuilt) or" >&2
   echo "  scripts/build-runtime.sh platform=ios build=release, then re-run." >&2
   exit 1
