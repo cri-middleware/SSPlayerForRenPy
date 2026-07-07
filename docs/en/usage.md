@@ -30,7 +30,7 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.
 ```
 
 > [!TIP]
-> If you don't know what's inside an `.ssab` pack, you can open the **Shift+B** (Asset Browser) in developer mode to see a list, live preview, and generate code snippets.
+> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§7) below.
 
 > [!NOTE]
 > The old `sprites_subdir` argument remains for backward compatibility, but it is unnecessary when specifying the path (deprecated).
@@ -117,7 +117,7 @@ label battle:
 You can switch animations directly from Python (scripts) or retrieve information depending on the game logic.
 
 ```renpy
-$ player = SSPlayer("ss_assets/Hero/Hero.ssab")
+$ player = SSPlayer("ss_assets/Ringo/Ringo.ssab")
 
 # Get a list of all included animation names
 $ anim_names = player.ss_animation_names()
@@ -194,3 +194,37 @@ image ringo = SSPlayer(
 
 ### Checking Behavior (Diagnostics)
 In developer mode, "runtime loaded / N pack(s)" is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).
+
+---
+
+## 7. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
+
+Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
+
+> [!TIP]
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../assets/2-asset_browser.webm" type="video/webm">
+> </video>
+> <img src="../assets/2-asset_browser.webp" width="100%" style="display: none;">
+
+The window has three panes:
+
+1. **Pack list (left).** Every `.ssab` the resolver can find under `ss_assets/` — including packs bundled inside an `.rpa` archive. Click one to select it.
+2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly.
+3. **Snippet (right).** Pick a **role** — Character / Effect / UI — and a ready-to-paste `.rpy` snippet is generated for that pack. The default role is inferred from the pack's contents (an effect-only pack defaults to Effect, for example), so you choose the role while watching the animation instead of guessing.
+
+Exporting the snippet appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.
+
+Because the browser reads through the same zero-config resolver as `SSPlayer`, anything it lists is guaranteed to load by the exact path shown — including packs the [Auto Importer](import.md) just generated, since the asset index is refreshed on import.
+
+### Stays in sync with the Auto Importer
+
+You do not have to relaunch to pick up a brand-new pack. Drop a new project into `SpriteStudio_Source/`, press **Shift+R** to reload, and the [Auto Importer](import.md) converts it and refreshes the index — reopen the browser (**Shift+B**) and the new pack is in the list, ready to preview on the spot.
+
+> [!TIP]
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../assets/3-asset_browser_autoimport.webm" type="video/webm">
+> </video>
+> <img src="../assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">

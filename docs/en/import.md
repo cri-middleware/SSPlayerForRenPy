@@ -58,7 +58,15 @@ This feature automatically detects updates to `.sspj` files when Ren'Py starts, 
 
 **Result:**
 If a file update is detected during the startup initialization phase, the conversion will run automatically, and a folder with the same name as the project will be generated under **`game/ss_assets/`**.
-(Example: If you placed `SpriteStudio_Source/Hero/Hero.sspj`, the converted data will be output to `game/ss_assets/Hero/`.)
+(Example: If you placed `SpriteStudio_Source/Ringo/Ringo.sspj`, the converted data will be output to `game/ss_assets/Ringo/`.)
+
+> [!TIP]
+> **See it in action — live iteration with an external tool.** Edit the animation in SpriteStudio, save it, then press **`Shift + R`** in the running Ren'Py. The Auto Importer re-detects the change by modification time, re-converts only the updated project, and refreshes the asset index so the result is reflected immediately (developer mode only).
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../assets/1-auto_import_live.webm" type="video/webm">
+> </video>
+> <img src="../assets/1-auto_import_live.webp" width="100%" style="display: none;">
 
 > [!TIP]
 > **Customizing Output Paths**
@@ -80,7 +88,7 @@ If you are not familiar with command-line operations or prefer to convert files 
 1. Download and launch the latest version suitable for your OS from the [SSConverterGUI Releases page](https://github.com/cri-middleware/SSConverterGUI/releases).
 2. Directly **drag and drop** the `.sspj` file or a folder containing `.sspj` files into the designated area of the application window.
 3. (Optional) Specify the output directory and press the "Convert" button to generate the `.ssab` files all at once.
-4. After conversion, manually move the output folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Hero/`).
+4. After conversion, manually move the output folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Ringo/`).
 
 > [!NOTE]
 > It is extremely easy to use, as dropping a folder automatically finds and batch-converts all `.sspj` files inside it.
@@ -107,11 +115,11 @@ Open your terminal (Command Prompt or bash script) and execute the following com
 ssconverter-cli <path_to_input.sspj>
 
 # Execution Example
-ssconverter-cli SpriteStudio_Source/Hero/Hero.sspj
+ssconverter-cli SpriteStudio_Source/Ringo/Ringo.sspj
 ```
 
-- Executing the above generates a folder with the same name as the project (e.g., `Hero/`) in the same directory as the `.sspj` file, and outputs the `.ssab` and image files inside it.
-- After conversion, manually move and place the generated folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Hero/`).
+- Executing the above generates a folder with the same name as the project (e.g., `Ringo/`) in the same directory as the `.sspj` file, and outputs the `.ssab` and image files inside it.
+- After conversion, manually move and place the generated folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Ringo/`).
 - *If you want to output directly to an arbitrary location, you can use the `-o <output_directory_path>` option.*
 
 ### Batch Processing via Directory Specification

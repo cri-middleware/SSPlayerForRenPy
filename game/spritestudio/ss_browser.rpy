@@ -1,7 +1,8 @@
 # SpriteStudio Asset Browser — a developer-mode inspector / snippet generator.
 #
 # Press **Shift+B** in developer mode to toggle it. It lists every .ssab the
-# resolver can find (ss_list_assets), previews any animation live, and saves a
+# resolver can find (all discovered packs, incl. instance sub-packs), previews
+# any animation live, and saves a
 # ready-to-paste snippet for the role you pick (character / effect / UI) — so a
 # creator picks the role while watching the animation, instead of guessing.
 #
@@ -61,7 +62,10 @@ init python:
         store.ss_browser_anim = anim
         store.ss_browser_role = _ss_browser_default_role(d)
         try:
-            store.ss_browser_player = SSPlayer(d["path"], animation=anim) if d["path"] else None
+            # size=(470, 360): give the preview a definite size so the draggable
+            # `drag` wrapping it has a real hit area — an unsized CDD can't be
+            # dragged. Same proven pattern as the demo picker (asset_picker.rpy).
+            store.ss_browser_player = SSPlayer(d["path"], animation=anim, size=(470, 360)) if d["path"] else None
         except Exception as e:
             store.ss_browser_player = None
             renpy.notify("Preview failed: %s" % (e,))
@@ -102,7 +106,10 @@ default ss_browser_player = None
 
 
 screen _ss_browser_key():
-    key "shift_K_b" action ToggleScreen("ss_browser")
+    # Cheaply pick up newly imported packs before (re)opening: the refresh drops
+    # the cached asset index only if the .ssab set actually changed (near-free
+    # otherwise), then the toggle shows the browser rebuilt from the fresh list.
+    key "shift_K_b" action [Function(_ss_refresh_index_if_changed), ToggleScreen("ss_browser")]
 
 
 screen ss_browser():
@@ -135,7 +142,12 @@ screen ss_browser():
                     ysize 540
                     vbox:
                         spacing 1
-                        for _n in sorted(ss_list_assets().keys()):
+                        # List EVERY discovered .ssab, not just primaries — a
+                        # sub-part pack that back-references the main pack would
+                        # otherwise hide the main pack (e.g. Ringo_tyu -> Ringo
+                        # demotes Ringo). ss_list_assets() stays primary-only for
+                        # name resolution / diagnostics; the browser shows all.
+                        for _n in sorted({_r.stem for _r in _ss_get_index().records()}):
                             textbutton _n action Function(_ss_browser_select, _n) text_size 14
 
             # --- center: live preview + animation list ---------------------
@@ -149,9 +161,19 @@ screen ss_browser():
                         ysize 360
                         background Solid("#222222")
                         if ss_browser_player is not None:
-                            add ss_browser_player xalign 0.5 yalign 0.5
+                            # Drag the preview to reposition it. A definite size
+                            # (SSPlayer size=) makes the Drag grabbable. Mirrors the
+                            # demo picker (asset_picker.rpy).
+                            draggroup:
+                                drag:
+                                    drag_name ss_browser_pack
+                                    draggable True
+                                    drag_offscreen True
+                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                    add ss_browser_player
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
+                    text "drag the preview to reposition" size 11
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]
                     $ _fx = ss_browser_detail["has_effects"]

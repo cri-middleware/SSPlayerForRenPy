@@ -58,7 +58,15 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 
 **実行結果:**
 起動時の初期化フェーズでファイルの更新が検知されると自動的にコンバートが走り、プロジェクト名と同名のフォルダが **`game/ss_assets/`** 以下に生成されます。
-（例: `SpriteStudio_Source/Hero/Hero.sspj` を配置した場合、`game/ss_assets/Hero/` に変換データが出力されます）
+（例: `SpriteStudio_Source/Ringo/Ringo.sspj` を配置した場合、`game/ss_assets/Ringo/` に変換データが出力されます）
+
+> [!TIP]
+> **動作イメージ — 外部ツール連携によるライブイテレーション。** SpriteStudio でアニメーションを編集して保存し、起動中の Ren'Py で **`Shift + R`** を押します。Auto Importer が更新を更新日時で再検知し、変更のあったプロジェクトだけを再コンバート、アセット索引を再構築するため、結果がその場で反映されます（開発者モード限定）。
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../../assets/1-auto_import_live.webm" type="video/webm">
+> </video>
+> <img src="../assets/1-auto_import_live.webp" width="100%" style="display: none;">
 
 > [!TIP]
 > **出力パスのカスタマイズ**
@@ -80,7 +88,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 1. [SSConverterGUI の Releases ページ](https://github.com/cri-middleware/SSConverterGUI/releases) から、お使いの OS に合った最新版をダウンロードして起動します。
 2. アプリケーションウィンドウの指定エリアに、変換したい `.sspj` ファイル、または `.sspj` が含まれるフォルダを直接 **ドラッグ＆ドロップ** します。
 3. （オプション）出力先ディレクトリを指定し、「Convert」ボタンを押すと一括で `.ssab` が生成されます。
-4. 完了後、出力されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Hero/`）に手動で配置してください。
+4. 完了後、出力されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Ringo/`）に手動で配置してください。
 
 > [!NOTE]
 > フォルダをドロップするだけで内部の `.sspj` を自動で探し出して一括変換できるため、非常に簡単です。
@@ -107,11 +115,11 @@ CI/CD (継続的インテグレーション) での自動ビルドや、大規�
 ssconverter-cli <入力ファイルパス.sspj>
 
 # 実行例
-ssconverter-cli SpriteStudio_Source/Hero/Hero.sspj
+ssconverter-cli SpriteStudio_Source/Ringo/Ringo.sspj
 ```
 
-- 上記を実行すると、`.sspj` ファイルと同じディレクトリ内にプロジェクトと同名のフォルダ（例: `Hero/`）が生成され、その中に `.ssab` や画像ファイルが出力されます。
-- コンバート完了後、生成されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Hero/`）に手動で移動・配置してください。
+- 上記を実行すると、`.sspj` ファイルと同じディレクトリ内にプロジェクトと同名のフォルダ（例: `Ringo/`）が生成され、その中に `.ssab` や画像ファイルが出力されます。
+- コンバート完了後、生成されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Ringo/`）に手動で移動・配置してください。
 - ※任意の場所へ直接出力したい場合は、`-o <出力先ディレクトリパス>` オプションを使用することも可能です。
 
 ### ディレクトリ指定による一括バッチ処理

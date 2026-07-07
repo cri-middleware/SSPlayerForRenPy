@@ -30,7 +30,7 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.
 ```
 
 > [!TIP]
-> どんな `.ssab` パックが入っているか分からないときは、開発者モードで **Shift+B**（アセットブラウザ）を開くと、一覧・ライブプレビュー・スニペット生成ができます。
+> どのパック／アニメーションを使えばいいか分からないときは、開発者モードで **Shift+B** から **アセットブラウザ** を開けば、全 `.ssab` を一覧・ライブプレビューし、貼り付け可能なスニペットをコピーできます。詳細は下の **アセットブラウザ**（§7）を参照。
 
 > [!NOTE]
 > 旧 `sprites_subdir` 引数は後方互換のために残っていますが、パス指定で不要（非推奨）です。
@@ -117,7 +117,7 @@ label battle:
 ゲーム中の処理に応じてPython（スクリプト）から直接アニメーションを切り替えたり、情報を取得したりすることも可能です。
 
 ```renpy
-$ player = SSPlayer("ss_assets/Hero/Hero.ssab")
+$ player = SSPlayer("ss_assets/Ringo/Ringo.ssab")
 
 # 収録されているすべてのアニメーション名リストを取得
 $ anim_names = player.ss_animation_names()
@@ -194,3 +194,37 @@ image ringo = SSPlayer(
 
 ### 動作確認（診断）
 開発者モードでは起動時に「runtime loaded / N pack(s)」がログ出力されます。コンソール（Shift+O）で `ss_diagnostics()` を呼ぶと、ランタイムの状態と検出済みパック一覧を確認できます。`.ssab` が読めない場合は、パス（`game/` からの相対）を含む分かりやすいエラーになります。
+
+---
+
+## 7. アセットブラウザ (Shift+B)：一覧・プレビュー・スニペット生成
+
+開発者モードで **Shift+B** を押すと **アセットブラウザ** が開きます。「どのパックを、どう再生すればいいのか？」を数クリックで解決する組み込みインスペクタです。開発者モード限定（リリースビルドではホットキーが無効）で、実行中のゲームにオーバーレイ表示されるため、いつでも呼び出せます。
+
+> [!TIP]
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../../assets/2-asset_browser.webm" type="video/webm">
+> </video>
+> <img src="../assets/2-asset_browser.webp" width="100%" style="display: none;">
+
+ウィンドウは3ペイン構成です。
+
+1. **パック一覧（左）**：リゾルバが `ss_assets/` 配下で見つけた全 `.ssab`（`.rpa` アーカイブ内も含む）。クリックで選択します。
+2. **ライブプレビュー（中央）**：選択したアニメーションが実際に再生されます（静止サムネイルではありません）。あわせて `animations`（数）・`fps`・`effects` の有無・外部インスタンスパックといったメタ情報を表示。一覧のアニメをクリックすれば即座に切り替わります。
+3. **スニペット（右）**：**ロール**（Character / Effect / UI）を選ぶと、そのパック用の貼り付け可能な `.rpy` スニペットが生成されます。デフォルトのロールはパック内容から推定される（例：エフェクトのみのパックは Effect）ため、アニメを見ながら用途を選べます。
+
+書き出すと、スニペットはプロジェクト直下の **`ss_snippets.txt`** に追記され、クリップボードにもコピーされるので、そのままスクリプトへ貼り付けられます。**Esc** で閉じます。
+
+ブラウザは `SSPlayer` と同じゼロコンフィグのリゾルバ経由で読み込むため、一覧に出たものは表示パスそのままで確実にロードできます（[Auto Importer](import.md) が生成した直後のパックも、インポート時に索引が更新されるため含まれます）。
+
+### Auto Importer と連動する
+
+新しいパックを取り込むのに再起動は不要です。`SpriteStudio_Source/` に新規プロジェクトを置いて **Shift+R** でリロードすると、[Auto Importer](import.md) が変換して索引を更新します。ブラウザを開き直せば（**Shift+B**）、新しいパックが一覧に現れ、その場でプレビューできます。
+
+> [!TIP]
+>
+> <video autoplay loop muted playsinline width="100%">
+>   <source src="../../assets/3-asset_browser_autoimport.webm" type="video/webm">
+> </video>
+> <img src="../assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">

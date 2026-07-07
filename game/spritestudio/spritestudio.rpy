@@ -1100,6 +1100,28 @@ init -10 python:
             _SS_INDEX = resolver.build_index(rels, _ss_open_bytes)
         return _SS_INDEX
 
+    def _ss_refresh_index_if_changed():
+        """Cheap staleness check for the dev browser. If the set of .ssab under the
+        asset roots no longer matches the cached index, drop the cache so the next
+        _ss_get_index() rebuilds it. Uses the already-built renpy.list_files() (no
+        disk scan) and only pays the metadata re-read when packs actually changed —
+        so opening the browser is near-free when nothing was added. The auto
+        importer refreshes list_files() (index_files) when it converts a new pack on
+        reload, so a freshly imported pack is visible here without a full restart."""
+        global _SS_INDEX
+        if _SS_INDEX is None:
+            return
+        roots = [r.replace("\\", "/").strip("/")
+                 for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+        current = set()
+        for p in renpy.list_files():
+            rp = p.replace("\\", "/")
+            if rp.endswith(".ssab") and any(
+                    rp == r or rp.startswith(r + "/") for r in roots):
+                current.add(rp)
+        if current != {r.rel_path for r in _SS_INDEX.records()}:
+            _SS_INDEX = None
+
     def ss_list_assets():
         """Dev/discovery helper: {pack_name: [animation, ...]} for each pack."""
         idx = _ss_get_index()

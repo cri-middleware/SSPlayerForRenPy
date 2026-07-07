@@ -1,0 +1,9 @@
+# Documentation build dependencies (mkdocs site under docs/).
+# Install into the environment you run `mkdocs` from:
+#     pip install -r docs/requirements.txt
+#
+# pymdown-extensions (module: pymdownx) ships as a dependency of
+# mkdocs-material, which is why it is not listed separately.
+mkdocs-material
+mkdocs-static-i18n
+mkdocs-callouts

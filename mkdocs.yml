@@ -49,6 +49,7 @@ nav:
   - Setup Guide: setup.md
   - Usage Guide: usage.md
   - Asset Import: import.md
+  - Exporting your Game: export.md
   - Build Guide (Dev): build.md
   - Limitations: limitations.md
 
