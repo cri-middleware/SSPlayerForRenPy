@@ -74,7 +74,8 @@ Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates 
 > be a loaded image; Embed & Sign links it (dyld loads it at launch) and signs it
 > into the bundle — the same treatment renios gives `MetalANGLE.xcframework`. A
 > *static* xcframework links but gets dead-stripped → `CDLL(None)` fails at
-> runtime, so use the dynamic one.
+> runtime, so use the dynamic one. Its slices are `.framework` bundles (not bare
+> dylibs), so Embed & Sign passes App Store bundle-structure validation.
 
 1. **Generate the Xcode project** — from Ren'Py's launcher (→ iOS → create the
    Xcode project), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
