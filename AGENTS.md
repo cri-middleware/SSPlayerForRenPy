@@ -34,7 +34,7 @@ import (`.sspj → .ssab`), (b) creator ergonomics, (c) export (desktop/Android/
 | `docs/`, `mkdocs.yml` | Bilingual user docs (§4). | no |
 | `scripts/`, `tools/` | Build/deploy wrappers (§3); headless tests + utils (§5). | no |
 | `SpriteStudio-SDK/` | Submodule: both cores + porting guide (§6). | no |
-| `SDK_VERSION.txt`, `scripts/RENPY_VERSION.txt` | Pin SDK / Ren'Py versions (§3). | no |
+| `PACKAGE_VERSION.txt`, `SDK_VERSION.txt`, `scripts/RENPY_VERSION.txt` | Pin package-release / SDK / Ren'Py versions (§3). | no |
 
 ## 3. Architecture & constraints
 **3-layer stack** (under `game/spritestudio/`): `python/ss_renpy/ssruntime.py` routes to
@@ -56,8 +56,10 @@ static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config p
   the render layer. Every `python/` module must import in plain CPython (no `renpy`).
 - First `SSPlayer` arg = gamedir-relative `.ssab` path; textures + instance sub-packs
   co-located; loading via `renpy.loader` (works loose or in `.rpa`).
-- `SDK_VERSION.txt` / `scripts/RENPY_VERSION.txt` pin versions; `libs/<platform>/` must
-  match `SDK_VERSION.txt` (bump → re-run `download-sdk`, often `generate-runtime-code`).
+- `PACKAGE_VERSION.txt` pins the release/package version (release workflow uses it for the
+  tag and zip name, independent of the SDK). `SDK_VERSION.txt` / `scripts/RENPY_VERSION.txt`
+  pin versions; `libs/<platform>/` must match `SDK_VERSION.txt` (bump → re-run `download-sdk`,
+  often `generate-runtime-code`).
 - **FFI:** release every Rust handle via `ss_*_destroy` (bindings do it on `__del__`);
   textures are the exception — Ren'Py owns them.
 - **Hot path:** no per-frame Python allocs; consume `FramePlan`/`DrawBatch` directly;
