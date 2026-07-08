@@ -1,6 +1,8 @@
 name: Release
 
-# Run manually from the Actions tab. The release version comes from SDK_VERSION.txt.
+# Run manually from the Actions tab. The release version/tag come from
+# PACKAGE_VERSION.txt (the Ren'Py package's own version, independent of
+# SDK_VERSION.txt, which only pins which native SDK libs download-sdk.sh fetches).
 on:
   workflow_dispatch:
     inputs:
@@ -23,12 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Resolve version from SDK_VERSION.txt
+      - name: Resolve release metadata from PACKAGE_VERSION.txt
         id: meta
         run: |
-          VERSION=$(tr -d ' \r\n' < SDK_VERSION.txt)
+          VERSION=$(tr -d ' \r\n' < PACKAGE_VERSION.txt)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       # Fetches the pre-built SpriteStudio SDK libs into game/spritestudio/libs/.
       # NOTE: the SpriteStudio-SDK release is still private, so this step cannot
