@@ -35,7 +35,7 @@
 
 ビルド済みのパッケージを利用し、負担なく手軽に導入できる方法です。
 
-[GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から最新のZIPファイルをダウンロードし、展開してできる **`spritestudio/`** フォルダを、ご自身のRen'Pyプロジェクトの `game/` フォルダ内にそのままコピーしてください。これだけで導入は完了です。
+最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードし、展開してできる **`spritestudio/`** フォルダを、ご自身のRen'Pyプロジェクトの `game/` フォルダ内にそのままコピーしてください。これだけで導入は完了です。
 
 ```renpy
 # ゲームプロジェクト内で呼び出す例

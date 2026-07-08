@@ -7,7 +7,7 @@
 - **Ren'Py**: バージョン 8.x 系 (Python 3 ベース) が必要です。
 
 ## 2. ライブラリの配置
-[GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) からダウンロードしたZIPファイルを展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
+最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードして展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
 
 > **内部構成**: このフォルダにはPythonスクリプト（`spritestudio.rpy` 等）と、各OS向けのネイティブライブラリ(Windows / macOS / Linux)がすべて含まれています。
 

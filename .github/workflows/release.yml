@@ -8,6 +8,10 @@ on:
         description: 'Upload the package to GitHub Releases'
         type: boolean
         default: true
+      prerelease:
+        description: 'Mark the GitHub Release as a pre-release (excludes it from releases/latest, breaking the stable download URL). Keep false so the latest/download link resolves.'
+        type: boolean
+        default: false
 
 # Needed to create the release and upload assets.
 permissions:
@@ -44,12 +48,18 @@ jobs:
       - name: Package game/spritestudio
         id: pkg
         run: |
-          ARTIFACT="SSPlayerForRenPy_${{ steps.meta.outputs.version }}.zip"
+          ARTIFACT="SSPlayerForRenPy-${{ steps.meta.outputs.version }}.zip"
           cd game
           zip -r -X "../$ARTIFACT" spritestudio \
             -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
           cd ..
+          # Version-less alias so README/docs can point at a stable
+          # releases/latest/download/SSPlayerForRenPy.zip URL that never goes
+          # stale (mirrors the SSPlayerForUnity release convention).
+          ALIAS="SSPlayerForRenPy.zip"
+          cp "$ARTIFACT" "$ALIAS"
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "alias=$ALIAS" >> "$GITHUB_OUTPUT"
           unzip -l "$ARTIFACT" | tail -n 5
 
       # Always keep the package as a workflow artifact so a run is useful even
@@ -68,5 +78,8 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: SSPlayer for Ren'Py ${{ steps.meta.outputs.tag }}
           draft: true
-          prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
-          files: ${{ steps.pkg.outputs.artifact }}
+          prerelease: ${{ inputs.prerelease }}
+          # Ship both the version-pinned zip and the stable alias filename.
+          files: |
+            ${{ steps.pkg.outputs.artifact }}
+            ${{ steps.pkg.outputs.alias }}

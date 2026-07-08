@@ -35,7 +35,7 @@ For detailed specifications, import procedures, and API references, please visit
 
 This is the easiest way to integrate the player using a pre-built package.
 
-Download the latest ZIP file from [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases). Extract it, and simply copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. That's it!
+Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and simply copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. That's it!
 
 ```renpy
 # Example usage in a Ren'Py script

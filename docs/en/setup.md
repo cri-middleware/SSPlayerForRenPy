@@ -7,7 +7,7 @@ If you want to customize the player, please refer to the [Build Guide](build.md)
 - **Ren'Py**: Version 8.x series (Python 3 based) is required.
 
 ## 2. Placing the Library
-Extract the ZIP file downloaded from [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases), and copy the **`spritestudio/`** folder inside it directly into your project's `game/` directory.
+Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and copy the **`spritestudio/`** folder inside it directly into your project's `game/` directory.
 
 > **Internal Structure**: This folder contains all the Python scripts (e.g., `spritestudio.rpy`) and native libraries for each OS (Windows / macOS / Linux).
 
