@@ -1,118 +1,102 @@
 # SpriteStudio Player for Ren'Py — AI Agent Guide
 
-A Ren'Py integration for **SpriteStudio 7**. The Rust `libssruntime` ("Brain",
-from the `SpriteStudio-SDK` submodule) computes each frame and returns a
-FlatBuffers draw plan (`RenderMode::Direct`) over a C-API; this repo is the thin
-Ren'Py rendering + wiring layer around it. Deep detail lives in the code
-docstrings, the headless tests (§5), and the SDK porting guide (§6) — this file
-is the map, not the manual.
+A **shipping, creator-facing plugin** that plays **SpriteStudio 7** in Ren'Py. Two
+native cores from the `SpriteStudio-SDK` submodule do the work: `libssruntime` (the
+"Brain") computes each frame as a FlatBuffers draw plan over a C-API; `libssconverter`
+turns a `.sspj` project into a runtime `.ssab` pack. This repo is the Ren'Py layer +
+creator ergonomics around them. This file is the map; detail lives in code docstrings,
+the tests (§5), the docs (§4), and the SDK porting guide (§6).
 
 ## 1. Operating rules
-- Keep changes scoped to the request. **Do not commit unless asked.**
-- Read enough surrounding context (callers, invariants) before editing.
-- **Never modify the `SpriteStudio-SDK` submodule** — it is the Brain. A missing
-  C-API capability is an upstream request, not a local patch.
-- **Do not upload/publish to external services** (artifacts, gists, hosted pages)
-  without explicit per-time permission.
-- **Read the porting guide (§6) before C-API / playback / render work.**
+- Keep changes scoped to the request; don't commit unless asked.
+- Read enough context (callers, invariants) before editing; if a read was truncated,
+  read the rest first. Match the style of touched files.
+- **Ren'Py** is an external dependency (`renpy-sdk/`) — don't patch it; use its public
+  API and the `SS_*` knobs.
+- **SDK alignment:** when modifying core playback logic, refer to
+  `SpriteStudio-SDK/AGENTS.md` for Rust runtime constraints.
+- **Consumer model:** the drop-in `game/spritestudio/` must work without
+  `scripts/`/`tools/`/SDK and under the stock launcher — judge creator-facing changes
+  from that side (§2), and keep user docs (§4) user-facing.
 
-## 2. Architecture — the canonical 3-layer stack
-1. **`ssruntime.py`** (`game/spritestudio/python/ss_renpy/`) — platform router +
-   shared runtime constants. It delegates `SSRuntime` to `ssruntime_native.py`
-   (ctypes FFI to the Brain) on desktop/mobile, or `ssruntime_web.py`
-   (Pyodide/JS binding) on Web (`sys.platform == "emscripten"`).
-2. **`SSInternalPlayer`** (`ss_renpy/player.py`) — engine-independent playback
-   **core**. Plays ONE animation (`set_animation` / `play` / `update(dt_ms) →
-   FramePlan`); reports `finished` / `looped` as *observations only* — it never
-   decides what plays next. Owns the runtime, metadata, Instance/Effect rigs, and
-   events. Instance-part children are themselves parent-driven `SSInternalPlayer`s.
-   Two injected seams: a `ResourceManager` (textures) and a pack reader (external
-   `.ssab` bytes).
-3. **`SSPlayer`** (`game/spritestudio/spritestudio.rpy`) — the Ren'Py
-   Creator-Defined Displayable. Builds `renpy.Render` from the draw plan and owns
-   *policy*: animation-sequence chaining (on `finished`), image attributes /
-   aliases, event callbacks, and `RenPyResourceManager` injection.
+## 2. Layout & priorities
+Dev + demo project; only the drop-in **`game/spritestudio/`** ships to creators (pasted
+into a stock Ren'Py project — no `scripts/`, SDK, or build). Priorities: (a) asset
+import (`.sspj → .ssab`), (b) creator ergonomics, (c) export (desktop/Android/iOS/Web
++ `.rpa`), (d) docs, then (e) render internals (mature, bug-fix territory).
 
-**Invariants (keep these true):** playback policy (sequence chaining) lives in the
-host `SSPlayer`, not the core, so Instance children can reuse the core; UV
-normalization lives in the render layer (only Ren'Py knows texture sizes); every
-module under `game/spritestudio/python/` must import in plain CPython (no `renpy`)
-for the headless tests.
+| Path | Role | Ships? |
+|---|---|---|
+| `game/spritestudio/python/ss_renpy/` | Engine-independent playback + import core (§3). | yes |
+| `game/spritestudio/*.rpy` | `SSPlayer` displayable + drop-in ergonomics (§3). | yes |
+| `game/spritestudio/{libs/<platform>,python/{ss,flatbuffers}}` | Native libs + FlatBuffers bindings. | yes |
+| `game/*.rpy`, `game/tl/` | Demo game + JA translation. | no |
+| `docs/`, `mkdocs.yml` | Bilingual user docs (§4). | no |
+| `scripts/`, `tools/` | Build/deploy wrappers (§3); headless tests + utils (§5). | no |
+| `SpriteStudio-SDK/` | Submodule: both cores + porting guide (§6). | no |
+| `SDK_VERSION.txt`, `scripts/RENPY_VERSION.txt` | Pin SDK / Ren'Py versions (§3). | no |
 
-**Conventions:** the first `SSPlayer` arg is the **gamedir-relative `.ssab` path**
-(e.g. `"ss_assets/Ringo/Ringo.ssab"`), not a short name; a pack's textures and
-external-instance packs are **co-located** in that directory. Loading goes through
-`renpy.loader.load` / `Image`, so packs work loose or inside a `.rpa` archive.
+## 3. Architecture & constraints
+**3-layer stack** (under `game/spritestudio/`): `python/ss_renpy/ssruntime.py` routes to
+`ssruntime_native.py` (ctypes FFI to the Brain) or `ssruntime_web.py` (Pyodide,
+`sys.platform=="emscripten"`); `player.py`'s `SSInternalPlayer` is the engine-independent
+core (plays ONE animation via `update(dt_ms)→FramePlan`, reports `finished`/`looped` as
+observations only); the `SSPlayer` displayable (`spritestudio.rpy`) builds `renpy.Render`
+and owns policy (sequence chaining, image attributes, callbacks, resource injection).
 
-## 3. Hard constraints
-- **Script roles** (all under `scripts/`): `build-runtime.*` builds native
-  binaries; `download-sdk.*` fetches prebuilt ones; `download-flatbuffers.*`
-  fetches `flatc`; `generate-runtime-code.*` regenerates the flatc bindings;
-  `deploy-examples.*` builds ONLY playback data; `run-demo.*` launches the demo.
-  **Platform pipelines:** `fetch-renpy-sdk.*` → desktop `renpy-sdk/` and
-  `fetch-renpy-{android,ios,web}.*` fetch the per-platform Ren'Py SDKs;
-  `deploy-{desktop,android,ios,web}.*` export the game for each target.
-- **Coordinates:** use the Context API (`ss_context_set_coordinate_system`). Do
-  **not** hand-roll a second Y-flip.
-- **Engine-independent Python:** see the §2 invariants.
+**Drop-in ergonomics** — sibling `*.rpy`, each self-contained/dev-gated/droppable:
+`ss_character.rpy` (`SSCharacter` one-line talking sprite), `ss_helpers.rpy`
+(`ss_play_once`/`ss_duration`), `ss_browser.rpy` (Asset Browser, `Shift+B`),
+`ss_diagnostics.rpy`, `auto_importer.rpy` (dev-only: `SpriteStudio_Source/` →
+`game/ss_assets/` via `ss_renpy/converter.py` → `libssconverter`). `ssab_meta.py` parses
+static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config pack index.
 
-## 4. Ren'Py-specific gotchas
-- `ss_runtime_update(ctx, dt)` takes **milliseconds**, not seconds.
-- `DrawBatch.texture_hash` is the cellmap's **`name_hash`**, not the image path.
-- Ren'Py GL2 is **premultiplied-alpha**: custom mesh shaders must un-premultiply →
-  do straight-space math → re-premultiply.
-- Ren'Py shaders are **GLSL ES 1.00 / 120**: no integer bitwise ops, constant loop
-  bounds only (fixed count + early `break`), no `PI` builtin. A declared-but-
-  **unused** uniform is pruned from the program, so bind a uniform only for the
-  variants whose GLSL actually references it.
-- **Effect UVs** are already `0..1`; Normal/Mesh UVs are in pixels — do not
-  normalize Effect UVs.
-- **Asset Browser (`Shift+B`)** in developer mode previews every `.ssab`
-  (animations, part tree, snippet generation). GUI rendering can't be checked
-  headlessly, so it (or `scripts/run-demo.*`) is where visual sign-off happens —
-  recommend it whenever a change needs a "does it look right" check.
+**Invariants & constraints:**
+- Policy (sequence chaining) lives in `SSPlayer`, not the core; UV normalization lives in
+  the render layer. Every `python/` module must import in plain CPython (no `renpy`).
+- First `SSPlayer` arg = gamedir-relative `.ssab` path; textures + instance sub-packs
+  co-located; loading via `renpy.loader` (works loose or in `.rpa`).
+- `SDK_VERSION.txt` / `scripts/RENPY_VERSION.txt` pin versions; `libs/<platform>/` must
+  match `SDK_VERSION.txt` (bump → re-run `download-sdk`, often `generate-runtime-code`).
+- **FFI:** release every Rust handle via `ss_*_destroy` (bindings do it on `__del__`);
+  textures are the exception — Ren'Py owns them.
+- **Hot path:** no per-frame Python allocs; consume `FramePlan`/`DrawBatch` directly;
+  `_prewarm_textures` staggers uploads; `SS_PROFILE=1` logs the split.
+- **Coordinates:** use `ss_context_set_coordinate_system`; don't add a second Y-flip.
+- **Scripts** (`scripts/`, `*.sh`/`*.ps1`): `build-runtime`/`download-sdk`,
+  `download-flatbuffers`+`generate-runtime-code`, `deploy-examples`, `run-demo`,
+  `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`.
 
-## 5. Feature map & verification
-Each engine-independent layer has a headless test in `tools/` (plain CPython, no
-GUI) that checks ctypes / math / draw-plan composition. **GL2 rendering** (PMA,
-mesh, blend, mask coverage+replay, `ss-*` GLSL) needs a GUI run — the user's
-sign-off via `Shift+B` or `scripts/run-demo.*`.
+## 4. Docs
+`docs/` = MkDocs Material bilingual (`en/` default + `ja/` + shared `assets/`), ordered
+`setup → import → usage → export` (+ `build`/`limitations` for devs). **User-facing** —
+don't cite dev scripts. `limitations.md` is the canonical supported/unsupported list;
+keep `en/`/`ja/` in sync (`ja/` asset paths need one extra `../`).
 
-| Feature | Where | Headless test | Doc |
-|---|---|---|---|
-| Playback core + timeline events | `player.py`, `events.py` | `verify_internal_player`, `verify_events` | 06 |
-| Normal/Mesh geometry + PartColor | `framedata.py` (`ss.partcolor*`) | `verify_m2` | 07, 10 |
-| Instance (nested animations) | `instance.py` | `verify_instance` | 08 |
-| Effect (particles) | `effectplan.py`, `effect.py` (`ss.effect*`) | `verify_effect` | 08 |
-| Mesh deform | `framedata._read_mesh_part` | `verify_mesh` | 08 |
-| Shape (procedural polys) | `framedata._read_shape_part` | `verify_shape` | — |
-| Mask / clipping | `mask.py` (`ss.mask_write`, `ss.partcolor_mask`) | `verify_mask` | 09 |
-| Framebuffer blend (12 modes) | `gl_blend_func` regs in `spritestudio.rpy` | `verify_m2` | 07 |
-| User shaders (SS6 `ss-*` ×13) | `framedata.read_shader`, `ss.user_*` | `verify_shader` | Godot ref |
-| Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` | — |
+## 5. Verification
+Each engine-independent layer has a headless `tools/` test (plain CPython); **GL2
+rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) needs a GUI run — sign off via
+`Shift+B` or `scripts/run-demo.*`. Run all:
+`for t in tools/verify_*.py tools/m0_smoke.py; do python3 "$t"; done`.
 
-Run all: `for t in tools/verify_*.py tools/m0_smoke.py; do python3 "$t"; done`.
-For a headless *eyeball* of geometry/colour and mask logic (not the GL2 path),
-`tools/render_png.py` / `tools/render_mask_png.py` software-rasterize the same
-core to PNG/GIF via Pillow. Lint the whole project (compiles every `.rpy`, runs
-init blocks — catches shader registration + Python errors): `renpy-sdk/renpy.sh . lint`.
+| Layer | Where | Test |
+|---|---|---|
+| Playback core + events | `player.py`, `events.py` | `verify_internal_player`, `verify_events` |
+| Geometry/Mesh + PartColor | `framedata.py` | `verify_m2`, `verify_mesh` |
+| Instance / Effect / Shape | `instance.py`, `effect*.py`, `framedata.py` | `verify_instance`, `verify_effect`, `verify_shape` |
+| Mask / clipping | `mask.py` | `verify_mask` |
+| User shaders (SS6 `ss-*`) | `framedata.read_shader` | `verify_shader` |
+| Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` |
 
-**Not rendered yet:** Text / NineSlice batch kinds (draw empty); animation
-blend / mixing (doc 12); nested Instance/Effect timeline-event kinds (root
-UserData/Signal/Audio only). **Audio** *is* played by `SSPlayer` — on the `sfx`
-mixer via a round-robin channel pool (`ss_stop_audio`), with reverse-play muted
-and seeks not scrubbed. See `docs/limitations.md` (JA: `docs/ja/limitations.md`).
+Also: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj→.ssab`),
+`render_png.py`/`render_mask_png.py` (software raster, not GL2). Lint:
+`renpy-sdk/renpy.sh . lint`. **Not rendered:** Text/NineSlice; animation blend; nested
+Instance/Effect timeline events. **Audio** is played by `SSPlayer` (`sfx` mixer,
+round-robin, `ss_stop_audio`; reverse muted). See `docs/*/limitations.md`.
 
-## 6. The porting guide (READ FIRST for Brain / render work)
-The SDK ships a **Japanese** porting guide (no English build in this submodule) at
-`SpriteStudio-SDK/libs/ssruntime/docs/*.ja.md`, indexed by `README.ja.md`. Most-used:
-
-- **00** limitations · **01** intro & terms · **02** architecture (Brain vs Body)
-- **05** load & init · **06** playback control + events · **07** render loop + batching
-- **08** Instance / Effect / Mesh · **09** Mask · **10** Parts Color ·
-  **12** animation blending · **13** special attrs (UV / Flip)
-- **15** troubleshooting · **16** editor integration & conversion
-
-**Reference ports** when a behaviour is unclear: `SSPlayerForGodot` (closest
-architecture; source of the `ss-*` shaders and the coverage-bitmap mask) and
-`SSPlayerForWeb` (`GeometryBuilder.ts` = the render math).
+## 6. Porting guide (READ FIRST for Brain / render work)
+Start at **`SpriteStudio-SDK/AGENTS.md`**, then the porting guide under
+`SpriteStudio-SDK/libs/ssruntime/docs/` — numbered dirs (`10_introduction` …
+`60_tooling`), EN `.md` + JA `.ja.md`, indexed by `README.md`. **Reference ports:**
+`SSPlayerForGodot` (closest; source of the `ss-*` shaders + coverage-bitmap mask) and
+`SSPlayerForWeb` (`GeometryBuilder.ts` = render math).
