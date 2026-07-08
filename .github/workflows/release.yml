@@ -1,0 +1,72 @@
+name: Release
+
+# Run manually from the Actions tab. The release version comes from SDK_VERSION.txt.
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload the package to GitHub Releases'
+        type: boolean
+        default: true
+
+# Needed to create the release and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version from SDK_VERSION.txt
+        id: meta
+        run: |
+          VERSION=$(tr -d ' \r\n' < SDK_VERSION.txt)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Fetches the pre-built SpriteStudio SDK libs into game/spritestudio/libs/.
+      # NOTE: the SpriteStudio-SDK release is still private, so this step cannot
+      # succeed yet. It goes green once that repo/release is made public (planned),
+      # at which point download-sdk.sh's plain curl works with no extra auth.
+      - name: Download SpriteStudio SDK libs
+        run: bash scripts/download-sdk.sh
+
+      # Sanity-check that the libs actually landed before packaging.
+      - name: Verify SDK libs present
+        run: |
+          test -f game/spritestudio/libs/VERSION
+          ls -R game/spritestudio/libs
+
+      # Zip game/spritestudio/ as a top-level `spritestudio/` folder so consumers
+      # can drop it straight into their Ren'Py project's game/ directory.
+      - name: Package game/spritestudio
+        id: pkg
+        run: |
+          ARTIFACT="SSPlayerForRenPy_${{ steps.meta.outputs.version }}.zip"
+          cd game
+          zip -r -X "../$ARTIFACT" spritestudio \
+            -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
+          cd ..
+          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          unzip -l "$ARTIFACT" | tail -n 5
+
+      # Always keep the package as a workflow artifact so a run is useful even
+      # when the Releases upload is turned off.
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.pkg.outputs.artifact }}
+          path: ${{ steps.pkg.outputs.artifact }}
+          if-no-files-found: error
+
+      - name: Upload package to release
+        if: ${{ inputs.upload }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: SSPlayer for Ren'Py ${{ steps.meta.outputs.tag }}
+          draft: true
+          prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
+          files: ${{ steps.pkg.outputs.artifact }}
