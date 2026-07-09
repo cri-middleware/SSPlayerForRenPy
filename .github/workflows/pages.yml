@@ -1,0 +1,75 @@
+name: Deploy Pages
+
+# Publish the MkDocs site plus the playable Ren'Py Web demo to GitHub Pages,
+# via the artifact method (no gh-pages branch).
+#
+# Triggers on release publish and manual dispatch only (never on push) — this
+# matches SSPlayerForWeb, and keeps the docs deploy off the hot path now that a
+# release also produces the heavy Web demo. The demo itself is NOT built here;
+# it is downloaded from the release asset produced by release.yml.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Artifact-based Pages deploy needs pages/id-token; contents:read is for
+# `gh release download`. Note: no contents:write — the gh-pages branch is gone.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install docs dependencies
+        run: pip install -r docs/requirements.txt
+
+      # --strict fails the build on broken links / missing nav entries.
+      - name: Build docs
+        run: mkdocs build --strict
+
+      # Pull the Web demo produced by release.yml and drop it under /demo/.
+      # On a release event, download from the exact triggering release; on manual
+      # dispatch, fall back to the latest release. Runs after `mkdocs build`,
+      # which cleans site/ first.
+      - name: Add Web demo to site/demo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET="SSPlayerForRenPy-web-demo.zip"
+          TAG="${{ github.event.release.tag_name }}"
+          mkdir -p site/demo
+          if [ -n "$TAG" ]; then
+            gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP"
+          else
+            gh release download --pattern "$ASSET" --dir "$RUNNER_TEMP"
+          fi
+          unzip -q "$RUNNER_TEMP/$ASSET" -d site/demo
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
