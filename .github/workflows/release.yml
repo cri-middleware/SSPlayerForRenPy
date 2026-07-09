@@ -24,6 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # deploy-examples.sh converts the SDK's bundled test projects, so the
+          # SpriteStudio-SDK submodule must be present.
+          submodules: recursive
 
       - name: Resolve release metadata from PACKAGE_VERSION.txt
         id: meta
@@ -73,6 +77,44 @@ jobs:
           path: ${{ steps.pkg.outputs.artifact }}
           if-no-files-found: error
 
+      # --- Web export (playable demo, hosted on GitHub Pages) -------------
+      # The heavy Ren'Py Web build lives here in the release pipeline; the Pages
+      # workflow (pages.yml) only downloads the produced asset on release publish.
+      # Needs the Ren'Py SDK + Web support on top of the SS web runtime libs the
+      # Download SpriteStudio SDK libs step fetched above. Skipped when not
+      # uploading, since the demo is only useful once attached to a release.
+      - name: Fetch Ren'Py SDK
+        if: ${{ inputs.upload }}
+        run: bash scripts/fetch-renpy-sdk.sh
+
+      - name: Fetch Ren'Py Web support
+        if: ${{ inputs.upload }}
+        run: bash scripts/fetch-renpy-web.sh
+
+      # Convert the SDK test projects into playback data under game/ss_assets/ so
+      # the animations get bundled into the Web export's game.zip. Must run before
+      # deploy-web.sh (the exporter packs game/ as-is).
+      - name: Generate example animation data
+        if: ${{ inputs.upload }}
+        run: bash scripts/deploy-examples.sh
+
+      - name: Build Web export
+        if: ${{ inputs.upload }}
+        run: bash scripts/deploy-web.sh web_out
+
+      - name: Package Web demo
+        id: webpkg
+        if: ${{ inputs.upload }}
+        run: |
+          DEMO="SSPlayerForRenPy-web-demo-${{ steps.meta.outputs.version }}.zip"
+          ( cd web_out && zip -r -X "../$DEMO" . -x '*/.DS_Store' )
+          # Version-less alias so pages.yml (and README/docs) can point at a
+          # stable releases/latest/download/<alias> URL that never goes stale.
+          DEMO_ALIAS="SSPlayerForRenPy-web-demo.zip"
+          cp "$DEMO" "$DEMO_ALIAS"
+          echo "demo=$DEMO" >> "$GITHUB_OUTPUT"
+          echo "demo_alias=$DEMO_ALIAS" >> "$GITHUB_OUTPUT"
+
       - name: Upload package to release
         if: ${{ inputs.upload }}
         uses: softprops/action-gh-release@v3
@@ -81,7 +123,10 @@ jobs:
           name: SSPlayer for Ren'Py ${{ steps.meta.outputs.tag }}
           draft: true
           prerelease: ${{ inputs.prerelease }}
-          # Ship both the version-pinned zip and the stable alias filename.
+          # Ship the version-pinned zip, the stable alias, and the Web demo
+          # (version-pinned + stable alias) consumed by pages.yml.
           files: |
             ${{ steps.pkg.outputs.artifact }}
             ${{ steps.pkg.outputs.alias }}
+            ${{ steps.webpkg.outputs.demo }}
+            ${{ steps.webpkg.outputs.demo_alias }}

@@ -4,6 +4,8 @@
 
 **Give your visual novel editor-crafted 2D animation — in just a few lines of script, no video files.**
 
+▶️ **[Try the live demo in your browser](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — the bundled SpriteStudio animations running in Ren'Py Web. 🚧 Goes live once the first release is published.
+
 An extension (player) that plays **[OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
 
 ## ✨ Why SpriteStudio Player?
@@ -18,6 +20,7 @@ An extension (player) that plays **[OPTPiX SpriteStudio 7](https://www.webtech.c
 
 For detailed specifications, import procedures, and API references, please visit our MkDocs documentation site.
 
+- [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/) — 🚧 live after the first release
 - [**Documentation (English)**](./docs/index.md)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
 
