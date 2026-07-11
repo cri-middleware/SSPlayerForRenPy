@@ -25,7 +25,7 @@ Standard Ren'Py [Build Distributions](https://www.renpy.org/doc/html/build.html)
 no SSPlayer-specific post-steps.
 
 > **⚠️ Each platform needs its own native library** under `game/spritestudio/libs/`:
-> `macos/libssruntime.dylib`, `windows/x86_64/ssruntime.dll`,
+> `macos/libssruntime.framework`, `windows/x86_64/ssruntime.dll`,
 > `linux/x86_64/libssruntime.so`. Ren'Py bundles it and `ssruntime.py` resolves it
 > at runtime. Without the library for the platform you build, the package builds
 > but SSPlayer throws at load.

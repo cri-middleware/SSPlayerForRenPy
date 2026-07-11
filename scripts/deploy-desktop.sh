@@ -10,10 +10,11 @@
 #   Linux          -> linux package -> an unpacked <name>-linux-x86_64/ folder
 #                                       (run its <name>.sh)
 #
-# Only the platform whose native library is present can be built to *run*: this
-# repo ships the macOS dylib, so `mac` works out of the box; `linux` needs
-# game/spritestudio/libs/linux/x86_64/libssruntime.so (scripts/download-sdk.sh
-# or scripts/build-runtime.sh) first.
+# Only the platform whose native library is present can be built to *run*: on
+# macOS the Brain ships as game/spritestudio/libs/macos/libssruntime.framework
+# (a versioned bundle Ren'Py packages into the .app as-is), so `mac` works out of
+# the box; `linux` needs game/spritestudio/libs/linux/x86_64/libssruntime.so
+# (scripts/download-sdk.sh or scripts/build-runtime.sh) first.
 #
 # Usage: scripts/deploy-desktop.sh [dest_dir]
 #   dest_dir : output folder (default: dist)
@@ -30,7 +31,7 @@ case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 
 # --- host platform -> Ren'Py package + the native lib it requires ---------
 case "$(uname -s)" in
-  Darwin) PKG=mac;   FORMAT=app-zip; LIB_REL="macos/libssruntime.dylib" ;;
+  Darwin) PKG=mac;   FORMAT=app-zip; LIB_REL="macos/libssruntime.framework" ;;
   Linux)  PKG=linux; FORMAT=tar.bz2; LIB_REL="linux/x86_64/libssruntime.so" ;;
   *) echo "deploy-desktop.sh: unsupported host '$(uname -s)'. For Windows, run scripts\\deploy-desktop.ps1." >&2; exit 1 ;;
 esac
@@ -40,7 +41,7 @@ if [ ! -x "$RENPY_SDK/renpy.sh" ]; then
   echo "deploy-desktop.sh: Ren'Py SDK not found at renpy-sdk/ — fetching it first..."
   "$ROOT_DIR/scripts/fetch-renpy-sdk.sh"
 fi
-if [ ! -f "$LIBS/$LIB_REL" ]; then
+if [ ! -e "$LIBS/$LIB_REL" ]; then   # -e: the macOS Brain is a .framework directory, not a file
   echo "deploy-desktop.sh: native library missing for the $PKG package:" >&2
   echo "    game/spritestudio/libs/$LIB_REL" >&2
   echo "  Without it the app builds but SSPlayer fails at load. Get it with" >&2

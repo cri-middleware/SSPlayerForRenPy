@@ -26,7 +26,7 @@ Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html
 そのまま使います。SSPlayer 固有の後処理はありません。
 
 > **⚠️ 各プラットフォームごとに専用のネイティブライブラリが必要です。**
-> `game/spritestudio/libs/` 以下に `macos/libssruntime.dylib`、
+> `game/spritestudio/libs/` 以下に `macos/libssruntime.framework`、
 > `windows/x86_64/ssruntime.dll`、`linux/x86_64/libssruntime.so`。Ren'Py が同梱し、
 > `ssruntime.py` が実行時に解決します。ビルド対象プラットフォームのライブラリが
 > 無いままビルドすると、起動は通っても SSPlayer がロード時に落ちます。
