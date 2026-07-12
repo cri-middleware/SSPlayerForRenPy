@@ -2,13 +2,17 @@
 #
 # Build the native runtime libssruntime from the SpriteStudio-SDK and place it
 # in the library's per-platform/arch layout. Interface mirrors SSPlayerForUnity's
-# build-runtime.sh (platform=/arch=/build=), but for DESKTOP we build only the
-# feature-enabled `ssruntime` cdylib directly (NOT via the SDK release-*.sh,
-# which also build the whole workspace + ssconverter — wasteful here). macOS
-# universal = one build per arch + lipo (2 compiles, not 4).
+# build-runtime.sh (platform=/arch=/build=). For linux/windows DESKTOP we build
+# only the feature-enabled `ssruntime` cdylib directly (NOT via the SDK
+# release-*.sh, which also build the whole workspace + ssconverter — wasteful
+# here). macOS is the exception: it ships the Brain as a versioned, signable
+# libssruntime.framework (App Store / notarization want a .framework bundle, not
+# a bare dylib), so — like android/ios/web — it DOES delegate to the SDK's
+# release-macos.sh, which builds the universal slices and wraps + codesigns the
+# framework. (That path is always universal; no fast single-arch host build.)
 #
 #   game/spritestudio/libs/
-#     macos/libssruntime.dylib                 (universal arm64+x86_64 on build=release)
+#     macos/libssruntime.framework             (universal arm64+x86_64; + libssconverter.dylib)
 #     windows/<arch>/ssruntime.dll   linux/<arch>/libssruntime.so
 #     android/<abi>/libssruntime.so  ios/libssruntime.xcframework  web/libssruntime.a
 #
@@ -83,28 +87,20 @@ mkdir -p "$LIB_ROOT"
 T="$SDK_DIR/target"
 case "$PLATFORM" in
   macos)
-    if [ "$IS_HOST_BUILD" = true ]; then
-      build_ss
-      build_converter
-      place macos "$T/$BUILD_MODE/libssruntime.dylib"
-      place macos "$T/$BUILD_MODE/libssconverter.dylib"
-      echo "   (host-arch debug build; use build=release for a universal dylib)"
-    else
-      # universal: build each arch's libraries once, then lipo (2 compiles)
-      build_ss --target aarch64-apple-darwin
-      build_ss --target x86_64-apple-darwin
-      build_converter --target aarch64-apple-darwin
-      build_converter --target x86_64-apple-darwin
-      mkdir -p "$LIB_ROOT/macos"
-      lipo -create "$T/aarch64-apple-darwin/$BUILD_MODE/libssruntime.dylib" \
-                   "$T/x86_64-apple-darwin/$BUILD_MODE/libssruntime.dylib" \
-                   -output "$LIB_ROOT/macos/libssruntime.dylib"
-      lipo -create "$T/aarch64-apple-darwin/$BUILD_MODE/libssconverter.dylib" \
-                   "$T/x86_64-apple-darwin/$BUILD_MODE/libssconverter.dylib" \
-                   -output "$LIB_ROOT/macos/libssconverter.dylib"
-      echo "   -> game/spritestudio/libs/macos/libssruntime.dylib (universal arm64+x86_64)"
-      echo "   -> game/spritestudio/libs/macos/libssconverter.dylib (universal arm64+x86_64)"
-    fi ;;
+    # Delegate to the SDK's release-macos.sh: it builds both arch slices, lipos
+    # the feature-enabled dylib, and wraps it into the versioned
+    # libssruntime.framework (Versions/A + Info.plist + module map, @rpath id),
+    # opt-in codesigning it when APPLE_SIGNING_IDENTITY is set. Always universal
+    # (both arches) regardless of build=/arch=; libssconverter stays a plain
+    # universal .dylib. `cp -R` preserves the framework's version symlinks.
+    bash "$SDK_DIR/scripts/release-macos.sh" "$BUILD_MODE"
+    U="$T/universal-apple-darwin/$BUILD_MODE"
+    mkdir -p "$LIB_ROOT/macos"
+    rm -rf "$LIB_ROOT/macos/libssruntime.framework"
+    cp -R "$U/libssruntime.framework" "$LIB_ROOT/macos/"
+    cp "$U/libssconverter.dylib" "$LIB_ROOT/macos/libssconverter.dylib"
+    echo "   -> game/spritestudio/libs/macos/libssruntime.framework (universal arm64+x86_64)"
+    echo "   -> game/spritestudio/libs/macos/libssconverter.dylib (universal arm64+x86_64)" ;;
   linux)
     if [ "$IS_HOST_BUILD" = true ]; then 
         build_ss; src_rt="$T/$BUILD_MODE/libssruntime.so"

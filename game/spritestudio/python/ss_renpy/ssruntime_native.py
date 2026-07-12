@@ -178,7 +178,7 @@ def platform_subdir() -> str:
     (``SpriteStudio-SDK/.github/workflows/release.yml``, ``package`` job → the
     dynamic-libs package), so a bundled release drop resolves without renaming:
 
-        macos/                          (universal dylib; no arch split)
+        macos/                          (universal libssruntime.framework; no arch split)
         windows/x86_64                  (ssruntime.dll)
         linux/x86_64                    (libssruntime.so)
         android/{arm64-v8a,armeabi-v7a,x86_64}    (libssruntime.so)
@@ -203,11 +203,21 @@ def platform_subdir() -> str:
 
 
 def library_filename() -> str:
-    """Shared-library filename for the host (matches the release dynamic libs)."""
+    """Loadable native-library path for the host, relative to its platform subdir.
+
+    Usually a bare filename (matches the release dynamic libs), but on macOS the
+    Brain ships as a versioned ``libssruntime.framework`` bundle, so this returns
+    the bundle-relative path to the Mach-O binary inside it — ctypes dlopens that
+    file directly by path.
+    """
     if sys.platform.startswith("win"):
         return "ssruntime.dll"
     if sys.platform == "darwin" and not _is_ios():
-        return "libssruntime.dylib"
+        # Point at the real binary under Versions/A, NOT the top-level
+        # ``libssruntime`` symlink, so it resolves even if the bundle's version
+        # symlinks don't survive Ren'Py's .app packaging. dlopen by absolute path
+        # ignores the framework's @rpath install_name, so no rpath setup needed.
+        return os.path.join("libssruntime.framework", "Versions", "A", "libssruntime")
     # Linux and Android ship ``libssruntime.so``; iOS ships an ``.xcframework``
     # that is normally static-linked into the app (handled in load_library).
     return "libssruntime.so"

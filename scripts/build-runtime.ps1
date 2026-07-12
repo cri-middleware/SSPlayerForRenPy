@@ -7,7 +7,7 @@
 #
 #   game\spritestudio\libs\
 #     windows\x86_64\ssruntime.dll   windows\arm64\ssruntime.dll
-#     macos\libssruntime.dylib  linux\<arch>\libssruntime.so  (when cross-built)
+#     macos\libssruntime.framework  linux\<arch>\libssruntime.so  (when cross-built)
 #     android\<abi>\libssruntime.so  ios\libssruntime.xcframework  web\libssruntime.a
 #
 # Usage: scripts\build-runtime.ps1 [platform=<p>] [arch=<a>] [build=<m>] [hostbuild=<auto|false>]
@@ -134,9 +134,22 @@ switch ($PLATFORM) {
             }
         }
     }
+    "macos" {
+        # macOS ships the Brain as a versioned libssruntime.framework, built +
+        # wrapped (and opt-in codesigned) by release-macos.sh, delegated above.
+        # Copy the whole bundle; libssconverter stays a plain universal .dylib.
+        $dest = Join-Path $LibRoot "macos"; New-Item -ItemType Directory -Force -Path $dest | Out-Null
+        Remove-Item -Recurse -Force (Join-Path $dest "libssruntime.framework") -ErrorAction SilentlyContinue
+        Copy-Item -Recurse -Force (Join-Path $SdkDir "$SrcDir/libssruntime.framework") "$dest/"
+        Write-Host "   -> game\spritestudio\libs\macos\libssruntime.framework"
+        $cvSrc = Join-Path $SdkDir "$SrcDir/libssconverter.dylib"
+        if (Test-Path $cvSrc) {
+            Copy-Item $cvSrc (Join-Path $dest "libssconverter.dylib") -Force
+            Write-Host "   -> game\spritestudio\libs\macos\libssconverter.dylib"
+        }
+    }
     default {
         switch ($PLATFORM) {
-            "macos" { $sub = "macos";            $name = "libssruntime.dylib"; $cname = "libssconverter.dylib" }
             "linux" { $sub = "linux/$ARCH";      $name = "libssruntime.so";    $cname = "libssconverter.so" }
             "windows" { $sub = "windows/$ARCH";  $name = "ssruntime.dll";      $cname = "ssconverter.dll" }
         }
