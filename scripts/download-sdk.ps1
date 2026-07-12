@@ -17,7 +17,7 @@ if (Test-Path $currentVersionFile) {
 }
 
 # Note: The zip file name should match what is actually published on the SpriteStudio-SDK releases.
-$url = "https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/$targetVersion/spritestudio7-sdk-dynamic-libs.zip"
+$url = "https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/$targetVersion/spritestudio-sdk-dynamic-libs.zip"
 $zipFile = "$targetDir/sdk.zip"
 
 Write-Host "Target SDK Version: $targetVersion"

@@ -110,8 +110,11 @@ case "$PLATFORM" in
         build_ss --target "$triple"; src_rt="$T/$triple/$BUILD_MODE/libssruntime.so"
         build_converter --target "$triple"; src_cv="$T/$triple/$BUILD_MODE/libssconverter.so"
     fi
-    place "linux/$ARCH" "$src_rt"
-    place "linux/$ARCH" "$src_cv" ;;
+    # Linux arch dir uses the kernel/Rust spelling (aarch64, not arm64) — matches
+    # the SDK release layout libs/linux/aarch64. arm64 accepted as an alias.
+    case "$ARCH" in arm64|aarch64) larch=aarch64 ;; *) larch="$ARCH" ;; esac
+    place "linux/$larch" "$src_rt"
+    place "linux/$larch" "$src_cv" ;;
   windows)
     if [ "$IS_HOST_BUILD" = true ]; then 
         build_ss; src_rt="$T/$BUILD_MODE/ssruntime.dll"

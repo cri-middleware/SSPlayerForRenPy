@@ -150,7 +150,7 @@ switch ($PLATFORM) {
     }
     default {
         switch ($PLATFORM) {
-            "linux" { $sub = "linux/$ARCH";      $name = "libssruntime.so";    $cname = "libssconverter.so" }
+            "linux" { $sub = "linux/$(if ($ARCH -eq 'arm64' -or $ARCH -eq 'aarch64') { 'aarch64' } else { $ARCH })";      $name = "libssruntime.so";    $cname = "libssconverter.so" }
             "windows" { $sub = "windows/$ARCH";  $name = "ssruntime.dll";      $cname = "ssconverter.dll" }
         }
         $dest = Join-Path $LibRoot $sub; New-Item -ItemType Directory -Force -Path $dest | Out-Null

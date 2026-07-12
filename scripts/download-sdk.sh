@@ -17,7 +17,7 @@ if [ -f "$CURRENT_VERSION_FILE" ]; then
 fi
 
 # Note: The zip file name should match what is actually published on the SpriteStudio-SDK releases.
-URL="https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/${TARGET_VERSION}/spritestudio7-sdk-dynamic-libs.zip"
+URL="https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/${TARGET_VERSION}/spritestudio-sdk-dynamic-libs.zip"
 ZIP_FILE="${TARGET_DIR}/sdk.zip"
 
 echo "Target SDK Version: ${TARGET_VERSION}"
