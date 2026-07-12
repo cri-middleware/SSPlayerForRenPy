@@ -63,7 +63,7 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_converter_destroy.argtypes = [P]
     f.ss_converter_destroy.restype = None
     
-    f.ss_converter_convert.argtypes = [P, C.c_char_p, C.c_char_p, _LOG_CB_TYPE]
+    f.ss_converter_convert.argtypes = [P, C.c_char_p, C.c_char_p, C.c_bool, _LOG_CB_TYPE]
     f.ss_converter_convert.restype = None
     
     f.ss_converter_is_running.argtypes = [P]
@@ -115,7 +115,7 @@ class SsConverter:
 
         sspj_bytes = sspj_path.encode('utf-8')
         out_bytes = output_dir.encode('utf-8')
-        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, self._log_cb)
+        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, False, self._log_cb)
 
     def is_running(self) -> bool:
         """Checks if the converter is currently running."""
