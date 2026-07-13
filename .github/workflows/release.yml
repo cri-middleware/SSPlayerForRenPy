@@ -1,8 +1,8 @@
 name: Release
 
-# Run manually from the Actions tab. The release version/tag come from
-# PACKAGE_VERSION.txt (the Ren'Py package's own version, independent of
-# SDK_VERSION.txt, which only pins which native SDK libs download-sdk.sh fetches).
+# Run manually from the Actions tab. The release version/tag come from the
+# ss_renpy package's __version__ (the Ren'Py package's own version, independent
+# of SDK_VERSION.txt, which only pins which native SDK libs download-sdk.sh fetches).
 on:
   workflow_dispatch:
     inputs:
@@ -29,10 +29,10 @@ jobs:
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
 
-      - name: Resolve release metadata from PACKAGE_VERSION.txt
+      - name: Resolve release metadata from ss_renpy __version__
         id: meta
         run: |
-          VERSION=$(tr -d ' \r\n' < PACKAGE_VERSION.txt)
+          VERSION=$(sed -n 's/^__version__ *= *"\([^"]*\)".*/\1/p' game/spritestudio/python/ss_renpy/__init__.py)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
