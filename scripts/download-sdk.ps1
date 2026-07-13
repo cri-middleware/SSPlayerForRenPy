@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $baseDirectory = Split-Path -Parent $PSCommandPath
 $rootDirectory = Split-Path -Parent $baseDirectory
 $targetDir = "$rootDirectory/game/spritestudio/libs"
-$versionFile = "$rootDirectory/SDK_VERSION.txt"
+$versionFile = "$baseDirectory/SDK_VERSION.txt"
 $currentVersionFile = "$targetDir/VERSION"
 
 $targetVersion = (Get-Content $versionFile).Trim()
@@ -17,24 +17,50 @@ if (Test-Path $currentVersionFile) {
 }
 
 # Note: The zip file name should match what is actually published on the SpriteStudio-SDK releases.
-$url = "https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/$targetVersion/spritestudio-sdk-dynamic-libs.zip"
+$baseUrl = "https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/$targetVersion"
+$asset = "spritestudio-sdk-dynamic-libs.zip"
 $zipFile = "$targetDir/sdk.zip"
+$sumsFile = "$targetDir/SHA256SUMS"
 
 Write-Host "Target SDK Version: $targetVersion"
-Write-Host "Download URL: $url"
-Write-Host "Downloading SDK..."
 if (-Not (Test-Path $targetDir)) {
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 }
+
+# Fetch the release's SHA256SUMS manifest and verify the downloaded zip against
+# it before extracting, so a corrupted or tampered download fails loudly.
 $ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest -Uri $url -OutFile $zipFile
+Write-Host "Downloading checksum manifest: $baseUrl/SHA256SUMS"
+Invoke-WebRequest -Uri "$baseUrl/SHA256SUMS" -OutFile $sumsFile
+Write-Host "Downloading SDK: $baseUrl/$asset"
+Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $zipFile
 $ProgressPreference = 'Continue'
+
+# Get-FileHash returns an upper-case hash; sha256sum writes lower-case, so
+# compare case-insensitively. Match the manifest entry by asset name.
+function Assert-Sha256($file, $name) {
+    $expected = $null
+    foreach ($line in Get-Content $sumsFile) {
+        $parts = $line -split '\s+', 2
+        if ($parts.Count -eq 2 -and $parts[1].Trim() -eq $name) { $expected = $parts[0].ToLower(); break }
+    }
+    if (-not $expected) {
+        Write-Error "No checksum entry for $name in SHA256SUMS"
+    }
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower()
+    if ($expected -ne $actual) {
+        Write-Error "Checksum mismatch for $name`n  expected: $expected`n  actual:   $actual"
+    }
+    Write-Host "Checksum OK: $name"
+}
+Assert-Sha256 $zipFile $asset
 
 Write-Host "Extracting SDK..."
 $global:ProgressPreference = 'SilentlyContinue'
 Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
 $global:ProgressPreference = 'Continue'
 Remove-Item $zipFile
+Remove-Item $sumsFile
 
 Set-Content -Path $currentVersionFile -Value $targetVersion
 
