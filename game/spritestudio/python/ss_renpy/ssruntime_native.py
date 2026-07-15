@@ -421,7 +421,7 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_instance_slot_reset.argtypes = [P]
     f.ss_instance_slot_reset.restype = None
     f.ss_instance_slot_step.argtypes = [
-        P, ss_event_instance_info, P, C.c_float, C.c_float, C.c_float, C.c_bool]
+        P, ss_event_instance_info, P, C.c_float, C.c_float, C.c_bool]
     f.ss_instance_slot_step.restype = ss_instance_step_result
     f.ss_instance_slot_is_independent.argtypes = [P]
     f.ss_instance_slot_is_independent.restype = C.c_bool
@@ -867,18 +867,17 @@ class _NativeRuntime:
         if slot:
             self._lib.ss_instance_slot_reset(slot)
 
-    def instance_slot_step(self, slot, ev, child_ctx, previous_child_frame,
-                           parent_frame, delta_seconds, parent_looped):
+    def instance_slot_step(self, slot, ev, child_ctx, parent_frame,
+                           delta_seconds, parent_looped):
         """Drive one instance slot a tick; returns ``ss_instance_step_result``.
 
         ``child_ctx`` is the *child* runtime's context pointer; ``ev`` an
         :class:`ss_event_instance_info` from :meth:`active_event_instance` on
-        the *parent*. ``previous_child_frame`` is the child's raw float head
-        before this tick (loop-edge detection only) — never floor it.
+        the *parent*.
         """
         return self._lib.ss_instance_slot_step(
-            slot, ev, child_ctx, float(previous_child_frame),
-            float(parent_frame), float(delta_seconds), bool(parent_looped))
+            slot, ev, child_ctx, float(parent_frame), float(delta_seconds),
+            bool(parent_looped))
 
     def instance_slot_is_independent(self, slot):
         return bool(self._lib.ss_instance_slot_is_independent(slot))
