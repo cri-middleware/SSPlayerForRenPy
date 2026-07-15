@@ -136,6 +136,71 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     return ok
 
 
+def check_loop_counts(lib) -> bool:
+    """``FramePlan.finished`` must pulse once after *every* configured loop, not
+    once per loop, and never under an infinite one. A commanded stop is not a
+    finish either. Covers the cases the finished-edge check below does not:
+    loop > 1, loop == -1, loop == 0 (a synonym for infinite), and stop()."""
+    rel = "ss_assets/Ringo/Ringo.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### loop-counts  SKIP (Ringo not found)"); return True
+    data = open(abs_ssab, "rb").read()
+
+    def run(loop, steps):
+        p = SSInternalPlayer(data, lib=lib, base_dir="ss_assets/Ringo",
+                             resource_manager=RecordingResourceManager(),
+                             pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
+        try:
+            p.set_loop(loop)
+            p.set_animation("attack1")
+            p.play()
+            dt_ms = 1000.0 / (p.fps or 30)
+            events = []
+            for _ in range(steps):
+                plan = p.update(dt_ms)
+                if plan.looped:
+                    events.append("looped")
+                if plan.finished:
+                    events.append("finished")
+            return events
+        finally:
+            p.close()
+
+    print("### loop-counts  finished pulses once, after every loop")
+    ok = True
+    got3 = run(3, 2000)
+    if got3 != ["looped", "looped", "finished"]:
+        print(f"    FAIL: loop=3 gave {got3}"); ok = False
+    got1 = run(1, 2000)
+    if got1 != ["finished"]:
+        print(f"    FAIL: loop=1 gave {got1}"); ok = False
+    for loop in (-1, 0):
+        got = run(loop, 2000)
+        if "finished" in got or not got:
+            print(f"    FAIL: loop={loop} gave {got} (want looped-only, never finished)")
+            ok = False
+
+    # A commanded stop is not a finish.
+    p = SSInternalPlayer(data, lib=lib, base_dir="ss_assets/Ringo",
+                         resource_manager=RecordingResourceManager(),
+                         pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
+    try:
+        p.set_loop(3)
+        p.set_animation("attack1")
+        p.play()
+        dt_ms = 1000.0 / (p.fps or 30)
+        p.update(dt_ms)
+        p.stop()
+        if any(p.update(dt_ms).finished for _ in range(120)):
+            print("    FAIL: stop() reported finished"); ok = False
+    finally:
+        p.close()
+
+    print(f"    loop=3 -> {got3}  loop=1 -> {got1}  -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def check_finished_edge(lib) -> bool:
     """The pure core reports the play->stop edge via ``FramePlan.finished``; the
     HOST advances the sequence. The core itself has no queue. We act as the host:
@@ -196,6 +261,7 @@ def main() -> int:
         allok &= check(lib, rel, base, anim, kind)
         print()
     allok &= check_finished_edge(lib)
+    allok &= check_loop_counts(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1

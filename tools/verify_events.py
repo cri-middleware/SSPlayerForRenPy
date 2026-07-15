@@ -13,8 +13,8 @@ the real native library and the overall packs:
      mapping is correct);
   3. payloads decode to native values — UserData integer/string, Signal
      command_id + typed params, Audio sound_name + loop_num;
-  4. ``is_end_frame_reached`` trips at the end; looping replays the events and
-     ``is_looped`` trips at the boundary.
+  4. ``is_finished`` trips once the configured loops have played; looping
+     replays the events and ``is_looped`` trips at the boundary.
 
 Exits non-zero if any check fails. Needs the native library built
 (``scripts/build-runtime.sh``); pure stdlib otherwise.
@@ -72,7 +72,7 @@ def _playthrough(rt, resolver, fps, end_frame, *, extra_steps=4):
         if i == 0:
             forward_after_first = rt.is_playing_forward
         collected.extend(resolver.collect(rt))
-        if rt.is_end_frame_reached:
+        if rt.is_finished:
             break
     return collected, forward_after_first
 
@@ -128,8 +128,8 @@ def verify_pack(pack: str) -> list[str]:
         rt, resolver, anim.fps, anim.end_frame)
 
     # (2) exactly-once + frame_index correctness over one non-looping pass.
-    if not rt.is_end_frame_reached:
-        fails.append(f"{name}: is_end_frame_reached never tripped")
+    if not rt.is_finished:
+        fails.append(f"{name}: is_finished never tripped over a set_loop(1) pass")
     # Forward playback must report forward (the audio gate, docs/00).
     if forward_after_first is not True:
         fails.append(f"{name}: is_playing_forward was {forward_after_first!r} "
@@ -179,10 +179,10 @@ def verify_pack(pack: str) -> list[str]:
                   f"name={a.sound_name!r} loop={a.loop_num} file={a.file_path!r} "
                   f"hash={a.sound_name_hash}/{a.sound_list_name_hash}")
 
-    # (4) looping replays the events and is_looped trips at the wrap.
-    # NB: is_end_frame_reached is a per-update flag that trips at *every* clip
-    # end (verified), so we cannot use it to stop a multi-loop play — we run a
-    # fixed budget covering two full clip spans. is_looped trips on the wrap.
+    # (4) looping replays the events and is_looped trips at the wrap. We run a
+    # fixed budget covering two full clip spans rather than stopping on a flag:
+    # is_finished only trips after *both* loops, and is_looped is the per-wrap
+    # pulse we are actually measuring here.
     rt.stop()
     rt.set_loop(2)
     rt.play()

@@ -20,7 +20,7 @@ screen demo():
 ### Basic Parameters
 - **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
 - **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display.
-- **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays.
+- **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays. `0` is a synonym for `-1` (infinite), not "do not play".
 - **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
 - **`size` (Optional)**: If you pass `(w, h)` (or a single number for a square), it acts as a **normal image of that bounding box size**, allowing `xalign`/`xpos`/`pos` and container layouts to work directly (the animation is drawn at the center of the box). If omitted, it occupies the entire screen, and you must use `xoffset`/`yoffset` for positioning. In both cases, scaling via `zoom`/`Transform` applies.
 
@@ -162,8 +162,8 @@ image boss = SSPlayer(
 - `on_user_data`: Called when User Data is reached
 - `on_signal`: Called when a Signal is reached
 - `on_audio`: Called when an audio playback specified frame is reached
-- `on_finished`: Called when playback finishes (e.g., reached `loop` limit)
-- `on_looped`: Called every time a loop completes (1 iteration)
+- `on_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
+- `on_looped`: Called each time a loop completes (1 iteration). The final loop finishes instead
 - `on_started`: Called when animation playback starts
 
 > [!NOTE]
