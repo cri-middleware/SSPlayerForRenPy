@@ -138,6 +138,7 @@ class SSInternalPlayer:
         self._evt: Optional[EventResolver] = None
         self._event_queue: list = []
         self._was_playing = False
+        self._was_finished = False
 
         # part-query snapshots (last rendered frame)
         self._last_world: list = []
@@ -318,6 +319,9 @@ class SSInternalPlayer:
         else:
             self._rt.play()
         self._was_playing = True
+        # Re-arm the finished edge: is_finished stays latched until this point,
+        # so replaying must drop our copy of it to report the next completion.
+        self._was_finished = False
 
     # -- instance-child support (parent-driven mode) -------------------
     @property
@@ -392,12 +396,12 @@ class SSInternalPlayer:
     def stop(self) -> None:
         if self._rt:
             self._rt.stop()
-        # A *commanded* stop is not a natural end. `finished` is derived from the
-        # play->stop edge (`_was_playing and not is_playing`) in update(); if we
-        # left the latch set, the next update() after stop() would report
-        # FramePlan.finished, which the host maps to sequence-advance / on_finished
-        # (spritestudio.rpy). Clearing it keeps `finished` meaning "the Brain ended
-        # playback on its own" — the only edge the host should act on.
+        # A *commanded* stop is not a natural end. The Brain's is_finished already
+        # knows that, but the fallback path derives `finished` from the play->stop
+        # edge; if we left the latch set, the next update() after stop() would
+        # report FramePlan.finished, which the host maps to sequence-advance /
+        # on_finished (spritestudio.rpy). Clearing it keeps `finished` meaning "the
+        # Brain ended playback on its own" — the only edge the host should act on.
         self._was_playing = False
 
     def set_loop(self, count: int) -> None:
@@ -472,9 +476,20 @@ class SSInternalPlayer:
                     events_out.append(fe)
             except Exception:
                 pass
-        # The play->stop edge — a pure observation the host maps to its policy.
+        # `finished` is a pure observation the host maps to its policy. The Brain
+        # reports it as a sticky state (true from the moment every configured loop
+        # has played until the next play/setup, and never for a commanded stop),
+        # so take the rising edge to keep FramePlan.finished a one-shot pulse.
         playing = rt.is_playing
-        finished = self._was_playing and not playing
+        finished_state = rt.is_finished
+        if finished_state is None:
+            # Runtime predating ss_runtime_is_finished: the play->stop edge is
+            # equivalent, since the Brain only clears is_playing once the loops
+            # are exhausted, and stop() clears the latch below.
+            finished = self._was_playing and not playing
+        else:
+            finished = finished_state and not self._was_finished
+            self._was_finished = finished_state
         self._was_playing = playing
 
         # --- draw plan (sub-frame off floors the *display* frame only)

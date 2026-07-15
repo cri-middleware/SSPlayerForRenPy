@@ -219,8 +219,17 @@ class _WebRuntime:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_pausing() ? 1 : 0") == 1
 
     @property
-    def is_end_frame_reached(self) -> bool:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_end_frame_reached() ? 1 : 0") == 1
+    def is_finished(self):
+        """True once every configured loop has played; None if unsupported.
+
+        Mirrors the native backend: a sticky state, so callers take its rising
+        edge. `?? null` keeps an older WASM bundle that predates the binding
+        reporting unsupported rather than throwing."""
+        v = emscripten.run_script_int(
+            f"(() => {{ const c = window.ss_ctxs[{self._ctx_id}];"
+            f" return c.is_finished ? (c.is_finished() ? 1 : 0) : -1; }})()"
+        )
+        return None if v < 0 else v == 1
 
     @property
     def is_looped(self) -> bool:
