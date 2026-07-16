@@ -14,7 +14,8 @@
 #   game/spritestudio/libs/
 #     macos/libssruntime.framework             (universal arm64+x86_64; + libssconverter.dylib)
 #     windows/<arch>/ssruntime.dll   linux/<arch>/libssruntime.so
-#     android/<abi>/libssruntime.so  ios/libssruntime.xcframework  web/libssruntime.a
+#     android/<abi>/libssruntime.so  ios/libssruntime.xcframework
+#     web/ (wasm-pack bundle: ssruntime.js + ssruntime_bg.wasm)
 #
 # android/ios/web are toolchain-heavy cross builds and DO delegate to the SDK
 # release scripts (reserved path; Ren'Py-side integration is separate).
