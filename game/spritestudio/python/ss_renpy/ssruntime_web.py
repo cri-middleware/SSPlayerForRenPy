@@ -405,14 +405,14 @@ class _WebRuntime:
         if slot is not None:
             emscripten.run_script(f"window.ss_instances[{slot}].reset();")
 
-    def instance_slot_step(self, slot, ev, child_ctx, previous_child_frame,
-                           parent_frame, delta_seconds, parent_looped):
+    def instance_slot_step(self, slot, ev, child_ctx, parent_frame,
+                           delta_seconds, parent_looped):
         c_ctx_id = child_ctx._ctx_id if hasattr(child_ctx, "_ctx_id") else child_ctx
         
         s = emscripten.run_script_string(f"""
             var js_ev = window.ss_active_ev;
             var slot = window.ss_instances[{slot}];
-            var visible = slot.step(js_ev, window.ss_ctxs[{c_ctx_id}], {_jsnum(previous_child_frame)}, {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {'true' if parent_looped else 'false'});
+            var visible = slot.step(js_ev, window.ss_ctxs[{c_ctx_id}], {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {'true' if parent_looped else 'false'});
             
             JSON.stringify({{
                 visible: visible,

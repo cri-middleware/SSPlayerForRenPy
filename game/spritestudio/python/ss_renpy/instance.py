@@ -187,9 +187,8 @@ class InstanceRig:
         if ch is None:
             return []
         ev = self._rt.active_event_instance(part_index)
-        prev = ch.sub.frame_no                       # raw float head (no round)
         r = self._rt.instance_slot_step(
-            ch.slot, ev, ch.sub.ctx, prev, parent_frame, dt, parent_looped)
+            ch.slot, ev, ch.sub.ctx, parent_frame, dt, parent_looped)
         if r.transitioned:
             ch.sub.play()
         if not r.visible:
