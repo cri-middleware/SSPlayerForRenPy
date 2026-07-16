@@ -5,6 +5,9 @@ $rootDirectory = Split-Path -Parent $baseDirectory
 $targetDir = "$rootDirectory/game/spritestudio/libs"
 $versionFile = "$baseDirectory/SDK_VERSION.txt"
 $currentVersionFile = "$targetDir/VERSION"
+# Downloaded zips are cached here (gitignored) so a re-run that needs the same
+# version reuses them instead of re-downloading tens of MB.
+$cacheDir = "$baseDirectory/.sdk-cache"
 
 $targetVersion = (Get-Content $versionFile).Trim()
 
@@ -16,51 +19,88 @@ if (Test-Path $currentVersionFile) {
     }
 }
 
-# Note: The zip file name should match what is actually published on the SpriteStudio-SDK releases.
 $baseUrl = "https://github.com/cri-middleware/SpriteStudio-SDK/releases/download/$targetVersion"
-$asset = "spritestudio-sdk-dynamic-libs.zip"
-$zipFile = "$targetDir/sdk.zip"
-$sumsFile = "$targetDir/SHA256SUMS"
+# RenPy consumes two archives: the native dynamic libraries, and the combined
+# web archive — from which only the SIMD runtime-web/ bundle (ssruntime.js +
+# ssruntime_bg.wasm) is needed for the Web export target, the same files
+# build-runtime.sh copies from pkg/runtime-web/.
+$dynamicAsset = "spritestudio-sdk-dynamic-libs.zip"
+$webAsset = "spritestudio-sdk-web-libs.zip"
+$sumsFile = "$cacheDir/SHA256SUMS"
 
 Write-Host "Target SDK Version: $targetVersion"
-if (-Not (Test-Path $targetDir)) {
-    New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-}
+New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 
-# Fetch the release's SHA256SUMS manifest and verify the downloaded zip against
-# it before extracting, so a corrupted or tampered download fails loudly.
+function Get-Sha256($file) { (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower() }
+
+# Fetch the checksum manifest (small): it both verifies integrity and decides
+# whether an already-cached zip can be reused without re-downloading.
 $ProgressPreference = 'SilentlyContinue'
 Write-Host "Downloading checksum manifest: $baseUrl/SHA256SUMS"
 Invoke-WebRequest -Uri "$baseUrl/SHA256SUMS" -OutFile $sumsFile
-Write-Host "Downloading SDK: $baseUrl/$asset"
-Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $zipFile
-$ProgressPreference = 'Continue'
 
-# Get-FileHash returns an upper-case hash; sha256sum writes lower-case, so
-# compare case-insensitively. Match the manifest entry by asset name.
-function Assert-Sha256($file, $name) {
+# Get-CachedZip <asset-name>: leave a checksum-verified copy of the asset in
+# $cacheDir (reusing it when already valid, else downloading) and return its path.
+function Get-CachedZip($asset) {
+    $file = "$cacheDir/$asset"
     $expected = $null
     foreach ($line in Get-Content $sumsFile) {
         $parts = $line -split '\s+', 2
-        if ($parts.Count -eq 2 -and $parts[1].Trim() -eq $name) { $expected = $parts[0].ToLower(); break }
+        if ($parts.Count -eq 2 -and $parts[1].Trim() -eq $asset) { $expected = $parts[0].ToLower(); break }
     }
     if (-not $expected) {
-        Write-Error "No checksum entry for $name in SHA256SUMS"
+        Write-Error "No checksum entry for $asset in SHA256SUMS"
+        exit 1
     }
-    $actual = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower()
-    if ($expected -ne $actual) {
-        Write-Error "Checksum mismatch for $name`n  expected: $expected`n  actual:   $actual"
+    if ((Test-Path $file) -and ((Get-Sha256 $file) -eq $expected)) {
+        Write-Host "Reusing cached $asset"
+    } else {
+        Write-Host "Downloading $baseUrl/$asset"
+        Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $file
+        if ((Get-Sha256 $file) -ne $expected) {
+            Remove-Item -Force $file
+            Write-Error "Checksum mismatch for $asset"
+            exit 1
+        }
     }
-    Write-Host "Checksum OK: $name"
+    return $file
 }
-Assert-Sha256 $zipFile $asset
+
+$dynamicZip = Get-CachedZip $dynamicAsset
+$webZip = Get-CachedZip $webAsset
+$ProgressPreference = 'Continue'
+Write-Host "Checksum OK"
 
 Write-Host "Extracting SDK..."
-$global:ProgressPreference = 'SilentlyContinue'
-Expand-Archive -Path $zipFile -DestinationPath $targetDir -Force
-$global:ProgressPreference = 'Continue'
-Remove-Item $zipFile
-Remove-Item $sumsFile
+$tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+try {
+    $global:ProgressPreference = 'SilentlyContinue'
+
+    # Native dynamic libraries: extract to a temp, then move libs/* + license
+    # notices into game/spritestudio/libs/<platform>/ (include/ and bindings/ are
+    # unused here).
+    Expand-Archive -Path $dynamicZip -DestinationPath $tmpDir -Force
+    if (Test-Path $targetDir) { Remove-Item -Recurse -Force $targetDir }
+    New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+    Move-Item -Path "$tmpDir/libs/*" -Destination $targetDir -Force
+    Copy-Item -Path "$tmpDir/LICENSE.md" -Destination $targetDir -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path "$tmpDir/THIRD-PARTY-LICENSES.*.md" -Destination $targetDir -Force -ErrorAction SilentlyContinue
+
+    # Web runtime: the combined web archive holds runtime-web/, runtime-web-nosimd/
+    # and converter-web/ subdirs; RenPy needs only the SIMD runtime-web/ bundle.
+    # Expand it and copy just that subdir's contents into game/spritestudio/libs/web/
+    # (the same files build-runtime.sh copies from pkg/runtime-web/).
+    $webExtract = Join-Path $tmpDir "webpkg"
+    New-Item -ItemType Directory -Force -Path $webExtract | Out-Null
+    Expand-Archive -Path $webZip -DestinationPath $webExtract -Force
+    New-Item -ItemType Directory -Force -Path "$targetDir/web" | Out-Null
+    Copy-Item -Path "$webExtract/runtime-web/*" -Destination "$targetDir/web" -Recurse -Force
+
+    $global:ProgressPreference = 'Continue'
+} finally {
+    Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+}
 
 Set-Content -Path $currentVersionFile -Value $targetVersion
 
