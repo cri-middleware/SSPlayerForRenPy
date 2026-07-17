@@ -65,6 +65,13 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     plan = list(framedata.iter_draw_plan(rt, fd))
     do_mask = frame_mask is not None and part_infos is not None
     out = []
+    # Part indices whose slot the draw-plan walk below steps this frame. The
+    # Brain omits Hide'd Instance/Effect parts from draw_order (SDK doc:
+    # 40_components/40_mask.ja.md), so those never appear here — they are stepped
+    # by the leftover pass at the end so independent children keep advancing
+    # while off-screen (40_components/10_instance.ja.md / 20_effect.ja.md).
+    stepped_inst = set()
+    stepped_fx = set()
     for item in plan:
         tag = item[0]
         if tag == "mesh":
@@ -74,6 +81,7 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
             out.append(("mesh", mp))
         elif tag == "instance":
             _, p, mat, alpha, hidden = item
+            stepped_inst.add(p)
             child_items = (instances.collect(
                 p, parent_frame, dt, parent_looped, sub_frame)
                 if instances is not None else [])
@@ -93,6 +101,7 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                                 transform_effect_batch(payload, mat, alpha)))
         elif tag == "effect":
             _, p, mat, alpha, hidden = item
+            stepped_fx.add(p)
             batches = (effects.collect(p, mat, alpha, parent_frame, dt, parent_looped)
                        if effects is not None else [])
             if hidden:
@@ -100,6 +109,26 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
             for eb in batches:
                 out.append(("fx", eb))
         # "skip": unsupported kind (Text / Nines / Mask) — ignored
+    # Leftover pass: step every Instance/Effect slot the Brain dropped from
+    # draw_order (Hide'd parts), so independent children keep their own clock
+    # advancing instead of freezing. Stepping is driven from the full slot set,
+    # not draw_order — matching the Unity/Web ports and the SDK porting contract
+    # (40_components/{10_instance,20_effect}.ja.md). draw_order/visibility gate
+    # *drawing* only. Each slot is stepped exactly once per frame (the walk above
+    # already stepped the parts present in the plan). Guarded so a stepping
+    # failure never discards the frame already built in ``out``.
+    try:
+        if instances is not None:
+            for pi in instances.part_indices():
+                if pi not in stepped_inst:
+                    instances.step_idle(pi, parent_frame, dt, parent_looped,
+                                        sub_frame)
+        if effects is not None:
+            for pi in effects.part_indices():
+                if pi not in stepped_fx:
+                    effects.step_idle(pi, parent_frame, dt, parent_looped)
+    except Exception:
+        pass
     return out
 
 
@@ -216,6 +245,36 @@ class InstanceRig:
         if not r.visible:
             return []
         return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame)
+
+    def part_indices(self):
+        """Part indices of every Instance slot this rig owns — the full set to
+        step each frame, independent of ``draw_order`` (which omits Hide'd parts).
+        """
+        return self._children.keys()
+
+    def step_idle(self, part_index, parent_frame, dt, parent_looped, sub_frame):
+        """Advance one Instance slot's clock without drawing it.
+
+        For a part the Brain dropped from ``draw_order`` while hidden, which
+        :func:`collect_ordered`'s draw-plan walk therefore never reaches. Steps
+        the slot exactly as :meth:`collect` does (independent children must keep
+        advancing while off-screen — SDK doc 40_components/10_instance.ja.md),
+        caches independence for the redraw gate, then recurses into the child so
+        its own Instance/Effect slots keep advancing too — but builds no
+        renderables."""
+        ch = self._children.get(part_index)
+        if ch is None:
+            return
+        ev = self._rt.active_event_instance(part_index)
+        r = self._rt.instance_slot_step(
+            ch.slot, ev, ch.sub.ctx, parent_frame, dt, parent_looped)
+        if r.independent:
+            self._independent.add(part_index)
+        else:
+            self._independent.discard(part_index)
+        if r.transitioned:
+            ch.sub.play()
+        ch.sub.step_slots_only(r.child_frame_no, r.child_looped, dt, sub_frame)
 
     def close(self):
         for ch in self._children.values():
