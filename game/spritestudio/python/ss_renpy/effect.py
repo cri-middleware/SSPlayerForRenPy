@@ -70,6 +70,27 @@ class EffectRig:
         return effectplan.build_effect_batches(
             buf, matrix=matrix, alpha=alpha, merge=True)
 
+    def part_indices(self):
+        """Part indices of every Effect slot this rig owns — the full set to step
+        each frame, independent of ``draw_order`` (which omits Hide'd parts)."""
+        return self._slots.keys()
+
+    def step_idle(self, part_index, parent_frame, dt, parent_looped):
+        """Advance one Effect slot's clock without drawing it.
+
+        For a part the Brain dropped from ``draw_order`` while hidden, which
+        :meth:`collect` therefore never reaches. Independent effects must keep
+        simulating while off-screen (SDK doc 40_components/20_effect.ja.md); the
+        stepped plan view is discarded (no geometry built)."""
+        slot = self._slots.get(part_index)
+        if not slot:
+            return
+        ev = self._rt.active_effect_event(part_index)
+        fps = float(self._rt.fps or 30)
+        self._rt.effect_slot_step_view(
+            slot, ev, parent_frame, dt, fps, parent_looped,
+            y_flip=True, vert_stride=2)
+
     def close(self):
         for slot in self._slots.values():
             if slot:

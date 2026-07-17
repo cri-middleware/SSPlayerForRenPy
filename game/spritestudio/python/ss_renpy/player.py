@@ -419,6 +419,27 @@ class SSInternalPlayer:
                      for mp in framedata.build_mesh_parts(rt, framedata.parse(fb2))]
                     if fb2 else [])
 
+    def step_slots_only(self, frame_no, looped, dt_s, sub_frame=None):
+        """Advance every Instance/Effect slot of this player (recursively) without
+        building renderables.
+
+        Called by :meth:`ss_renpy.instance.InstanceRig.step_idle` when this player
+        is a *hidden* Instance child: the Brain drops Hide'd parts from
+        ``draw_order``, so the normal render walk (``render_at`` →
+        ``collect_ordered``) never runs for it and its slots would freeze. Stepping
+        here keeps independent descendants advancing while off-screen (SDK doc:
+        40_components/10_instance.ja.md). Never raises."""
+        try:
+            sf = self.sub_frame if sub_frame is None else sub_frame
+            if self._instances is not None:
+                for pi in list(self._instances.part_indices()):
+                    self._instances.step_idle(pi, frame_no, dt_s, looped, sf)
+            if self._effects is not None:
+                for pi in list(self._effects.part_indices()):
+                    self._effects.step_idle(pi, frame_no, dt_s, looped)
+        except Exception:
+            pass
+
     def pause(self) -> None:
         if self._rt and not self._rt.is_pausing:
             self._rt.pause()
