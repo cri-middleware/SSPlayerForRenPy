@@ -1722,6 +1722,26 @@ init -10 python:
                 # Keep draining even if playback goes idle before we finish.
                 renpy.redraw(self, 0)
 
+        # -- sequence chaining (host playback policy) ----------------------
+        def _advance_to_next_in_sequence(self, core):
+            """Pop the queue to the next playable clip and start it; True if one
+            started, False when the sequence is spent.
+
+            Skips (with a one-time warning) any queued name the pack lacks —
+            otherwise a typo'd entry would silently replay the previous clip with
+            no diagnostics. Loop count is 1 for a mid-sequence clip and the
+            original request for the final one."""
+            while self._anim_queue:
+                cand = self._anim_queue.pop(0)
+                core.set_loop(1 if self._anim_queue else self._initial_loop)
+                if core.set_animation(cand):
+                    core.play()
+                    return True
+                self._warn_once(("chain", cand),
+                                "sequence animation %r not found; skipped"
+                                % (cand,))
+            return False
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
@@ -1748,34 +1768,17 @@ init -10 python:
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
             self._dispatch_plan(plan)            # timeline events + on_looped
-            # Sequence chaining is the host's playback policy: when the core
-            # reports the play->stop edge, advance to the next queued animation
-            # (e.g. an alias like ["attack1", "wait1"]) or fire on_finished. The
-            # switch happens HERE, between updates — so every frame's draw plan
-            # stays consistent with a single animation (no mid-update frame skew).
+            # Sequence chaining is the host's playback policy: on the core's
+            # completion edge (FramePlan.finished = the is_finished rising edge),
+            # advance to the next queued clip (e.g. an alias like ["attack1",
+            # "wait1"]) or fire on_finished once the sequence is spent. The switch
+            # happens HERE, between updates — so every frame's draw plan stays
+            # consistent with a single animation (no mid-update frame skew).
             if plan.finished:
-                if self._anim_queue:
-                    # Advance to the next queued animation, skipping (with a
-                    # one-time warning) any name the pack doesn't have —
-                    # otherwise a typo'd entry silently replays the previous
-                    # clip with no diagnostics.
-                    nxt = None
-                    while self._anim_queue:
-                        cand = self._anim_queue.pop(0)
-                        core.set_loop(1 if self._anim_queue else self._initial_loop)
-                        if core.set_animation(cand):
-                            nxt = cand
-                            break
-                        self._warn_once(("chain", cand),
-                                        "sequence animation %r not found; skipped"
-                                        % (cand,))
-                    if nxt is not None:
-                        core.play()
-                        self.animation = core.animation
-                        self._call_cb(self.on_started)
-                        renpy.redraw(self, 0)
-                    else:
-                        self._call_cb(self.on_finished)
+                if self._advance_to_next_in_sequence(core):
+                    self.animation = core.animation
+                    self._call_cb(self.on_started)
+                    renpy.redraw(self, 0)
                 else:
                     self._call_cb(self.on_finished)
 
