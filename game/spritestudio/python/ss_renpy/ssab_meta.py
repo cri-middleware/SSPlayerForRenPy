@@ -166,6 +166,14 @@ class SsabMeta:
     def __init__(self, data: bytes):
         # Keep the buffer alive: the FlatBuffers accessors index into it.
         self._buf = data
+        # Positively identify this as a .ssab via the FlatBuffers file_identifier
+        # ("SSAB", bytes 4-8) using the flatbuffers API — GetRootAs does NOT check
+        # it. Safe on short/empty buffers (it just compares data[4:8]). Without
+        # this a wrong-type / crafted buffer would reach the non-validating Rust
+        # runtime and drive an OOB read (SDK_UPSTREAM_ISSUES #1).
+        if not SsAnimeBinary.SsAnimeBinaryBufferHasIdentifier(data, 0):
+            raise ValueError(
+                "not a .ssab pack (missing 'SSAB' FlatBuffers file identifier)")
         self._root = SsAnimeBinary.GetRootAs(data, 0)
 
     @property
