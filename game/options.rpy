@@ -50,6 +50,12 @@ init -20 python:
                      '*.md', '*.txt', '.git/**', 'tools/**', 'scripts/**'):
         build.classify(_dev_pat, None)
 
+    # Exclude the auto-importer's dev-only freshness marker BEFORE the ss_assets
+    # rule below claims it: it lives under game/ss_assets/<project>/ (so the
+    # archive rule would otherwise ship it), is useless to players, and leaks a
+    # source mtime. First-match-wins, so this must precede the ss_assets classify.
+    build.classify('**/.ss_import_ok', None)
+
     # Route the demo's asset tree (.ssab + textures + audio) into the .rpa archive.
     if ss_pack_assets_into_rpa:
         build.archive("ssdata", "all")            # "all" tag: in every package

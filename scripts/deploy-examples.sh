@@ -76,6 +76,11 @@ convert () { # <test-folder-relative-to-sdk> <project-name> <dest-abs>
   
   rm -rf "$dest"; mkdir -p "$dest"
   "$PYTHON_CMD" "$ROOT_DIR/tools/cli_convert.py" "$work_dir/$project_name.sspj" "$dest"
+  # Stamp the auto-importer freshness marker so a dev-mode launch does not
+  # reconvert this pack (cli_convert.py itself writes no marker). Non-fatal: a
+  # stamp failure just means the importer reconverts next launch (old behaviour).
+  "$PYTHON_CMD" "$ROOT_DIR/tools/ss_stamp_import.py" "$work_dir" "$dest" \
+    || echo "deploy-examples.sh: warning: could not stamp import marker for $project_name (will reconvert on next dev launch)"
 }
 
 convert "tests/overall" "overall" "$GAME_DIR/ss_assets/overall"

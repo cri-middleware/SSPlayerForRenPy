@@ -8,6 +8,19 @@ init -10 python:
     import glob
     import time
 
+    # Keep the freshness marker out of distributed builds. It is a build-machine
+    # artifact (written by the importer below / tools/ss_stamp_import.py), useless
+    # to players — the importer is dev-only — and Ren'Py's built-in dotfile
+    # exclusion covers only its OWN base dir, not game/ss_assets/, so a broad
+    # asset rule or the "**"->all catch-all would otherwise ship it. Registered
+    # unconditionally (not dev-gated) so any project holding this drop-in is
+    # covered. A game whose options.rpy routes game/ss_assets/** into an archive
+    # at an EARLIER init must repeat this there too (first-match-wins by order).
+    try:
+        build.classify('**/.ss_import_ok', None)
+    except Exception:
+        pass
+
     def _ss_auto_import():
         if not config.developer:
             return
@@ -35,6 +48,7 @@ init -10 python:
 
         try:
             from ss_renpy.converter import SsConverter, ConverterResult
+            from ss_renpy import import_marker
         except ImportError as e:
             print(f"[SpriteStudio] Auto-importer disabled: could not load native converter ({e})")
             return
@@ -50,33 +64,18 @@ init -10 python:
             project_name = os.path.splitext(os.path.basename(sspj_path))[0]
             project_out_dir = os.path.join(out_dir, project_name)
 
-            # 1. Find the latest modification time in the source project directory
-            # (Checks all files like .ssae, .ssce, .png alongside the .sspj)
+            # 1. Newest mtime across the source project (its .sspj + .ssae /
+            # .ssce / .png siblings) — the snapshot this run would convert.
             sspj_dir = os.path.dirname(sspj_path)
-            latest_source_mtime = 0
-            for root, dirs, files in os.walk(sspj_dir):
-                # Prune hidden directories (.git etc.) — their contents are not
-                # dot-prefixed and would spuriously trigger reconversion.
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                for f in files:
-                    # Ignore hidden files
-                    if f.startswith('.'):
-                        continue
-                    try:
-                        mtime = os.path.getmtime(os.path.join(root, f))
-                    except OSError:
-                        continue  # vanished mid-scan / dangling symlink
-                    if mtime > latest_source_mtime:
-                        latest_source_mtime = mtime
-            
+            latest_source_mtime = import_marker.latest_source_mtime(sspj_dir)
+
             # 2. Conversion is needed unless the last run both SUCCEEDED and
-            # covered the current sources. Output mtimes alone cannot tell:
-            # the converter writes .ssab files before textures and returns an
-            # error part-way through on failure, which would leave fresh-looking
-            # partial output behind. So a success marker recording the source
-            # snapshot is written only on ConverterResult.Success (below), and
-            # only that marker skips reconversion.
-            marker_path = os.path.join(project_out_dir, ".ss_import_ok")
+            # covered the current sources. Output mtimes alone cannot tell: the
+            # converter writes .ssab files before textures and returns an error
+            # part-way through on failure, leaving fresh-looking partial output
+            # behind. So a success marker recording the source snapshot is
+            # written only on ConverterResult.Success (below), and only that
+            # marker skips reconversion (see ss_renpy.import_marker).
             needs_conversion = True
             if os.path.exists(project_out_dir):
                 has_files = False
@@ -86,12 +85,9 @@ init -10 python:
                         has_files = True
                         break
                 if has_files:
-                    try:
-                        with open(marker_path, "r") as fh:
-                            if float(fh.read().strip()) >= latest_source_mtime:
-                                needs_conversion = False
-                    except (OSError, ValueError):
-                        pass  # missing/corrupt marker -> reconvert
+                    marker = import_marker.read_marker(project_out_dir)
+                    if marker is not None and marker >= latest_source_mtime:
+                        needs_conversion = False
 
             if needs_conversion:
                 print(f"[SpriteStudio] Auto-converting project: {project_name} ...")
@@ -122,12 +118,7 @@ init -10 python:
                     # Stamp the source snapshot this conversion covered; the
                     # freshness check above only trusts this marker.
                     try:
-                        with open(marker_path, "w") as fh:
-                            # repr() keeps full float precision; "%f" truncates
-                            # to 6 decimals and rounds down ~half the time on
-                            # sub-microsecond mtimes, which would make the
-                            # freshness check below reconvert on every launch.
-                            fh.write(repr(latest_source_mtime))
+                        import_marker.stamp(project_out_dir, latest_source_mtime)
                     except OSError as e:
                         print(f"[SpriteStudio] Warning: could not write import marker ({e})")
                     changed = True
