@@ -1,4 +1,4 @@
-"""Effect-part slot lifecycle for one runtime (docs/08 §2).
+"""Effect-part slot lifecycle for one runtime.
 
 Stateful companion to :mod:`ss_renpy.effectplan` (which is the pure decoder).
 An :class:`EffectRig` owns one ``EffectSlot`` per Effect part of a runtime's
@@ -26,6 +26,21 @@ class EffectRig:
 
     def has(self) -> bool:
         return any(self._slots.values())
+
+    def has_independent(self) -> bool:
+        """Any slot running on its own clock — the only kind that still moves
+        once the parent's head stops (liveness for the host's redraw gate).
+
+        Only ever reached from :meth:`SSInternalPlayer.is_animating` after the
+        head has stopped (playback short-circuits before it), so the per-slot
+        query is off the normal render hot path. The runtime call is guarded so
+        a stale library missing the export degrades to 'keep redrawing' rather
+        than freezing a live effect."""
+        try:
+            return any(self._rt.effect_slot_is_independent(slot)
+                       for slot in self._slots.values() if slot)
+        except Exception:
+            return self.has()   # conservative: keep redrawing
 
     def reset(self):
         """Re-arm every slot (call when the parent replays / heads out)."""

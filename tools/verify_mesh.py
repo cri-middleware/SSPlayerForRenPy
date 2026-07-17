@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless check for Mesh(deform) part rendering (docs/08 §4).
+"""Headless check for Mesh(deform) part rendering (SDK doc: 40_components/30_mesh.md).
 
 Drives a pack with Mesh parts (default Ringo.ssab + overall/Mesh.ssab) through
 its frames, walks the draw plan via :func:`ss_renpy.instance.collect_ordered`,

@@ -53,16 +53,15 @@ Keys** once from the launcher GUI (→ Android), per Ren'Py's docs.
 > names**: `libs/android/arm64-v8a/libssruntime.so` (most 64-bit devices),
 > `armeabi-v7a/` (old phones), `x86_64/` (emulators).
 >
-> **`scripts/deploy-android.*` stages these into RAPT's jniLibs automatically.**
-> Building via the **stock launcher** instead? RAPT has no game-tree hook for
-> native code, so copy each `.so` once, by hand, into your Ren'Py SDK's RAPT
-> jniLibs (the same kind of one-time manual step iOS needs):
+> RAPT has no game-tree hook for native code, so copy each `.so` once, by
+> hand, into your Ren'Py SDK's RAPT jniLibs (the same kind of one-time manual
+> step iOS needs):
 >
 > ```
 > <renpy-sdk>/rapt/prototype/renpyandroid/src/main/jniLibs/<abi>/libssruntime.so
 > ```
 
-`--bundle` builds an `.aab` for Play upload; otherwise you get an `.apk`.
+You can build either an `.aab` (for Play upload) or an `.apk`.
 
 ## iOS Export
 

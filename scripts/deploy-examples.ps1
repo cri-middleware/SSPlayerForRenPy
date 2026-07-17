@@ -1,12 +1,12 @@
 #!/usr/bin/env pwsh
 #
-# Convert the SpriteStudio test projects into playback data under game\sprites\
-# (.ssab + referenced textures, via ssconverter-cli). Windows counterpart of
+# Convert the SpriteStudio test projects into playback data under game\ss_assets\
+# (.ssab + referenced textures, via tools\cli_convert.py). Windows counterpart of
 # scripts/deploy-examples.sh.
 #
 # Scope: ONLY the playback data. The native libssruntime binary is the job of
 # scripts/build-runtime.ps1, not this script.
-#   game\sprites\            <- deploy-examples.ps1 (this script)
+#   game\ss_assets\          <- deploy-examples.ps1 (this script)
 #   game\spritestudio\libs\  <- build-runtime.ps1
 #
 # Usage: scripts\deploy-examples.ps1 [-Mode release|debug]   (ssconverter-cli build mode)
@@ -79,6 +79,11 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
     
     $sspjPath = Join-Path $workDir "$ProjectName.sspj"
     & $pythonCmd (Join-Path $RootDir "tools\cli_convert.py") $sspjPath $Dest
+    # cli_convert.py exits 1 on conversion failure; $ErrorActionPreference does
+    # not cover native commands, so propagate explicitly (the .sh uses set -e).
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "deploy-examples.ps1: conversion failed for $ProjectName ($LASTEXITCODE)"
+    }
 }
 
 Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")

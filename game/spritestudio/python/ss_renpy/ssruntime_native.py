@@ -8,7 +8,7 @@ Signatures are transcribed from the generated C header
 ``libs/ssruntime/target/ssruntime.h`` — that header is the source of truth;
 keep ``argtypes``/``restype`` in sync with it.
 
-Lifetime rules (see ``docs/00_limitations``):
+Lifetime rules (SDK doc: 10_introduction/20_limitations.md):
   * A bound ``resource`` must outlive every ``context`` it is bound to.
     Internally the runtime ref-counts with ``Arc``, so destroying the resource
     handle early is safe *as long as* contexts are destroyed/reset too. We keep
@@ -70,7 +70,8 @@ STYLE_PINGPONG = 1
 # must match; ctypes' natural alignment matches the runtime's ``#[repr(C)]``.
 
 class ss_effect_step_result(C.Structure):
-    """Return of ``ss_effect_slot_step`` (ssruntime.h §27-37).
+    """Return of ``ss_effect_slot_step`` (see ``ss_effect_step_result`` in the
+    generated ssruntime.h).
 
     ``draw_plan_buf`` is a FlatBuffers ``EffectDrawPlan`` valid only until the
     next step on the same slot — copy it out immediately.
@@ -83,7 +84,8 @@ class ss_effect_step_result(C.Structure):
 
 
 class ss_effect_event_info(C.Structure):
-    """Resolved per-slot Effect event (ssruntime.h §48-58)."""
+    """Resolved per-slot Effect event (see ``ss_effect_event_info`` in the
+    generated ssruntime.h)."""
     _fields_ = [
         ("event_frame", C.c_int32),
         ("start_time", C.c_int32),
@@ -94,10 +96,11 @@ class ss_effect_event_info(C.Structure):
 
 
 class ss_instance_step_result(C.Structure):
-    """Return of ``ss_instance_slot_step`` (ssruntime.h §66-72).
+    """Return of ``ss_instance_slot_step`` (see ``ss_instance_step_result`` in
+    the generated ssruntime.h).
 
     ``child_frame_no`` is a raw float (sub-frame precise) — write it back
-    verbatim; never floor/round it for state (docs/08 §3).
+    verbatim; never floor/round it for state.
     """
     _fields_ = [
         ("visible", C.c_bool),
@@ -109,7 +112,8 @@ class ss_instance_step_result(C.Structure):
 
 
 class ss_event_instance_info(C.Structure):
-    """Resolved per-slot Instance event (ssruntime.h §87-104)."""
+    """Resolved per-slot Instance event (see ``ss_event_instance_info`` in the
+    generated ssruntime.h)."""
     _fields_ = [
         ("event_frame", C.c_int32),
         ("start_label_hash", C.c_uint32),
@@ -142,12 +146,11 @@ def _arch_token() -> str:
 def _android_abi() -> str:
     """NDK / jniLibs ABI name for the host arch.
 
-    The ``android/`` layout under ``libs`` now uses the Android ABI names
-    (``arm64-v8a`` / ``armeabi-v7a`` / ``x86_64``) rather than the SDK arch
-    tokens, because the Android Brain ships in the APK's ``lib/<abi>/`` (jniLibs)
-    and is loaded by soname (see :func:`load_library`) — it is no longer
-    dlopen'd from the game tree — so mirroring the jniLibs names keeps the
-    staging step a straight copy."""
+    The ``android/`` layout under ``libs`` uses the Android ABI names
+    (``arm64-v8a`` / ``armeabi-v7a`` / ``x86_64``): the Android Brain ships in
+    the APK's ``lib/<abi>/`` (jniLibs) and is loaded by soname (see
+    :func:`load_library`), so mirroring the jniLibs names keeps staging a
+    straight copy."""
     return {
         "arm64": "arm64-v8a",
         "arm32": "armeabi-v7a",
@@ -374,9 +377,10 @@ def _declare(lib: C.CDLL) -> None:
         fn.argtypes = [P]
         fn.restype = C.c_int32
     # Effective playback direction (forward incl. ping-pong leg + Backward
-    # setting; the *speed-sign* is NOT folded in — the caller compares it, see
-    # docs/00 "オーディオの逆再生非対応"). Optional: older prebuilt runtimes may not
-    # export it, so bind tolerantly and let the wrapper assume forward when
+    # setting; the *speed-sign* is NOT folded in — the caller compares it. SS
+    # does not support reverse audio playback — SDK doc:
+    # 10_introduction/20_limitations.md). Optional: older prebuilt runtimes may
+    # not export it, so bind tolerantly and let the wrapper assume forward when
     # absent.
     try:
         f.ss_runtime_is_playing_forward.argtypes = [P]
@@ -394,7 +398,8 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_hash_string.argtypes = [C.c_char_p]
     f.ss_runtime_hash_string.restype = C.c_uint32
 
-    # --- Instance / Effect slot API (docs/08, ssruntime.h §484-602) --------
+    # --- Instance / Effect slot API (``ss_effect_slot_*`` /
+    # ``ss_instance_slot_*`` in the generated ssruntime.h) ------------------
     # Effect slots bind to a *resource* + effect-name hash; instance slots are
     # stateless and step against a *child context* per call. The active-event
     # getters resolve the per-slot event off the parent context (slot_index =
@@ -411,8 +416,14 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_effect_slot_step.restype = ss_effect_step_result
     f.ss_effect_slot_get_seed.argtypes = [P]
     f.ss_effect_slot_get_seed.restype = C.c_uint32
-    f.ss_effect_slot_is_independent.argtypes = [P]
-    f.ss_effect_slot_is_independent.restype = C.c_bool
+    # Optional (same stale-lib tolerance as is_finished above): a drop-in whose
+    # libs predate this export must still load — the rig's has_independent()
+    # catches the resulting AttributeError and falls back to keep-redrawing.
+    try:
+        f.ss_effect_slot_is_independent.argtypes = [P]
+        f.ss_effect_slot_is_independent.restype = C.c_bool
+    except AttributeError:
+        pass
 
     f.ss_instance_slot_create.argtypes = []
     f.ss_instance_slot_create.restype = P
@@ -423,8 +434,13 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_instance_slot_step.argtypes = [
         P, ss_event_instance_info, P, C.c_float, C.c_float, C.c_bool]
     f.ss_instance_slot_step.restype = ss_instance_step_result
-    f.ss_instance_slot_is_independent.argtypes = [P]
-    f.ss_instance_slot_is_independent.restype = C.c_bool
+    # Optional export (stale-lib tolerant, as above); the instance rig reads
+    # independence off the step result, so this bind is only a convenience.
+    try:
+        f.ss_instance_slot_is_independent.argtypes = [P]
+        f.ss_instance_slot_is_independent.restype = C.c_bool
+    except AttributeError:
+        pass
 
     f.ss_runtime_get_active_event_instance.argtypes = [P, C.c_uint32]
     f.ss_runtime_get_active_event_instance.restype = ss_event_instance_info
@@ -509,9 +525,9 @@ def _readonly_view(ptr, n):
 class _NativeRuntime:
     """One animation context bound to one resource (.ssab).
 
-    Mirrors the minimal lifecycle in the cold-start guide §5. Use as a context
-    manager or call :meth:`close` explicitly. The ``copy`` resource strategy is
-    the default and recommended path for v1.
+    Use as a context manager or call :meth:`close` explicitly. Resources are
+    bound with the zero-copy ``borrow`` strategy by default (see
+    :meth:`load_ssab_bytes`).
     """
 
     def __init__(self, lib: C.CDLL | None = None):
@@ -565,11 +581,11 @@ class _NativeRuntime:
             raise RuntimeError("ss_resource_create failed")
         if not L.ss_runtime_bind_resource(self._ctx, self._res):
             # Bind failed: destroy the resource we just created (else it leaks)
-            # and restore the previous handle + its backing bytes, which :455
-            # already overwrote. Without the restore, ``self._ssab_bytes`` drops
-            # the only reference to ``prev_bytes`` while the context may still
-            # borrow it via ``prev_res`` -> use-after-free. (The happy path is
-            # unchanged; this only runs on the rare bind failure.)
+            # and restore the previous handle + its backing bytes, which the
+            # assignment above already overwrote. Without the restore,
+            # ``self._ssab_bytes`` drops the only reference to ``prev_bytes``
+            # while the context may still borrow it via ``prev_res`` ->
+            # use-after-free.
             L.ss_resource_destroy(self._res)
             self._res, self._ssab_bytes = prev_res, prev_bytes
             raise RuntimeError("ss_runtime_bind_resource failed")
@@ -608,7 +624,8 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_frame_no(self._ctx, frame)
 
     def play_with_start_frame(self, frame: float):
-        """Start playback from ``frame`` (docs/06 §1, ``play(startFrame)``)."""
+        """Start playback from ``frame`` (``play(startFrame)``; SDK doc:
+        30_core/20_playback_control.md)."""
         self._lib.ss_runtime_play_with_start_frame(self._ctx, float(frame))
         return self
 
@@ -616,7 +633,8 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_frame_rate(self._ctx, int(fps))
 
     def set_animation_section(self, start: int, end: int):
-        """Limit playback/loop to ``[start, end]`` (docs/06 §4 set_animation_section)."""
+        """Limit playback/loop to ``[start, end]`` (``set_animation_section``;
+        SDK doc: 30_core/20_playback_control.md)."""
         self._lib.ss_runtime_set_animation_section(self._ctx, int(start), int(end))
 
     def set_playback_direction(self, direction: int, style: int = STYLE_NORMAL):
@@ -627,10 +645,9 @@ class _NativeRuntime:
     def update(self, dt_seconds: float) -> float:
         """Advance by ``dt_seconds`` **seconds**; returns current frame (float).
 
-        NOTE: the underlying C-API ``ss_runtime_update`` takes **milliseconds**
-        (see ``docs/06_playback_control`` — the cold-start guide §5/§6.2 wrongly
-        says seconds). Ren'Py hands us ``st``/``at`` in seconds, so this wrapper
-        takes seconds and converts. Use :meth:`update_ms` for the raw ms call.
+        NOTE: the underlying C-API ``ss_runtime_update`` takes **milliseconds**.
+        Ren'Py hands us ``st``/``at`` in seconds, so this wrapper converts; use
+        :meth:`update_ms` for the raw ms call.
         """
         return self._lib.ss_runtime_update(self._ctx, dt_seconds * 1000.0)
 
@@ -678,9 +695,10 @@ class _NativeRuntime:
         """True when the head is advancing forward on the timeline.
 
         Accounts for the Backward direction setting and the current ping-pong
-        leg (往路/復路) but NOT the animation-speed sign — callers that support a
-        negative speed must XOR that in (docs/00). Assumes forward when the
-        native runtime does not export the query (older builds)."""
+        leg (outbound/return) but NOT the animation-speed sign — callers that
+        support a negative speed must XOR that in (SDK doc:
+        10_introduction/20_limitations.md). Assumes forward when the native
+        runtime does not export the query (older builds)."""
         fn = getattr(self._lib, "ss_runtime_is_playing_forward", None)
         if fn is None:
             return True
@@ -796,7 +814,7 @@ class _NativeRuntime:
     def cell_meta(self):
         return self._soa_float(self._lib.ss_runtime_get_cell_meta)
 
-    # -- Mesh(deform) SoA buffers (docs/08 §4) ----------------------------
+    # -- Mesh(deform) SoA buffers -----------------------------------------
     # Pre-computed WORLD vertices (coordinate system already applied), part-
     # local 0-based indices, and CSR offset arrays (length num_parts + 1). UVs
     # are interleaved [u, v, ...] at offset vertex_offset*2. Empty (len 0) under
@@ -836,7 +854,7 @@ class _NativeRuntime:
     def shape_vertex_counts(self):
         return self._soa_int32(self._lib.ss_runtime_get_shape_vertex_counts)
 
-    # -- Instance / Effect slots (docs/08 "Instance / Effect") ------------
+    # -- Instance / Effect slots ------------------------------------------
     # Instance: stateless slot stepped against a *child* context per call.
     # Effect: stateful slot bound to this runtime's resource + an effect hash.
     # ``slot_index`` for the active-event getters is the part index from the
@@ -910,7 +928,7 @@ class _NativeRuntime:
 
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
                          parent_looped, y_flip=True, vert_stride=2):
-        """Advance one effect slot (docs/08 §2).
+        """Advance one effect slot.
 
         Returns ``(visible, draw_plan_bytes)``: the ``EffectDrawPlan``
         FlatBuffer is copied out immediately (the raw pointer is valid only
@@ -931,10 +949,11 @@ class _NativeRuntime:
 
         ``(visible, draw_plan_view)`` where ``draw_plan_view`` is a read-only
         ``memoryview`` aliasing the slot's internal buffer — valid only until the
-        next ``step`` on the **same** slot (ssruntime.h §27-37).
-        ``effectplan.build_effect_batches`` drains it into Python lists in a
-        single pass, so per-call use is safe; never retain the view past that
-        call. Mirrors SSPlayerForUnity's zero-copy effect ``Append``.
+        next ``step`` on the **same** slot (see ``ss_effect_step_result`` in the
+        generated ssruntime.h). ``effectplan.build_effect_batches`` drains it
+        into Python lists in a single pass, so per-call use is safe; never
+        retain the view past that call. Mirrors SSPlayerForUnity's zero-copy
+        effect ``Append``.
         """
         r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
                                        fps, parent_looped, y_flip, vert_stride)

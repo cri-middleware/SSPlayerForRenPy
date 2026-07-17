@@ -4,12 +4,12 @@
 For each ``.ssab`` it: parses metadata, plays the first animation through every
 frame, collects which DrawBatchKinds appear, runs the M1 Normal-quad geometry
 pipeline on a sample frame, and validates the quads against the real atlas
-size. Prints a per-pack verdict: what M1 can render now vs. what needs a later
-milestone.
+size. Prints a per-pack verdict: what renders with the Normal-quad pipeline
+(M1) vs. which draw-batch kinds a pack additionally requires.
 
 Usage:
     python tools/analyze.py [dir_or_ssab ...]
-Default target: game/sprites/overall (the converted "overall" test project).
+Default target: game/ss_assets/overall (the converted "overall" test project).
 """
 
 from __future__ import annotations

@@ -62,7 +62,7 @@ init -10 python:
     # it from the packaged data, or it ships twice (once embedded, once dead
     # weight under base/). Instead it is added to the Xcode target via Embed &
     # Sign — scripts/deploy-ios.sh generates the project and the demo/consumer
-    # both do that one step by hand (docs/export.md -> iOS Export).
+    # both do that one step by hand (docs/en/export.md -> iOS Export).
     build.classify('**/spritestudio/libs/ios/**', None)
     build.classify('**/spritestudio/libs/web/**', 'web')
 
@@ -173,20 +173,21 @@ init -10 python:
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
-    # Mask / clipping (09_mask). Needs the mesh backend + custom shaders +
-    # offscreen Render-to-texture; set False to draw masked parts plainly
-    # (geometry stays correct, the mask is simply not applied). The coverage
-    # bitmap is sized to the writers' world bbox × the supersample factor, capped
-    # at this long edge (px). The mask edge is a hard 1-bit test (no AA), so its
-    # sharpness is limited by the coverage resolution: SUPERSAMPLE > 1 renders the
-    # coverage above the bbox's world-pixel size so a scaled / high-DPI (Retina)
-    # display doesn't show blocky stair-steps along the mask boundary. 2 suits a
-    # 2× Retina display; raise it if the player is scaled up further.
+    # Mask / clipping (SDK doc: 40_components/40_mask.md). Needs the mesh
+    # backend + custom shaders + offscreen Render-to-texture; set False to draw
+    # masked parts plainly (geometry stays correct, the mask is simply not
+    # applied). The coverage bitmap is sized to the writers' world bbox × the
+    # supersample factor, capped at this long edge (px). The mask edge is a hard
+    # 1-bit test (no AA), so its sharpness is limited by the coverage resolution:
+    # SUPERSAMPLE > 1 renders the coverage above the bbox's world-pixel size so a
+    # scaled / high-DPI (Retina) display doesn't show blocky stair-steps along the
+    # mask boundary. 2 suits a 2× Retina display; raise it if the player is
+    # scaled up further.
     SS_ENABLE_MASK = True
     SS_MASK_COVERAGE_MAX_DIM = 2048
     SS_MASK_COVERAGE_SUPERSAMPLE = 2.0
-    # Deprecated no-op, kept so existing overrides don't error: the mask edge is
-    # antialiased solely by SS_MASK_COVERAGE_SUPERSAMPLE (above) — tune that instead.
+    # Deprecated no-op retained for compatibility; mask-edge antialiasing is
+    # controlled solely by SS_MASK_COVERAGE_SUPERSAMPLE.
     SS_MASK_ANTIALIAS = True
 
     # User-shader effects (SS6 ss-* family: sepia / outline / bmask / hsb / step /
@@ -207,8 +208,9 @@ init -10 python:
     # control flow (jumps, sound) prefer draining ss_poll_events() from a screen.
     SS_ENABLE_EVENTS = True
 
-    # Play SS Audio timeline events through Ren'Py's audio system (docs/11 §4 +
-    # docs/00). When on, the displayable resolves each Audio event to its sound
+    # Play SS Audio timeline events through Ren'Py's audio system (SDK docs:
+    # 40_components/90_audio.md + 10_introduction/20_limitations.md). When on,
+    # the displayable resolves each Audio event to its sound
     # file (via the pack's SoundList), preloads the files at setup if the pack
     # carries any (lazy: nothing happens for packs with no audio), and plays each
     # trigger — forward playback only (reverse / ping-pong return legs and
@@ -303,7 +305,7 @@ init -10 python:
     # Register premultiplied gl_blend_func entries for the SS framebuffer
     # BlendTypes Ren'Py doesn't ship. Ren'Py's gl_blend_func gives the same raw
     # glBlendFuncSeparate/glBlendEquationSeparate access WebGL has, so we mirror
-    # SSPlayerForWeb's applyBlend (spec §7) EXACTLY — Screen / Invert / Exclusion
+    # SSPlayerForWeb's applyBlend EXACTLY — Screen / Invert / Exclusion
     # included (Godot's 4-mode CanvasItemMaterial can't express those). Tuple is
     # (rgb_eq, rgb_src, rgb_dst, alpha_eq, alpha_src, alpha_dst); the alpha half
     # is always normal "over" so coverage/alpha composites correctly. All factors
@@ -357,10 +359,11 @@ init -10 python:
     _SS_USER_NEEDS_TEXEL = set()
     _SS_USER_NEEDS_CELL = set()
 
-    # PartColor shader (10_parts_color §1-4), used by the "mesh" backend. The
-    # CPU reference is framedata.eval_partcolor — keep this GLSL in step with it.
-    # Registered defensively: older Ren'Py without register_shader just skips it
-    # (the mesh backend then falls back to the transform backend).
+    # PartColor shader (SDK doc: 40_components/50_parts_color.md), used by the
+    # "mesh" backend. The CPU reference is framedata.eval_partcolor — keep this
+    # GLSL in step with it. Registered defensively: older Ren'Py without
+    # register_shader just skips it (the mesh backend then falls back to the
+    # transform backend).
     if hasattr(renpy, "register_shader"):
         try:
             renpy.register_shader(
@@ -370,7 +373,7 @@ init -10 python:
                     attribute vec2 a_tex_coord;
                     varying vec2 v_tex_coord;
                     uniform vec4 u_ss_color;   // (r,g,b,a) 0..1, a = hierarchical alpha
-                    uniform vec3 u_ss_varg;    // (1+c.x*rate, c.y*rate, c.z) from §1-4-2
+                    uniform vec3 u_ss_varg;    // (1+c.x*rate, c.y*rate, c.z)
                 """,
                 vertex_300="v_tex_coord = a_tex_coord;",
                 fragment_300="""
@@ -380,7 +383,7 @@ init -10 python:
                     // opacity). Work in straight space for the PartColor formula,
                     // then re-premultiply so opacity actually dims the part.
                     vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
-                    // out_rgb = s*varg.x + mix(1, s, varg.z)*color*varg.y  (§1-4-3)
+                    // out_rgb = s*varg.x + mix(1, s, varg.z)*color*varg.y
                     vec3 wp = mix(vec3(1.0), s, u_ss_varg.z);
                     vec3 rgb = s * u_ss_varg.x + wp * u_ss_color.rgb * u_ss_varg.y;
                     float a = p.a * u_ss_color.a;
@@ -416,7 +419,7 @@ init -10 python:
 
         # Batched variants: per-vertex colour (and PartColor varg) so a whole
         # same-texture run / a whole effect batch draws in ONE mesh + ONE blit
-        # (docs/07 §2, 08 §2 dynamic batching). Same fragment math as the
+        # (dynamic batching). Same fragment math as the
         # per-part shaders above, but reading varyings instead of uniforms.
         try:
             renpy.register_shader(
@@ -466,8 +469,9 @@ init -10 python:
         except Exception as e:
             renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
 
-        # -- Mask / clipping (09_mask §3-2, coverage-bitmap hybrid) ----------
-        # Two shaders implement the spec's stencil over an offscreen coverage:
+        # -- Mask / clipping (coverage-bitmap hybrid) ------------------------
+        # Two shaders implement the spec's stencil over an offscreen coverage
+        # (SDK doc: 40_components/40_mask.md):
         #
         #   ss.mask_write   — rasterizes ONE writer into the coverage bitmap.
         #       Cuts out by the part's texture alpha vs the per-frame threshold
@@ -542,12 +546,12 @@ init -10 python:
                 # NOTE: everything that references a uniform/varying MUST live in
                 # this fragment_NNN part — Ren'Py only declares variables it sees
                 # *here* (it does not scan fragment_functions), so the replay is
-                # inlined. SINGLE-TAP (hardened): the earlier 4-tap rotated-grid AA
-                # made this an outer×inner loop = up to 4×24 = 96 unrolled
-                # iterations (ES 1.00 / GLSL 120 must unroll constant loops), each
-                # with a texture sample — too large for reliable Metal/ANGLE
-                # compilation. Now one tap; the mask edge is antialiased instead by
-                # SS_MASK_COVERAGE_SUPERSAMPLE (coverage rendered above bbox px).
+                # inlined. SINGLE-TAP by design: a multi-tap AA grid would nest
+                # with the 24-iteration replay loop (ES 1.00 / GLSL 120 must
+                # unroll constant loops) — up to 96 unrolled iterations, each
+                # with a texture sample, too large for reliable Metal/ANGLE
+                # compilation. The mask edge is antialiased by
+                # SS_MASK_COVERAGE_SUPERSAMPLE instead.
                 # This mirrors Godot's ss_library_fs.glsl ss_mask_passes() exactly,
                 # float-emulated (no integer bitwise ops in ES 1.00): the writer's
                 # bit lives in coverage channel i/8 bit i%8 (mod/exp2 test), invert
@@ -558,7 +562,7 @@ init -10 python:
                         vec2 uv = v_mask_uv;
                         if (uv.x < 0.0 || uv.x > 1.0 ||
                             uv.y < 0.0 || uv.y > 1.0) {
-                            // bbox-outside == no writer covers it (§3-2): a
+                            // bbox-outside == no writer covers it: a
                             // visible-inside target discards, an outside target
                             // draws.
                             if (inside) discard;
@@ -588,7 +592,7 @@ init -10 python:
                                 else stencil = mod(stencil + 1.0, 256.0); // incr
                             }
                             bool masked = stencil >= 0.5;
-                            if (masked != inside) discard;               // §2-4
+                            if (masked != inside) discard;               // inside/outside rule
                         }
                     }
                     // ss.partcolor colour math (premultiplied in/out), PER-VERTEX
@@ -652,7 +656,8 @@ init -10 python:
                 vec4 p = texture2D(t, uv);
                 return vec4(p.a > 0.0 ? p.rgb / p.a : p.rgb, p.a);
             }
-            // PartColor composite (10_parts_color §1-4-3), straight-space.
+            // PartColor composite (SDK doc: 40_components/50_parts_color.md),
+            // straight-space.
             vec3 ss_pc_blend(vec3 rgb, vec3 color, vec3 varg) {
                 return rgb * varg.x + mix(vec3(1.0), rgb, varg.z) * color * varg.y;
             }
@@ -966,7 +971,7 @@ init -10 python:
     except Exception:
         _SS_TEXTURE_WRAP = None
 
-    # Batch draw (docs/07 §2, 08 §2): pack per-vertex colour into custom Mesh2
+    # Batch draw: pack per-vertex colour into custom Mesh2
     # vertex layouts so a run of same-texture Normal parts — and a whole effect
     # batch's particles — go through one Mesh2 + one blit instead of one each.
     #   ss.partcolor (Normal): a_tex_coord(2) + a_ss_color(4) + a_ss_varg(3)
@@ -1134,8 +1139,9 @@ init -10 python:
         The core asks us to ``acquire`` each texture path (gamedir-relative) an
         animation needs; we back that with Ren'Py ``Image`` displayables, which
         Ren'Py's own image / texture cache then loads and predicts. ``images()``
-        feeds the displayable's ``visit`` so textures are preloaded (no first-
-        playback stutter). The core never frees anything — Ren'Py owns lifetime.
+        feeds the displayable's incremental texture prewarm
+        (``_prewarm_textures``) so atlases are GPU-resident before first use.
+        The core never frees anything — Ren'Py owns lifetime.
         """
         def __init__(self):
             self._cache = {}    # path -> Image
@@ -1161,7 +1167,7 @@ init -10 python:
         """Pack a run of Normal / Shape parts into flat (geometry, attributes,
         indices) arrays for the ``_SS_PC_LAYOUT`` mesh (a_tex_coord + a_ss_color +
         a_ss_varg) — the per-vertex build shared by the batched, masked and
-        user-shader mesh draws (previously copy-pasted in all three).
+        user-shader mesh draws.
 
         Per vertex: world position offset to screen px by (ox, oy); UV normalized
         by the atlas size (tw, th); per-corner PartColor RGBA + the shader ``varg``
@@ -1234,7 +1240,7 @@ init -10 python:
             # Textures and external-instance packs are exported co-located with
             # the .ssab, so the directory that holds the .ssab is the single base
             # for all of them — the caller does not need a separate sprites_subdir.
-            # `sprites_subdir`, when given, is just a legacy prefix kept for
+            # `sprites_subdir`, when given, is an optional prefix kept for
             # backwards compatibility; the base is always re-derived from the
             # resolved .ssab path below.
             _relpath = (sprites_subdir.rstrip("/\\") + "/" + ssab) if sprites_subdir else ssab
@@ -1247,13 +1253,14 @@ init -10 python:
             self.speed = speed
             # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (docs/06). Defaults to on.
+            # head stays a raw float either way (SDK doc:
+            # 30_core/20_playback_control.md). Defaults to on.
             self._sub_frame = bool(sub_frame)
             # Layout size. Given as (w, h) (or a single number for a square),
             # render() reports a box of that size and centers the animation
             # within it, so `xalign` / `xpos` / `pos` and container layout work
-            # like a normal image. None (default) keeps the legacy behaviour of
-            # filling the whole offered area (then position with xoffset/yoffset).
+            # like a normal image. None (default) fills the whole offered area
+            # (position with xoffset/yoffset).
             # `zoom` / Transform still scale the rendered result either way.
             if size is None:
                 self._size = None
@@ -1265,8 +1272,9 @@ init -10 python:
             # part's current position every frame (e.g. a speech bubble on the
             # head, an item in the hand). v1 is translation-only.
             self._attachments = dict(attachments) if attachments else None
-            # Optional event callbacks (docs/06 §4 recommended Player API). Each
-            # is invoked as cb(self, frame_index, event) for the per-part events
+            # Optional event callbacks (the recommended Player API; SDK doc:
+            # 30_core/20_playback_control.md). Each is invoked as
+            # cb(self, frame_index, event) for the per-part events
             # and cb(self) for started/finished/looped, guarded so a raising
             # callback can never break rendering. Prefer module-level functions /
             # store methods (lambdas/locals defeat rollback pickling).
@@ -1372,9 +1380,9 @@ init -10 python:
             template itself, the template would be poisoned and every later
             `show <tag> <attr>` would call ``_duplicate`` on a now-non-
             duplicatable template and get `self` back — never switching the
-            animation. (This silently broke SSCharacter lip-flap: showing the
-            character with no attribute, then switching to ``talk``, kept
-            replaying the idle template instead of playing ``talk``.)"""
+            animation. (Otherwise SSCharacter lip-flap silently breaks: a
+            character shown with no attribute, then switched to ``talk``, keeps
+            replaying the idle template.)"""
             if not getattr(self, "_duplicatable", True):
                 return self
 
@@ -1393,7 +1401,11 @@ init -10 python:
                 self.ssab,
                 animation=target_anim,
                 sprites_subdir=self.sprites_subdir,
-                loop=self.loop,
+                # The template's ORIGINAL loop — self.loop is mutated to 1 while
+                # a sequence is queued, and copying that would make the copy's
+                # final animation play once and freeze instead of honouring the
+                # constructor's loop.
+                loop=self._initial_loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
                 size=self._size,
@@ -1430,17 +1442,26 @@ init -10 python:
             # acquires this pack's textures), and the pack_reader resolves external
             # instance packs co-located with the .ssab (also archive-aware).
             self._rm = RenPyResourceManager()
-            self._core = SSInternalPlayer(
-                data, lib=_SS_LIB, base_dir=self._base_dir,
-                resource_manager=self._rm,
-                pack_reader=_ss_renpy_pack_reader(self._base_dir),
-                sub_frame=self._sub_frame,
-                enable_events=SS_ENABLE_EVENTS,
-            )
+            try:
+                self._core = SSInternalPlayer(
+                    data, lib=_SS_LIB, base_dir=self._base_dir,
+                    resource_manager=self._rm,
+                    pack_reader=_ss_renpy_pack_reader(self._base_dir),
+                    sub_frame=self._sub_frame,
+                    enable_events=SS_ENABLE_EVENTS,
+                )
+            except Exception as e:
+                # Keep the message diagnosable: a corrupt/truncated pack would
+                # otherwise surface as a bare struct.error from the FlatBuffers
+                # walk with no hint of which file caused it.
+                self._core = None
+                raise Exception(
+                    "ss: cannot load .ssab %r — the pack data is invalid "
+                    "(re-export it from the .sspj). [%s]" % (self.ssab, e))
             self._start_initial()
-            # Preload this pack's audio once, at setup, if it has any (docs/11 §4
-            # "事前ロード" + lazy init: no-op for packs with no sound). Done here,
-            # before the first update() fires any Audio event.
+            # Preload this pack's audio once, at setup, if it has any (lazy:
+            # no-op for packs with no sound). Done here, before the first
+            # update() fires any Audio event.
             self._preload_audio()
 
         def _start_initial(self, start_frame=-1.0):
@@ -1521,14 +1542,15 @@ init -10 python:
             for s in fe.signals:
                 self._call_cb(self.on_signal, fe.frame_index, s)
             for a in fe.audios:
-                # Play it ourselves (docs/11 §4: the Player, not the runtime,
-                # plays audio) AND notify: on_audio stays a notification hook so a
-                # game can react (subtitles, ...) without owning playback.
+                # Play it ourselves (the Player, not the runtime, plays audio —
+                # SDK doc: 40_components/90_audio.md) AND notify: on_audio stays
+                # a notification hook so a game can react (subtitles, ...)
+                # without owning playback.
                 if SS_ENABLE_AUDIO:
                     self._play_audio(fe.frame_index, a)
                 self._call_cb(self.on_audio, fe.frame_index, a)
 
-        # -- audio (docs/11 §4 + docs/00) ----------------------------------
+        # -- audio (SDK doc: 40_components/90_audio.md) --------------------
         def _audio_full_path(self, file_ref):
             """Join an ssab-relative sound reference with this pack's base dir
             (like a texture path) and confirm Ren'Py can load it; "" if not."""
@@ -1543,7 +1565,8 @@ init -10 python:
             return path
 
         def _preload_audio(self):
-            """Warm this pack's sound files at setup, once (docs/11 §4 preload).
+            """Warm this pack's sound files at setup, once (SDK doc:
+            40_components/90_audio.md).
 
             Ren'Py streams + decodes audio on `play`; there is no public API to
             pre-decode a sound, so "preload" here means resolving each file and
@@ -1575,11 +1598,13 @@ init -10 python:
                                     "audio preload failed for %r (%r)" % (path, e))
 
         def _play_audio(self, frame, audio):
-            """Play one SS Audio timeline event (docs/11 §4 + docs/00). Never raises.
+            """Play one SS Audio timeline event (SDK doc:
+            40_components/90_audio.md). Never raises.
 
             Forward-only: skip when the effective direction is backward — the
             runtime's is_playing_forward (direction + ping-pong leg) XOR a
-            negative speed (docs/00: most decoders can't play audio in reverse).
+            negative speed (most decoders can't play audio in reverse; SDK doc:
+            10_introduction/20_limitations.md).
             ``loop_num`` is a *play count* (SS has no infinite loop), realised by
             queueing the file that many times on the channel."""
             try:
@@ -1673,9 +1698,9 @@ init -10 python:
             we animate we ``renpy.redraw`` every frame, so the interaction never
             idles for Ren'Py to drain it in the background. The upshot: a large
             atlas a long animation doesn't reference until deep into its timeline
-            (fire_sword's character atlas ``fire_sword.png`` is 4.9 MB and first
-            becomes visible at cinema frame ~108) uploads mid-playback and stalls
-            that one frame — the classic first-play-only hitch that never recurs
+            (e.g. a multi-megabyte atlas first referenced a hundred frames into
+            a cinematic) uploads mid-playback and stalls that one frame — the
+            classic first-play-only hitch that never recurs
             (the texture stays GPU-resident across loops). The Godot / Web ports
             never show it because they upload every cellmap at load; we do the
             same here, spread over the first frames so neither the show frame nor
@@ -1688,7 +1713,7 @@ init -10 python:
                 try:
                     # A throwaway render drives the full upload path (decode +
                     # ready_one_texture); the atlas then lives in Ren'Py's texture
-                    # cache, so the real draw — this frame or frame 108 — is free.
+                    # cache, so the real draw — this frame or much later — is free.
                     renpy.render(img, width, height, st, at)
                 except Exception:
                     pass
@@ -1730,13 +1755,27 @@ init -10 python:
             # stays consistent with a single animation (no mid-update frame skew).
             if plan.finished:
                 if self._anim_queue:
-                    nxt = self._anim_queue.pop(0)
-                    core.set_loop(1 if self._anim_queue else self._initial_loop)
-                    core.set_animation(nxt)
-                    core.play()
-                    self.animation = core.animation
-                    self._call_cb(self.on_started)
-                    renpy.redraw(self, 0)
+                    # Advance to the next queued animation, skipping (with a
+                    # one-time warning) any name the pack doesn't have —
+                    # otherwise a typo'd entry silently replays the previous
+                    # clip with no diagnostics.
+                    nxt = None
+                    while self._anim_queue:
+                        cand = self._anim_queue.pop(0)
+                        core.set_loop(1 if self._anim_queue else self._initial_loop)
+                        if core.set_animation(cand):
+                            nxt = cand
+                            break
+                        self._warn_once(("chain", cand),
+                                        "sequence animation %r not found; skipped"
+                                        % (cand,))
+                    if nxt is not None:
+                        core.play()
+                        self.animation = core.animation
+                        self._call_cb(self.on_started)
+                        renpy.redraw(self, 0)
+                    else:
+                        self._call_cb(self.on_finished)
                 else:
                     self._call_cb(self.on_finished)
 
@@ -1750,8 +1789,9 @@ init -10 python:
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 # Mask: rasterize each distinct coverage once before drawing the
-                # targets that sample it (09_mask §3-2). Failure leaves the dict
-                # empty so masked parts simply draw unmasked.
+                # targets that sample it (SDK doc: 40_components/40_mask.md).
+                # Failure leaves the dict empty so masked parts simply draw
+                # unmasked.
                 cov_by_id = {}
                 if SS_ENABLE_MASK:
                     self._build_coverages(cov_by_id, plan.items, ox, oy, st, at,
@@ -1973,7 +2013,7 @@ init -10 python:
             past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
             clamping. This is the only backend that is shear / free-deform exact
             and honours the UV transforms — the Ren'Py-native form of what the
-            the reference players do. ``parts_color`` is applied per-part
+            reference players do. ``parts_color`` is applied per-part
             (uniform) via the ``ss.partcolor`` shader.
 
             On any error returns False so the caller falls back to the transform
@@ -2026,7 +2066,7 @@ init -10 python:
                                 "transform backend" % (e,))
                 return False
 
-        # -- mask / clipping (09_mask §3-2): coverage + replay --------------
+        # -- mask / clipping: coverage + replay -----------------------------
         def _white_render(self, st, at):
             """A small white tex0 for texture-less shape writers (no cutout)."""
             if self._mask_white is None:
@@ -2081,7 +2121,8 @@ init -10 python:
             Returns ``(coverage_render, cov_w, cov_h)`` or None. The coverage is
             sized to the writers' world bbox (long edge capped at
             SS_MASK_COVERAGE_MAX_DIM); each writer is drawn with ``ss.mask_write``
-            under *additive* blend so disjoint bits OR together (09_mask §3-2-1).
+            under *additive* blend so disjoint bits OR together (SDK doc:
+            40_components/40_mask.md).
             Built in bbox-local pixel space so the target's ``v_mask_uv`` (derived
             from a_position via the same bbox) indexes it directly."""
             if _SS_Mesh2 is None or not fm.writers:
@@ -2420,9 +2461,10 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            # Disabled: Eagerly predicting unused textures causes mid-animation
-            # stutters when the background thread finishes decoding massive PNGs
-            # and stalls the main thread to upload them to the GPU.
+            # Deliberately returns no children: predicting every atlas up front
+            # stalls mid-animation when the background decode finishes and the
+            # main thread uploads massive PNGs. Atlases are prewarmed a few per
+            # frame by _prewarm_textures() instead.
             return []
 
         # -- hide / destroy: stop this player's audio -----------------------
@@ -2444,26 +2486,36 @@ init -10 python:
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
-        # engine-independent core. set_animation/play are split (docs/06 §4):
-        # set_animation loads+poses; ss_play starts.
+        # engine-independent core. set_animation/play are split (SDK doc:
+        # 30_core/20_playback_control.md): set_animation loads+poses; ss_play
+        # starts.
         def ss_set_animation(self, name):
             """Load + pose animation ``name`` (does NOT start playback).
 
             Front-loads the heavy work — native setup, texture acquisition, and
             Instance child-context allocation — so a later :meth:`ss_play` starts
-            instantly (docs/06 §4 setAnimation/play split).
+            instantly (the setAnimation/play split).
             """
             if self._core is None:
-                if name:
-                    self.animation = name      # build straight into `name`
+                # First build: _ensure() arms the constructor's animation via
+                # _start_initial(); fall through so `name` is applied on top
+                # (the pack's atlases are shared, so the extra set_animation
+                # costs no meaningful texture work).
                 self._ensure()
-                return True
             if not name or name == self._core.animation:
                 return True
             if not self._core.set_animation(name):
                 self._warn_once(("anim", name),
                                 "setup_animation(%r) failed" % name)
                 return False
+            # An explicit switch overrides any pending sequence: drop the queue
+            # and restore the constructor loop, or a leftover chain (e.g. from a
+            # sequence constructor whose first clip _ensure just armed) would
+            # resume after `name` finishes, and its intermediate loop=1 would
+            # cap `name` at a single play.
+            self._anim_queue = []
+            self.loop = self._initial_loop
+            self._core.set_loop(self._initial_loop)
             self.animation = self._core.animation
             renpy.redraw(self, 0)
             return True
@@ -2514,9 +2566,10 @@ init -10 python:
             self._stop_audio()
 
         def ss_stop_audio(self, fadeout=0.0):
-            """Stop SS audio this player is currently sounding (docs/11 §4). Called
-            automatically on hide / scene change and ss_stop(); call it directly to
-            cut the sound early or with a `fadeout` (seconds)."""
+            """Stop SS audio this player is currently sounding (SDK doc:
+            40_components/90_audio.md). Called automatically on hide / scene
+            change and ss_stop(); call it directly to cut the sound early or
+            with a `fadeout` (seconds)."""
             self._stop_audio(fadeout=fadeout)
 
         def ss_is_playing(self):
@@ -2603,7 +2656,7 @@ init -10 python:
             """Whether ``name`` is hidden on the last rendered frame."""
             return self._core.is_part_hidden(name) if self._core else True
 
-    # Back-compat alias for the pre-rename class name (README / older scripts).
+    # Backwards-compatible alias for the original public class name.
     SpriteStudioDisplayable = SSPlayer
 
 

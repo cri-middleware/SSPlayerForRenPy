@@ -1,4 +1,4 @@
-"""Instance-part child playback, recursive (docs/08 §1).
+"""Instance-part child playback, recursive.
 
 A SpriteStudio **Instance part** embeds another animation, played in sync with
 (or independently of) the parent. The Brain does the time/loop bookkeeping; the
@@ -35,7 +35,7 @@ MAX_DEPTH = 8
 def display_frame(frame_no: float, sub_frame: bool):
     """Frame to *render*: raw float when sub-frame is on, else floored.
 
-    The playback head stays a raw float regardless (docs/08 §3) — only the
+    The playback head stays a raw float regardless — only the
     value handed to ``get_frame_data`` is floored when sub-frame is off.
     """
     return frame_no if sub_frame else float(math.floor(frame_no))
@@ -51,11 +51,12 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     Effect parts are stepped. Shared by the root player and Instance-child
     players (both ``SSInternalPlayer``, via :meth:`SSInternalPlayer.render_at`).
 
-    Masking (09_mask): when ``part_infos`` + ``frame_mask`` are supplied (the
-    root's ``update``), each Normal/Mesh target is stamped via
-    :func:`mask.attach_target`, and a masked **instance** part propagates its
-    coverage to the *whole* sub-animation via :func:`mask.attach_inherited`
-    (single-stage §3-2-2). Instance children are seeked through ``render_at``
+    Masking (SDK doc: 40_components/40_mask.md): when ``part_infos`` +
+    ``frame_mask`` are supplied (the root's ``update``), each Normal/Mesh target
+    is stamped via :func:`mask.attach_target`, and a masked **instance** part
+    propagates its coverage to the *whole* sub-animation via
+    :func:`mask.attach_inherited` (single-stage). Instance children are seeked
+    through ``render_at``
     *without* these args, so they never build/attach their own coverage — they
     only inherit, exactly as the spec / Godot port require.
     """
@@ -110,8 +111,8 @@ def build_subplayer(owner, part, depth):
     *external* (``owner._loader(pack_name)`` per ``external_instances``, which also
     merges that pack's textures into the shared map). Construction of the child
     (shared lib / rm / loader / texmap / base_dir) is delegated to
-    :meth:`SSInternalPlayer.make_child`, so this module no longer reaches into the
-    owner's private construction surface. Returns ``None`` (caller skips the slot)
+    :meth:`SSInternalPlayer.make_child`, keeping the owner's construction
+    details out of this module. Returns ``None`` (caller skips the slot)
     when the pack/animation can't resolve.
     """
     if depth > MAX_DEPTH:
@@ -154,6 +155,10 @@ class InstanceRig:
     def __init__(self, owner, depth=0):
         self._rt = owner._rt
         self._children = {}   # part_index -> _Child
+        # part indices whose slot most recently stepped as independent. Fed from
+        # each step's result (no extra FFI, and the flag only changes on an
+        # EventInstance edge), so the per-frame redraw gate reads it for free.
+        self._independent = set()
         if depth > MAX_DEPTH:
             return
         for p in owner._meta.instance_parts():
@@ -169,8 +174,20 @@ class InstanceRig:
     def has(self) -> bool:
         return bool(self._children)
 
+    def has_independent(self) -> bool:
+        """Whether anything here still moves once the parent's head stops: a
+        slot running on its own clock, or a dependent child that itself hosts an
+        independent effect/instance. Liveness for the host's redraw gate."""
+        if self._independent:
+            return True
+        # A dependent (parent-synced) child can still contain an independent
+        # descendant that must keep animating while this parent is stopped.
+        return any(ch.sub._has_independent_rigs()
+                   for ch in self._children.values())
+
     def reset(self):
         """Re-arm slots and recurse (call when the parent replays / heads out)."""
+        self._independent.clear()
         for ch in self._children.values():
             self._rt.instance_slot_reset(ch.slot)
             ch.sub.reset_slots()
@@ -180,7 +197,7 @@ class InstanceRig:
 
         Returns ``[]`` when the part has no resolvable child or the slot reports
         not-visible. Always steps the slot (independent children keep their own
-        clock — docs/08 §3). On an ``EventInstance`` edge the child is
+        clock). On an ``EventInstance`` edge the child is
         (re)started so its own start events fire.
         """
         ch = self._children.get(part_index)
@@ -189,6 +206,11 @@ class InstanceRig:
         ev = self._rt.active_event_instance(part_index)
         r = self._rt.instance_slot_step(
             ch.slot, ev, ch.sub.ctx, parent_frame, dt, parent_looped)
+        # Cache independence off the step result (the gate then needs no FFI).
+        if r.independent:
+            self._independent.add(part_index)
+        else:
+            self._independent.discard(part_index)
         if r.transitioned:
             ch.sub.play()
         if not r.visible:

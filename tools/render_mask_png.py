@@ -12,7 +12,7 @@ It rasterizes the coverage on the CPU (each writer's quad/shape, with the same
 ``mask_passes`` per pixel and clears alpha where it fails. Normal parts only
 (the Jigsaw targets + textured masks); a Mesh writer is filled by triangles.
 
-Requires Pillow (dev venv).  Usage: python tools/render_mask_png.py [pack.ssab] [anim] [--frame N] [--out f.png] [--no-mask]
+Requires Pillow (`pip install Pillow`).  Usage: python tools/render_mask_png.py [pack.ssab] [anim] [--frame N] [--out f.png] [--no-mask]
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def build_coverage(fm, atlases, canvas_size, off):
 
 
 def apply_mask(layer, ap, fm, cover, off):
-    """Zero ``layer`` alpha wherever ``mask_passes`` discards (the §3-2 replay)."""
+    """Zero ``layer`` alpha wherever ``mask_passes`` discards (the per-pixel replay of the mask shader)."""
     w, h = layer.size
     px = layer.load()
     bw, bh = fm.bsize

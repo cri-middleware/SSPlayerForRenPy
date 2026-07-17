@@ -56,10 +56,10 @@ class CellMapInfo:
 
 @dataclass(frozen=True)
 class SoundFileInfo:
-    """One entry of a pack ``SoundList`` (docs/11 §4 audio integration).
+    """One entry of a pack ``SoundList`` (SDK doc: 40_components/90_audio.md).
 
     ``file_path`` is the audio file **as stored** in the ``.ssab`` — an
-    ssab-relative reference (docs/05 §3.0: no normalisation), which the host
+    ssab-relative reference (no normalisation), which the host
     joins with the pack base dir just like a cellmap ``image_path``.
     ``time_total`` is the clip length in milliseconds. ``list_name_hash`` +
     ``name_hash`` are exactly the pair an :class:`~ss_renpy.events.AudioEvent`
@@ -83,10 +83,11 @@ class PartInfo:
     Effect parts ``ref_effect_name_hash`` keys the embedded effect. All ref
     fields are empty/0 for other part types.
 
-    The four ``*_mask`` flags are the **static** mask attributes (09_mask §1):
-    they never change per frame, so a Player reads them once. Their meaning is
-    role-dependent — see the ``is_*`` helpers below for the canonical
-    classification (pure mask / writer / clipping / target polarity).
+    The four ``*_mask`` flags are the **static** mask attributes (SDK doc:
+    40_components/40_mask.md): they never change per frame, so a Player reads
+    them once. Their meaning is role-dependent — see the ``is_*`` helpers below
+    for the canonical classification (pure mask / writer / clipping / target
+    polarity).
     """
     index: int
     name: str
@@ -117,7 +118,7 @@ class PartInfo:
 
     @property
     def is_pure_mask(self) -> bool:
-        """Writes the stencil but draws no colour (09_mask §1-2).
+        """Writes the stencil but draws no colour.
 
         ``pure_mask = PartTypeMask || draw_as_mask``. (Only Shape/Text/Nines can
         be turned pure via ``draw_as_mask``; the flag is ignored on other kinds
@@ -127,7 +128,7 @@ class PartInfo:
 
     @property
     def is_mask_writer(self) -> bool:
-        """Contributes to the stencil/coverage at all (09_mask §1-2).
+        """Contributes to the stencil/coverage at all.
 
         ``is_writer = pure_mask || mask_write``.
         """
@@ -135,7 +136,7 @@ class PartInfo:
 
     @property
     def is_clipping(self) -> bool:
-        """A drawing part that also writes the stencil (09_mask §1-2).
+        """A drawing part that also writes the stencil.
 
         ``is_clipping = mask_write && !pure_mask`` — draws its own colour *and*
         clips parts drawn after it (higher draw priority).
@@ -260,7 +261,7 @@ class SsabMeta:
         return [p for p in self.parts() if p.is_effect]
 
     def external_instances(self) -> list[ExternalInstanceInfo]:
-        """External ``.ssab`` packs referenced by Instance parts (docs/08 §1)."""
+        """External ``.ssab`` packs referenced by Instance parts."""
         out: list[ExternalInstanceInfo] = []
         for i in range(self._root.ExternalInstancesLength()):
             e = self._root.ExternalInstances(i)
@@ -286,7 +287,7 @@ class SsabMeta:
         ``DrawBatch.texture_hash`` is an FNV1a hash tied to the cellmap. The SDK
         carries both the cellmap *name* hash and the *image-path* hash, so we
         register both as keys to the same image path — whichever the runtime
-        emits, lookups resolve. (M1 confirms which one is actually used.)
+        emits, lookups resolve.
         """
         m: dict[int, str] = {}
         for c in self.cellmaps():
@@ -295,12 +296,13 @@ class SsabMeta:
                 m[c.image_path_hash] = c.image_path
         return m
 
-    # -- audio (docs/11 §4) --------------------------------------------
+    # -- audio (SDK doc: 40_components/90_audio.md) ---------------------
     def sound_files(self) -> list[SoundFileInfo]:
         """Every ``SoundFile`` across the pack's ``SoundList``s, in file order.
 
-        The runtime plays no audio (docs/00) — it only *reports* Audio triggers;
-        the Player resolves and plays them. This surfaces the pack's sound
+        The runtime plays no audio (SDK doc: 10_introduction/20_limitations.md)
+        — it only *reports* Audio triggers; the Player resolves and plays them.
+        This surfaces the pack's sound
         table so the host can (a) preload the files at setup and (b) resolve an
         :class:`~ss_renpy.events.AudioEvent` to a concrete file."""
         out: list[SoundFileInfo] = []
@@ -321,7 +323,7 @@ class SsabMeta:
         return out
 
     def has_audio(self) -> bool:
-        """True if the pack defines any playable sound file (docs/11 §4 'lazy
+        """True if the pack defines any playable sound file (the 'lazy
         initialization' gate — the host spins up audio only when this is true)."""
         return any(sf.file_path for sf in self.sound_files())
 

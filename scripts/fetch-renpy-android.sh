@@ -6,10 +6,11 @@
 # The Ren'Py SDK must already be fetched using fetch-renpy-sdk.sh.
 #
 # Note: RAPT itself does NOT include the Android SDK / NDK / JDK, nor the signing
-# keys. Those two steps are interactive, so do them once from the launcher GUI:
+# keys. Those steps are interactive, so do them once from the launcher GUI:
 #     renpy-sdk/renpy.sh renpy-sdk/launcher   ->  Android
 #       -> "Install SDK"   (downloads the SDK/NDK/JDK into rapt/Sdk/)
 #       -> "Generate Keys" (creates android.keystore to sign the package)
+#       -> "Configure"     (package/app name in android.json)
 # After that, build with scripts/deploy-android.sh.
 #
 # Usage: scripts/fetch-renpy-android.sh [version]
@@ -22,7 +23,7 @@ DEST="$ROOT_DIR/renpy-sdk"
 BASE_URL="https://www.renpy.org/dl"
 VERSION_FILE="$ROOT_DIR/scripts/RENPY_VERSION.txt"
 
-usage() { sed -n '/^# Usage:/,/^#   8/p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '/^# Usage:/,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
 
 command -v curl >/dev/null || { echo "fetch-renpy-android.sh: curl not on PATH" >&2; exit 1; }

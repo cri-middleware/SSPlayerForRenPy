@@ -8,7 +8,7 @@ arrays (verts / uvs / colors / indices). We slice those per command, apply the
 parent Effect-part's world matrix, and emit triangulated, coloured world-space
 :class:`EffectBatch` quads the Ren'Py layer can mesh.
 
-Buffer layout (``runtime/effect_draw_plan.fbs`` + docs/08 §2):
+Buffer layout (``runtime/effect_draw_plan.fbs``):
 
 * ``vert_stride`` is 2 (XY) for a 2D host like Ren'Py (we request 2).
 * ``verts``   = ``total_quads * 4 * vert_stride`` floats
@@ -44,7 +44,7 @@ FX_BLEND_NAMES = {0: "Mix", 1: "Add"}
 # FlatBuffers vtable slot offsets for EffectDrawPlan's flat vectors (from the
 # generated accessors: Commands=4, VertStride=6, Verts=8, Uvs=10, Colors=12,
 # Indices=14). We read the scalar vectors in bulk via struct rather than the
-# per-element accessors (the §07 "per-element accessors are heavy" warning).
+# per-element accessors, which are heavy.
 _OFF_VERTS, _OFF_UVS, _OFF_COLORS, _OFF_INDICES = 8, 10, 12, 14
 
 
@@ -139,11 +139,11 @@ def build_effect_batches(buf, matrix=None, alpha: float = 1.0,
 
     ``matrix`` is the parent Effect-part's 16-float column-major world matrix
     (from the parent SoA buffer); particle verts are slot-local and must be
-    transformed by it (docs/08 §2). ``alpha`` (0..1) is the parent part's
+    transformed by it. ``alpha`` (0..1) is the parent part's
     hierarchical alpha, multiplied into every vertex colour's alpha — the flat
     renderer's stand-in for hierarchical modulate inheritance. When ``merge``
     is set, consecutive commands sharing ``(cellmap_hash, blend)`` are merged
-    into one batch (dynamic batching, docs/08 §2 最適化), rebasing indices by the
+    into one batch (dynamic batching), rebasing indices by the
     running vertex count.
     """
     if not buf:
@@ -179,9 +179,9 @@ def build_effect_batches(buf, matrix=None, alpha: float = 1.0,
         c_off = poff * 4 * 4
         i_off = poff * 6
 
-        # One pass per vertex with the matrix inlined and invariants hoisted out
-        # of the loop (was three passes plus a per-vertex _apply call — this is
-        # the effect hot loop, hundreds of verts × every slot × every frame).
+        # One pass per vertex, matrix inlined and invariants hoisted — this is
+        # the effect hot loop (hundreds of verts × every slot × every frame),
+        # so avoid per-vertex function calls.
         if matrix is None:
             positions = [(verts[v_off + i * stride], verts[v_off + i * stride + 1])
                          for i in range(nverts)]

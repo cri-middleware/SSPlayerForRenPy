@@ -6,10 +6,11 @@
 # The Ren'Py SDK must already be fetched using fetch-renpy-sdk.ps1.
 #
 # Note: RAPT itself does NOT include the Android SDK / NDK / JDK, nor the signing
-# keys. Those two steps are interactive, so do them once from the launcher GUI:
+# keys. Those steps are interactive, so do them once from the launcher GUI:
 #     renpy-sdk\renpy.exe renpy-sdk\launcher   ->  Android
 #       -> "Install SDK"   (downloads the SDK/NDK/JDK into rapt\Sdk\)
 #       -> "Generate Keys" (creates android.keystore to sign the package)
+#       -> "Configure"     (package/app name in android.json)
 # After that, build with scripts\deploy-android.ps1.
 #
 # Usage: scripts\fetch-renpy-android.ps1 [version]

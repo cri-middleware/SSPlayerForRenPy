@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Headless verification of the timeline-event layer (UserData / Signal / Audio).
 
-This is "Step 4 — interactive features" of the porting roadmap: the runtime
-reports, after each ``update``, the indices of the ``EventsPerFrame`` records
-the playhead crossed, and ``ss_renpy.events.EventResolver`` decodes them into
-payloads. None of that needs a GUI, so this tool proves the whole path against
-the real native library and the overall packs:
+The runtime reports, after each ``update``, the indices of the
+``EventsPerFrame`` records the playhead crossed, and
+``ss_renpy.events.EventResolver`` decodes them into payloads. None of that
+needs a GUI, so this tool proves the whole path against the real native
+library and the overall packs:
 
   1. the resolver finds the animation and its events vector matches the ssab;
   2. playing one non-looping pass fires **every** static event **exactly once**,
@@ -62,7 +62,7 @@ def _playthrough(rt, resolver, fps, end_frame, *, extra_steps=4):
     """Step one frame at a time to the end, collecting every fired record.
 
     Also returns the ``is_playing_forward`` reading after the first forward
-    update — the signal the host uses to gate audio (docs/00)."""
+    update — the signal the host uses to gate audio."""
     dt = 1.0 / float(fps)
     collected = []
     forward_after_first = None
@@ -92,7 +92,7 @@ def verify_pack(pack: str) -> list[str]:
         return [f"{name}: no animations"]
     anim = anims[0]
 
-    # Pack sound table (docs/11 §4): the map the resolver uses to fill each
+    # Pack sound table (the pack's SoundList table): the map the resolver uses to fill each
     # AudioEvent.file_path, and the set the host preloads.
     sound_map = meta.sound_file_map()
     sfiles = meta.sound_files()
@@ -130,7 +130,7 @@ def verify_pack(pack: str) -> list[str]:
     # (2) exactly-once + frame_index correctness over one non-looping pass.
     if not rt.is_finished:
         fails.append(f"{name}: is_finished never tripped over a set_loop(1) pass")
-    # Forward playback must report forward (the audio gate, docs/00).
+    # Forward playback must report forward (the audio gate).
     if forward_after_first is not True:
         fails.append(f"{name}: is_playing_forward was {forward_after_first!r} "
                      f"during forward playback (audio gate would misfire)")
@@ -166,7 +166,7 @@ def verify_pack(pack: str) -> list[str]:
             if not isinstance(a.loop_num, int):
                 fails.append(f"{name}@f{fe.frame_index}: Audio loop_num not int")
             # (3b) each Audio event resolves to its ssab-relative file via the
-            # pack's SoundList (docs/11 §4) — this is what the host plays.
+            # pack's SoundList table — this is what the host plays.
             want_fp = sound_map.get((a.sound_list_name_hash, a.sound_name_hash)) \
                 or sound_map.get(a.sound_name_hash, "")
             if not a.file_path:

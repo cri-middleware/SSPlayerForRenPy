@@ -21,14 +21,14 @@ An extension (player) that plays **[OPTPiX SpriteStudio 7](https://www.webtech.c
 For detailed specifications, import procedures, and API references, please visit our MkDocs documentation site.
 
 - [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/) — 🚧 live after the first release
-- [**Documentation (English)**](./docs/index.md)
+- [**Documentation (English)**](./docs/en/index.md)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
 
 ### Quick Links
-- [Setup Guide](docs/setup.md)
-- [Asset Import](docs/import.md)
-- [Usage & Control](docs/usage.md)
-- [Build Guide](docs/build.md)
+- [Setup Guide](docs/en/setup.md)
+- [Asset Import](docs/en/import.md)
+- [Usage & Control](docs/en/usage.md)
+- [Build Guide](docs/en/build.md)
 
 ---
 
@@ -40,12 +40,14 @@ This is the easiest way to integrate the player using a pre-built package.
 
 Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and simply copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. That's it!
 
+*🚧 The download link goes live once the first release is published.*
+
 ```renpy
 # Example usage in a Ren'Py script
 screen demo():
     add SSPlayer("overall/Basic.ssab") xalign 0.5 yalign 0.5
 ```
-*For details, see the [Setup Guide](docs/setup.md) and [Usage & Control](docs/usage.md).*
+*For details, see the [Setup Guide](docs/en/setup.md) and [Usage & Control](docs/en/usage.md).*
 
 ### Verifying It Works
 
@@ -74,7 +76,7 @@ scripts\run-demo.ps1
 ```
 
 *Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
-*For details, see the [Build Guide](docs/build.md).*
+*For details, see the [Build Guide](docs/en/build.md).*
 
 ## ⚙️ 2. Full Build Environment (For SDK/Player Developers)
 If you want to develop and contribute to the core animation module (`SpriteStudio-SDK`), follow these steps.

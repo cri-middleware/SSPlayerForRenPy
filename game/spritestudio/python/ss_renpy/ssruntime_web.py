@@ -39,7 +39,7 @@ def _jsnum(x) -> str:
 
 class _WebRuntime:
     """One animation context bound to one resource (.ssab) via JS/WASM.
-    
+
     This class mirrors the interface of `_NativeRuntime` but uses Ren'Py's
     `emscripten` module to call the SSPlayerForWeb JavaScript API.
     """
@@ -49,10 +49,10 @@ class _WebRuntime:
     def __init__(self, lib=None):
         if emscripten is None:
             raise RuntimeError("emscripten module is missing. Are you running on web?")
-            
+
         self._ctx_id = _WebRuntime._handle_counter
         _WebRuntime._handle_counter += 1
-        
+
         # Initialize Javascript side storage if not exists
         emscripten.run_script("""
             if (!window.ss_ctxs) window.ss_ctxs = {};
@@ -79,7 +79,8 @@ class _WebRuntime:
                 var ctx = window.ss_ctxs[ctx_id];
                 // Out-of-range / NaN frame_no: the wasm-bindgen API THROWS
                 // (SSRuntimeError::InvalidParameter) where the native C-API
-                // silently returns a null buffer (SDK docs/06). Mirror native:
+                // silently returns a null buffer (SDK doc:
+                // 30_core/20_playback_control.md). Mirror native:
                 // no frame data this tick (the frame's parts just don't draw).
                 // The sub-frame Instance walk momentarily seeks past the child's
                 // range edge, so without this the child throws every such tick.
@@ -97,7 +98,7 @@ class _WebRuntime:
                 return "";
             };
         """)
-        
+
         emscripten.run_script(f"""
             window.ss_ctxs[{self._ctx_id}] = new window.ssruntime.SSRuntimeContext();
         """)
@@ -116,10 +117,10 @@ class _WebRuntime:
 
     def load_ssab_bytes(self, data: bytes, *, borrow: bool = True):
         self._ssab_bytes = bytes(data)
-        
+
         with open("/temp_ssab.bin", "wb") as f:
             f.write(data)
-            
+
         emscripten.run_script(f"""
             var u8 = FS.readFile('/temp_ssab.bin');
             var res = new window.ssruntime.SSRuntimeResource(u8);
@@ -137,7 +138,7 @@ class _WebRuntime:
             }}
             window.ss_success = success;
         """)
-        
+
         success = emscripten.run_script_int("window.ss_success ? 1 : 0")
         if not success:
             raise RuntimeError("ss_runtime_bind_resource failed")
@@ -362,7 +363,7 @@ class _WebRuntime:
         Instance animations never step)."""
         return self._ctx_id
 
-    # Return value parsing helpers
+    # Active-event fetch (state kept on the JS side; step() consumes it)
     def active_event_instance(self, slot_index: int):
         # get_active_event_instance allocates a fresh WebEventInstanceInfo on the
         # wasm heap each call, and the matching step() borrows (does not move/free)
@@ -434,7 +435,12 @@ class _WebRuntime:
         return r
 
     def instance_slot_is_independent(self, slot):
-        return emscripten.run_script_int(f"window.ss_instances[{slot}].is_independent() ? 1 : 0") == 1
+        # Guard the getter name (it varies by wasm-bindgen version, like step()
+        # at instance_slot_step) so a JS TypeError can't unwind the emscripten
+        # boundary — such a throw is NOT a Python exception and could not be
+        # caught by the caller.
+        return emscripten.run_script_int(
+            f"(function(s){{return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;}})(window.ss_instances[{slot}])") == 1
 
     def effect_slot_create(self, effect_name_hash, seed=0):
         if not self._res:
@@ -461,12 +467,12 @@ class _WebRuntime:
 
     def _effect_slot_step_raw(self, slot, ev, parent_frame, delta_seconds, fps,
                               parent_looped, y_flip, vert_stride):
-        
+
         s = emscripten.run_script_string(f"""
             var js_ev = window.ss_active_effect_ev;
             var s = window.ss_effects[{slot}];
             var visible = s.step(js_ev, {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {_jsnum(fps)}, {'true' if parent_looped else 'false'}, {'true' if y_flip else 'false'}, {vert_stride});
-            
+
             if (visible) {{
                 var ptr = s.get_draw_plan_buf();
                 var len = s.get_draw_plan_len();
@@ -480,10 +486,10 @@ class _WebRuntime:
                 JSON.stringify({{visible: false}});
             }}
         """)
-        
+
         import json
         res = json.loads(s)
-        
+
         class _EffectStepResult: pass
         r = _EffectStepResult()
         r.visible = res["visible"]
@@ -519,7 +525,10 @@ class _WebRuntime:
         return (True, memoryview(self._last_effect_data))
 
     def effect_slot_is_independent(self, slot):
-        return emscripten.run_script_int(f"window.ss_effects[{slot}].is_independent() ? 1 : 0") == 1
+        # Guard the getter name so a JS TypeError can't unwind the emscripten
+        # boundary uncatchably (see instance_slot_is_independent).
+        return emscripten.run_script_int(
+            f"(function(s){{return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;}})(window.ss_effects[{slot}])") == 1
 
     def close(self):
         if hasattr(self, '_ctx_id') and emscripten:

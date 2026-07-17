@@ -12,7 +12,7 @@
 # project is self-contained — but it does NOT wire it into the pbxproj (no fragile
 # patcher). You add it to the target ONCE via Xcode's "Embed & Sign" (the closing
 # message spells it out) — the same one step a library consumer does through the
-# stock launcher (see docs/export.md -> iOS Export). After that a Simulator Run
+# stock launcher (see docs/en/export.md -> iOS Export). After that a Simulator Run
 # works; only device signing is additionally left to you.
 #
 # This script auto-fetches the Ren'Py SDK and renios if missing. It then either

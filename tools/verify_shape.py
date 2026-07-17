@@ -14,7 +14,7 @@ and validates two layers:
   PartColor ``rate`` is forced to 1.0 (a shape has no texel to blend).
 
 Plain CPython — no Ren'Py. GL2 rendering (premultiplied-alpha fill, blend) still
-needs a GUI run (scene_viewer.rpy already lists Shape.ssab; Shift+B previews it).
+needs a GUI run (scene_viewer.rpy lists Shape.ssab; Shift+B previews it).
 
 Usage:  python tools/verify_shape.py [pack.ssab ...]
 """

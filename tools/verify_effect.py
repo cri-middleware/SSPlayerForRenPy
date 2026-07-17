@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless check for Effect-part playback (roadmap Step "Instance/Effect").
+"""Headless check for Effect-part playback.
 
 Drives ``Effect.ssab`` through every frame: creates one Effect slot per effect
 part, steps it via the C-API each frame, decodes the returned ``EffectDrawPlan``

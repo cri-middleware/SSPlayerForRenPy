@@ -6,7 +6,7 @@
 #
 # This is a SEPARATE job from the other scripts (keep them decoupled):
 #   build-runtime.*   -> the native libssruntime    (game\spritestudio\libs\)
-#   deploy-examples.* -> the .ssab playback data     (game\sprites\)
+#   deploy-examples.* -> the .ssab playback data     (game\ss_assets\)
 #   fetch-renpy-sdk.* -> the Ren'Py editor/runtime   (renpy-sdk\, gitignored)
 #
 # Usage: scripts\fetch-renpy-sdk.ps1 [version]

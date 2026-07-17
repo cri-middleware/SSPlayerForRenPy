@@ -10,11 +10,11 @@
 #   Linux          -> linux package -> an unpacked <name>-linux-x86_64/ folder
 #                                       (run its <name>.sh)
 #
-# Only the platform whose native library is present can be built to *run*: on
-# macOS the Brain ships as game/spritestudio/libs/macos/libssruntime.framework
-# (a versioned bundle Ren'Py packages into the .app as-is), so `mac` works out of
-# the box; `linux` needs game/spritestudio/libs/linux/x86_64/libssruntime.so
-# (scripts/download-sdk.sh or scripts/build-runtime.sh) first.
+# The native library for the host platform must be present under
+# game/spritestudio/libs/ first (macos/libssruntime.framework on macOS,
+# linux/x86_64/libssruntime.so on Linux) — get it with
+# scripts/download-sdk.sh (prebuilt) or scripts/build-runtime.sh
+# (from source).
 #
 # Usage: scripts/deploy-desktop.sh [dest_dir]
 #   dest_dir : output folder (default: dist)
@@ -64,11 +64,13 @@ if [ "$PKG" = mac ]; then
   echo "deploy-desktop.sh: done -> $APP"
   echo "  Run it:  open \"$APP\""
 else
-  ARCHIVE="$(find "$DEST" -maxdepth 1 -name '*-linux-x86_64.tar.bz2' | head -1)"
-  [ -n "$ARCHIVE" ] || { echo "deploy-desktop.sh: expected *-linux-x86_64.tar.bz2 in $DEST" >&2; exit 1; }
+  # Ren'Py's "linux" package produces <name>-<version>-linux.tar.bz2 (no arch
+  # suffix — see the itch channel map in renpy/common/00build.rpy).
+  ARCHIVE="$(find "$DEST" -maxdepth 1 -name '*-linux.tar.bz2' | head -1)"
+  [ -n "$ARCHIVE" ] || { echo "deploy-desktop.sh: expected *-linux.tar.bz2 in $DEST" >&2; exit 1; }
   echo ">> unpacking $(basename "$ARCHIVE")"
   tar -xjf "$ARCHIVE" -C "$DEST"
-  DIR="$(find "$DEST" -maxdepth 1 -type d -name '*-linux-x86_64' | head -1)"
+  DIR="$(find "$DEST" -maxdepth 1 -type d -name '*-linux' | head -1)"
   echo "deploy-desktop.sh: done -> $DIR"
   echo "  Run it:  \"$DIR\"/*.sh"
 fi

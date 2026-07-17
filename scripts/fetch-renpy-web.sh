@@ -13,7 +13,7 @@ DEST="$ROOT_DIR/renpy-sdk"
 BASE_URL="https://www.renpy.org/dl"
 VERSION_FILE="$ROOT_DIR/scripts/RENPY_VERSION.txt"
 
-usage() { sed -n '/^# Usage:/,/^#   8/p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '/^# Usage:/,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
 
 command -v curl >/dev/null || { echo "fetch-renpy-web.sh: curl not on PATH" >&2; exit 1; }

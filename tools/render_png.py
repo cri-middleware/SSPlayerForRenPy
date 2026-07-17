@@ -11,7 +11,7 @@ against the SS editor.
 Only the ``Normal`` draw-batch kind is rendered. ``parts_color`` is applied as a
 flat (averaged) tint per part via the ``eval_partcolor`` reference formula — the
 exact per-vertex gradient is checked numerically by ``tools/verify_m2.py``.
-Requires Pillow (dev venv).
+Requires Pillow (`pip install Pillow`).
 
 Usage:
     python tools/render_png.py [anim.ssab] [animation] [--out DIR] [--bg hex]
@@ -147,7 +147,8 @@ def _avg_rate(rates) -> float:
 def tint_layer(layer: Image.Image, blend: int, color, rate: float) -> Image.Image:
     """Apply a flat ``parts_color`` tint to an RGBA layer (per-channel LUT).
 
-    Implements the PartColor formula (10_parts_color §1-4 / ``eval_partcolor``)
+    Implements the PartColor formula (the SDK parts-color spec,
+    40_components/50_parts_color.md / ``eval_partcolor``)
     as a per-channel linear op out = pixel*S + O. Uniform-colour approximation
     of the per-vertex gradient; alpha is left untouched (handled separately).
     """
@@ -240,7 +241,9 @@ def render_animation(ssab_path: str, anim: str | None, out_dir: str,
             if has_pc:                      # parts_color tint (flat approx)
                 layer = tint_layer(layer, cb, col, rate)
             layer = scale_alpha(layer, col[3])
-            canvas = Image.alpha_composite(canvas, layer)  # Add path: TODO
+            # Additive-blend parts are composited as normal alpha here; the
+            # GPU path handles Add.
+            canvas = Image.alpha_composite(canvas, layer)
         # composite over solid bg for viewing
         framed = Image.new("RGBA", canvas_size, bg)
         framed = Image.alpha_composite(framed, canvas)

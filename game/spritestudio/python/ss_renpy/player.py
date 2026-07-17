@@ -23,6 +23,7 @@ the render layer normalises (``framedata.normalize_uvs``).
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -58,7 +59,8 @@ class FramePlan:
     # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) or None when this
     # frame has no live mask writer. The render layer rasterizes its writers into
     # an offscreen coverage bitmap; individual masked items reference it (or, for
-    # an instance child, the parent's) via ``MeshPart.mask`` (09_mask §3-2).
+    # an instance child, the parent's) via ``MeshPart.mask`` (SDK doc:
+    # 40_components/40_mask.md).
     frame_mask: object = None
 
 
@@ -91,20 +93,39 @@ class SSInternalPlayer:
         self._rm = resource_manager or RecordingResourceManager()
         self._pack_reader = pack_reader
 
-        self._meta = SsabMeta(ssab_data)
-        # Texture hash -> image path. Shared across an Instance tree (the root
-        # creates it; children receive the same dict) so the root resolves every
-        # part's texture_hash, including those from external instance packs.
-        self._texmap = texmap if texmap is not None else {}
-        self._texmap.update(self._meta.texture_hash_map())
-        # This pack's own cellmap images, acquired on set_animation. External
-        # packs' images are acquired by the loader as they are loaded.
-        self._own_images = [c.image_path for c in self._meta.cellmaps()
-                            if c.image_path]
-        # Static per-part info indexed by part index (== draw-plan slot index).
-        # Cached once: the mask layer reads the static mask flags from it every
-        # frame, and it is also the name->index source.
-        self._part_infos = self._meta.parts()
+        # A corrupt/truncated pack fails deep inside the FlatBuffers walk
+        # (struct.error and friends) — in the SsabMeta constructor or in any of
+        # the metadata walks below — so gate them all into one diagnosable
+        # error before any bytes reach the native runtime (which aborts on
+        # invalid data rather than reporting it).
+        try:
+            self._meta = SsabMeta(ssab_data)
+            # Texture hash -> image path. Shared across an Instance tree (the
+            # root creates it; children receive the same dict) so the root
+            # resolves every part's texture_hash, including those from
+            # external instance packs.
+            self._texmap = texmap if texmap is not None else {}
+            self._texmap.update(self._meta.texture_hash_map())
+            # This pack's own cellmap images, acquired on set_animation.
+            # External packs' images are acquired by the loader as they load.
+            self._own_images = [c.image_path for c in self._meta.cellmaps()
+                                if c.image_path]
+            # Static per-part info indexed by part index (== draw-plan slot
+            # index). Cached once: the mask layer reads the static mask flags
+            # from it every frame, and it is also the name->index source.
+            self._part_infos = self._meta.parts()
+            # Second corruption gate: a zeroed/garbage buffer can PARSE as a
+            # vacuous empty pack (the FlatBuffers walk only raises on
+            # out-of-bounds access). A real pack always has parts.
+            if not (self._part_infos or self._meta.animation_names()):
+                raise ValueError(
+                    "not a valid .ssab pack (no parts or animations found)")
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(
+                "not a valid .ssab pack (corrupt or truncated?): %r" % (e,)
+            ) from e
         self._part_index = {p.name: p.index for p in self._part_infos}
         # External-instance pack loader (merges into the shared texmap and
         # acquires via the shared rm). The root builds one; children share it so
@@ -127,7 +148,7 @@ class SSInternalPlayer:
         self.speed = 1.0
         # Playback direction / ping-pong persist across set_animation like
         # loop/speed: setup_animation resets them to forward/normal, so we track
-        # them here and re-apply (docs/06 NOTE 150). 0 = forward, 1 = reverse;
+        # them here and re-apply. 0 = forward, 1 = reverse;
         # style 0 = normal, 1 = ping-pong.
         self._direction = 0
         self._style = 0
@@ -136,7 +157,10 @@ class SSInternalPlayer:
         self._instances: Optional[InstanceRig] = None
         self._effects: Optional[EffectRig] = None
         self._evt: Optional[EventResolver] = None
-        self._event_queue: list = []
+        # Bounded: hosts that consume events via callbacks alone never call
+        # poll_events(), so an unbounded queue would grow for the whole session
+        # (a looping talking sprite emits UserData markers indefinitely).
+        self._event_queue: deque = deque(maxlen=256)
         self._was_playing = False
         self._was_finished = False
 
@@ -230,8 +254,9 @@ class SSInternalPlayer:
         NOT the speed sign — see :attr:`ssruntime.SSRuntime.is_playing_forward`).
 
         The host uses this to gate audio: SS audio must only play while the
-        timeline moves forward (docs/00 "オーディオの逆再生非対応"). Assumes forward
-        when there is no runtime."""
+        timeline moves forward (SS does not support reverse audio playback —
+        SDK doc: 10_introduction/20_limitations.md). Assumes forward when there
+        is no runtime."""
         return bool(self._rt.is_playing_forward) if self._rt else True
 
     @property
@@ -255,12 +280,22 @@ class SSInternalPlayer:
         return self._rt.end_frame if self._rt else 0
 
     def is_animating(self) -> bool:
-        """True while something visibly moves (playing, or live rigs)."""
+        """True while something visibly moves: the head is advancing, or an
+        Instance/Effect child runs on its own clock. Only *independent* slots
+        justify motion once the head stops — dependent ones follow the parent
+        frame, so a finished/stopped player with them must not keep demanding
+        redraws (and emitting particles) forever."""
         if self._rt and self._rt.is_playing and not self._rt.is_pausing:
             return True
-        if self._effects is not None and self._effects.has():
+        return self._has_independent_rigs()
+
+    def _has_independent_rigs(self) -> bool:
+        """Whether any Instance/Effect slot — at this level or nested inside a
+        dependent child — still runs on its own clock. The recursive liveness
+        signal the redraw gate consults once the head has stopped."""
+        if self._effects is not None and self._effects.has_independent():
             return True
-        if self._instances is not None and self._instances.has():
+        if self._instances is not None and self._instances.has_independent():
             return True
         return False
 
@@ -285,12 +320,12 @@ class SSInternalPlayer:
         self._rt.set_loop(self.loop)
         if self.speed != 1.0:
             self._rt.set_animation_speed(self.speed)
-        # ...and playback direction / ping-pong (also reset by setup_animation,
-        # docs/06 NOTE): re-apply when non-default so a reverse / ping-pong mode
-        # survives an animation switch — including host sequence chaining, which
-        # calls set_animation for each queued clip — mirroring how loop/speed
-        # persist. (Section is intentionally NOT carried: it is a per-animation
-        # frame range, meaningless against a different clip.)
+        # ...and playback direction / ping-pong (also reset by setup_animation):
+        # re-apply when non-default so a reverse / ping-pong mode survives an
+        # animation switch — including host sequence chaining, which calls
+        # set_animation for each queued clip — mirroring how loop/speed persist.
+        # (Section is intentionally NOT carried: it is a per-animation frame
+        # range, meaningless against a different clip.)
         if self._direction or self._style:
             self._rt.set_playback_direction(self._direction, self._style)
         # Textures for this pack (set_animation owns texture loading). External
@@ -341,8 +376,8 @@ class SSInternalPlayer:
         owner — inheriting lib, ResourceManager, external-pack loader, the shared
         texmap and base_dir, running parent-driven (the parent seeks it) with its
         own timeline events suppressed (root-only). Keeping construction here
-        means the instance module no longer reaches into the owner's private
-        attributes. Returns ``None`` on construction failure.
+        keeps the owner's construction details out of the instance module.
+        Returns ``None`` on construction failure.
         """
         try:
             return SSInternalPlayer(
@@ -424,7 +459,7 @@ class SSInternalPlayer:
 
     def set_playback_direction(self, direction: int, style: int = 0) -> None:
         # Remember it so set_animation() can re-apply after setup_animation resets
-        # it (docs/06 NOTE); works whether called before or after set_animation.
+        # it; works whether called before or after set_animation.
         self._direction = direction
         self._style = style
         if self._rt:
@@ -533,8 +568,8 @@ class SSInternalPlayer:
     # -- timeline events -----------------------------------------------
     def poll_events(self) -> list:
         """Drain and return the FrameEvents collected since the last poll."""
-        q = self._event_queue
-        self._event_queue = []
+        q = list(self._event_queue)
+        self._event_queue.clear()
         return q
 
     # -- part query ----------------------------------------------------
@@ -580,3 +615,14 @@ class SSInternalPlayer:
             except Exception:
                 pass
             self._rt = None
+
+    def __del__(self):
+        # The host displayable is GC-driven (it never calls close() itself, and
+        # save/load drops cores wholesale), so release the Instance/Effect slot
+        # handles and the runtime here — the runtime wrapper's own __del__ only
+        # covers ctx/resource, not the rigs' slots. Guarded: interpreter
+        # shutdown may have torn half of this down already.
+        try:
+            self.close()
+        except Exception:
+            pass

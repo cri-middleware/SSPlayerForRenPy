@@ -1,8 +1,8 @@
-"""Engine-independent mask / clipping-mask core (docs/09_mask).
+"""Engine-independent mask / clipping-mask core (SDK doc: 40_components/40_mask.md).
 
 SpriteStudio 7 "mask" and "clipping" are two features over one stencil. Ren'Py's
 GL2 model layer does not expose a stencil buffer, so — exactly like the Godot
-port — we use the **coverage-bitmap hybrid** (09_mask §3-2):
+port — we use the **coverage-bitmap hybrid**:
 
   1. Per frame, rasterize every mask *writer* into an offscreen RGBA8 bitmap,
      one bit per writer (max 24, packed into the RGB channels).
@@ -18,12 +18,12 @@ and a CPU reference of the replay (:func:`mask_passes`) so the whole thing is
 testable headless. The actual offscreen render + GLSL live in the Ren'Py layer
 (``spritestudio.rpy``), the same split as UV normalization.
 
-Field provenance is split across two tables (09_mask §1):
+Field provenance is split across two tables:
   * **static** (``PartInfo`` from ``ssab_meta``): ``mask_influence`` /
     ``mask_write`` / ``visible_inside_mask`` / ``draw_as_mask`` / part type.
   * **per-frame** (``PartState``): ``Mask`` (cutout 0..255) / ``Priority`` /
     ``Hide``. Hidden parts are already absent from ``draw_order``, so a writer's
-    only per-frame gate here is ``mask != 0`` (§2-2).
+    only per-frame gate here is ``mask != 0``.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from ss_renpy import framedata
 
 # Coverage encodes one writer per bit across the RGB channels of an RGBA8
 # bitmap (8 bits x 3). The alpha channel is reserved (premultiplied accumulator
-# in the GPU path), so the hard cap is 24 (09_mask §3-2).
+# in the GPU path), so the hard cap is 24 (SDK doc: 40_components/40_mask.md).
 MAX_WRITERS = 24
 
 # Two triangles for a 4-corner quad (LT, RT, LB, RB) — matches the non-fan
@@ -47,7 +47,8 @@ _QUAD_TRIS = [(framedata.LT, framedata.RT, framedata.LB),
 
 @dataclass
 class MaskWriter:
-    """One coverage writer for the current frame (09_mask §3-2-1 ``MaskWriter``).
+    """One coverage writer for the current frame (``MaskWriter`` in the SDK doc:
+    40_components/40_mask.md).
 
     ``positions`` / ``uvs`` / ``triangles`` are the geometry to rasterize into
     the coverage bitmap (world space, texture-pixel UVs — the render layer
@@ -56,7 +57,7 @@ class MaskWriter:
     distinguishes a clipping writer (also drawn in colour, applies to *higher*
     ranks) from a pure mask (applies to *lower* ranks). ``mask_value`` is the
     per-frame cutout (0..255) → threshold ``(255 - mask) / 255``; ``has_texture``
-    is False for a texture-less shape mask (whole geometry is the mask, §2-5).
+    is False for a texture-less shape mask (whole geometry is the mask).
     """
     part_index: int
     rank: int
@@ -73,12 +74,13 @@ class MaskWriter:
 
 @dataclass
 class MaskApply:
-    """Per-target replay parameters stamped onto a drawable (09_mask §2).
+    """Per-target replay parameters stamped onto a drawable (SDK doc:
+    40_components/40_mask.md).
 
     A drawable part that is masked carries one of these. ``frame_mask`` is the
     coverage it samples (the *parent's* coverage for an inherited instance
     child); ``rank`` and ``visible_inside`` are this target's draw-order rank and
-    polarity (§2-1 / §2-4). The render layer uses ``frame_mask`` for the coverage
+    polarity. The render layer uses ``frame_mask`` for the coverage
     texture + ``mask_meta`` and ``rank`` / ``visible_inside`` for the replay
     uniforms; ``mask_passes`` below is the CPU reference of that replay.
     """
@@ -93,10 +95,10 @@ class FrameMask:
 
     Built by :func:`build_frame_mask`. ``meta`` is parallel to ``writers``:
     ``(rank, bit, op_invert, is_clipping)`` per writer — exactly the replay
-    shader's ``mask_meta`` (09_mask §3-2-1). ``bmin`` / ``bsize`` are the world
-    bbox of all writer geometry; a target's coverage UV is
-    ``(world - bmin) / bsize``. ``max_mask_rank`` / ``min_clip_rank`` are the
-    scope bounds (§2-1) used to skip targets no writer can reach.
+    shader's ``mask_meta`` (SDK doc: 40_components/40_mask.md). ``bmin`` /
+    ``bsize`` are the world bbox of all writer geometry; a target's coverage UV
+    is ``(world - bmin) / bsize``. ``max_mask_rank`` / ``min_clip_rank`` are the
+    scope bounds used to skip targets no writer can reach.
     """
     writers: List[MaskWriter] = field(default_factory=list)
     meta: list = field(default_factory=list)       # [(rank, bit, op_invert, is_clipping)]
@@ -111,7 +113,8 @@ class FrameMask:
         return len(self.writers)
 
     def in_scope(self, rank: int) -> bool:
-        """True if any writer can affect a target at ``rank`` (09_mask §2-1).
+        """True if any writer can affect a target at ``rank`` (SDK doc:
+        40_components/40_mask.md).
 
         A pure mask affects ranks *below* it (``rank < mask_rank``); a clipping
         writer affects ranks *above* it (``rank > clip_rank``). This is the cheap
@@ -150,8 +153,8 @@ def _shape_writer_geom(rt, fd, p):
     mask cuts its true silhouette rather than a bounding box. Falls back to the
     part's ``PartState.Size`` box (transformed by the world matrix) for a
     cell-less writer the runtime exposes no shape geometry for — texture-less,
-    whole geometry is the mask (09_mask §2-5). Returns None for a zero-size /
-    empty part.
+    whole geometry is the mask (SDK doc: 40_components/40_mask.md). Returns None
+    for a zero-size / empty part.
     """
     wm, wn = rt.world_matrices()
     if not wm:
@@ -202,8 +205,8 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
     Walks ``fd``'s draw batches in draw order (the same order the renderable
     walk uses, so ranks line up), classifies each part via its static
     ``PartInfo`` (writer / clipping / pure), drops writers with per-frame
-    ``mask == 0`` (§2-2 opt-out) and beyond :data:`MAX_WRITERS`, reads each
-    writer's coverage geometry from the SoA, and records the world bbox + scope
+    ``mask == 0`` (the per-frame opt-out) and beyond :data:`MAX_WRITERS`, reads
+    each writer's coverage geometry from the SoA, and records the world bbox + scope
     bounds. Must run right after ``rt.get_frame_data`` for ``fd`` — the SoA
     pointers are transient.
 
@@ -226,7 +229,7 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
             # Rank is the draw_order *slot* index, not a per-batch counter: one
             # part can be emitted as several batches sharing a slot (e.g. a
             # draw_as_mask Shape appears as both a Mask and a Shape batch at the
-            # same start_rank), and §2-1 defines rank as the position in
+            # same start_rank), and rank is defined as the position in
             # draw_order. Dedupe writers on part index for the same reason.
             rank = start + k
             rank_of[p] = rank
@@ -238,7 +241,7 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
                 continue
             ps = parts[p] if parts is not None else fd.Parts(p)
             mask_val = ps.Mask() if ps is not None else 0.0
-            if not mask_val:                       # §2-2: mask == 0 → no write
+            if not mask_val:                       # mask == 0 → no write
                 continue
             if kind == framedata.KIND_MESH:
                 geom = _mesh_writer_geom(rt, fd, p, thash)
@@ -294,7 +297,7 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
 def attach_target(mp, frame_mask: FrameMask, part_infos) -> None:
     """Stamp ``mp.mask`` if the drawable Normal/Mesh part is a masked target.
 
-    A drawing part is masked only when its static ``mask_influence == 1`` (§2-2
+    A drawing part is masked only when its static ``mask_influence == 1`` (the
     opt-out) **and** it is in some writer's scope (or it is a ``visible_inside``
     target, which is always evaluated — it shows only where a mask covers it).
     Mutates ``mp`` in place; leaves ``mp.mask = None`` for non-targets.
@@ -312,7 +315,8 @@ def attach_target(mp, frame_mask: FrameMask, part_infos) -> None:
 
 
 def attach_inherited(mp, frame_mask: FrameMask, inst_info, inst_rank: int) -> None:
-    """Stamp inherited masking onto an instance child's drawable (09_mask §3-2-2).
+    """Stamp inherited masking onto an instance child's drawable (SDK doc:
+    40_components/40_mask.md).
 
     The whole sub-animation is judged as ONE target by the **instance part's**
     ``rank`` + ``visible_inside_mask`` — never the child part's own. The child
@@ -333,7 +337,8 @@ def attach_inherited(mp, frame_mask: FrameMask, inst_info, inst_rank: int) -> No
 
 def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
                 cov_uv, sample_bit) -> bool:
-    """CPU reference of the replay shader's ``ss_mask_passes`` (09_mask §3-2-1).
+    """CPU reference of the replay shader's ``ss_mask_passes`` (SDK doc:
+    40_components/40_mask.md).
 
     ``cov_uv`` is the target fragment's coverage UV; ``sample_bit(bit) -> bool``
     reports whether ``bit`` is set in the coverage at that UV (the headless
@@ -344,19 +349,19 @@ def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
         return True
     u, v = cov_uv
     if u < 0.0 or u > 1.0 or v < 0.0 or v > 1.0:
-        # bbox-outside == "no writer covers it" (§3-2 CLAMP-avoidance):
+        # bbox-outside == "no writer covers it" (CLAMP-avoidance):
         # visible_inside targets discard, outside targets draw.
         return not visible_inside
     stencil = 0
     for (w_rank, bit, op_invert, is_clipping) in frame_mask.meta:
-        active = (rank > w_rank) if is_clipping else (rank < w_rank)   # §2-1
+        active = (rank > w_rank) if is_clipping else (rank < w_rank)   # scope rule
         if not active:
             continue
         if not sample_bit(bit):
             continue
-        if op_invert:                       # §2-3 OP
+        if op_invert:                       # writer OP: invert vs increment
             stencil = (~stencil) & 0xFF
         else:
             stencil = (stencil + 1) & 0xFF
     masked = stencil != 0
-    return masked == visible_inside         # §2-4
+    return masked == visible_inside         # inside/outside polarity

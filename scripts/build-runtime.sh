@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Build the native runtime libssruntime from the SpriteStudio-SDK and place it
-# in the library's per-platform/arch layout. Interface mirrors SSPlayerForUnity's
-# build-runtime.sh (platform=/arch=/build=). For linux/windows DESKTOP we build
+# in the library's per-platform/arch layout. Interface: platform=/arch=/build=
+# key=value arguments. For linux/windows DESKTOP we build
 # only the feature-enabled `ssruntime` cdylib directly (NOT via the SDK
 # release-*.sh, which also build the whole workspace + ssconverter — wasteful
 # here). macOS is the exception: it ships the Brain as a versioned, signable
@@ -18,7 +18,7 @@
 #     web/ (wasm-pack bundle: ssruntime.js + ssruntime_bg.wasm)
 #
 # android/ios/web are toolchain-heavy cross builds and DO delegate to the SDK
-# release scripts (reserved path; Ren'Py-side integration is separate).
+# release scripts.
 #
 # Usage: scripts/build-runtime.sh [platform=<p>] [arch=<a>] [build=<m>] [hostbuild=<auto|false>]
 #   platform : windows macos linux android ios web   (default: host)
@@ -79,7 +79,7 @@ build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime --fea
 build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter ); }
 place() { mkdir -p "$LIB_ROOT/$1"; cp "$2" "$LIB_ROOT/$1/${3:-$(basename "$2")}"; echo "   -> game/spritestudio/libs/$1/${3:-$(basename "$2")}"; }
 
-# licenses (mirror Unity)
+# copy license notices alongside the libraries
 mkdir -p "$LIB_ROOT"
 [ -f "$SDK_DIR/LICENSE.md" ] && cp "$SDK_DIR/LICENSE.md" "$LIB_ROOT/"
 [ -f "$SDK_DIR/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" ] && \

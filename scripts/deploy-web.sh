@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build the Ren'Py Web export AND apply the two SSPlayer post-export steps the
-# Web target needs (docs/export.md §3, §4) but that the Ren'Py exporter cannot
+# Web target needs (docs/en/export.md, Web Export steps 1-2) but that the Ren'Py exporter cannot
 # do on its own:
 #   3. inject the ssruntime.js / .wasm module <script> into index.html, and
 #   4. copy game/spritestudio/libs/web/{ssruntime.js,ssruntime_bg.wasm} out of
@@ -26,7 +26,7 @@ LAUNCHER="$RENPY_SDK/launcher"
 WEB_ASSETS="$ROOT_DIR/game/spritestudio/libs/web"
 
 DEST="${1:-web_out}"
-case "$DEST" in -h|--help|help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+case "$DEST" in -h|--help|help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 
 # --- prerequisites --------------------------------------------------------
@@ -35,14 +35,14 @@ case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 [ -f "$WEB_ASSETS/ssruntime.js" ] && [ -f "$WEB_ASSETS/ssruntime_bg.wasm" ] || {
   echo "deploy-web.sh: web runtime missing under game/spritestudio/libs/web/ — run scripts/download-sdk.sh first." >&2; exit 1; }
 
-# --- 2. run the Web export ------------------------------------------------
+# --- run the Web export ----------------------------------------------------
 echo ">> building Web export -> $DEST"
 "$RENPY_SDK/renpy.sh" "$LAUNCHER" web_build "$ROOT_DIR" --dest "$DEST"
 
 INDEX="$DEST/index.html"
 [ -f "$INDEX" ] || { echo "deploy-web.sh: export did not produce $INDEX" >&2; exit 1; }
 
-# --- 3. inject the module <script> before renpy-pre.js (idempotent) -------
+# --- inject the module <script> before renpy-pre.js (idempotent) ----------
 if grep -q "spritestudio/libs/web/ssruntime.js" "$INDEX"; then
   echo ">> index.html: module script already present"
 else
@@ -63,7 +63,7 @@ else
   mv "$tmp" "$INDEX"
 fi
 
-# --- 4. copy the web runtime out of game.zip as real files ----------------
+# --- copy the web runtime out of game.zip as real files -------------------
 echo ">> placing web runtime under $DEST/game/spritestudio/libs/web/"
 mkdir -p "$DEST/game/spritestudio/libs/web"
 cp "$WEB_ASSETS/ssruntime.js" "$WEB_ASSETS/ssruntime_bg.wasm" "$DEST/game/spritestudio/libs/web/"

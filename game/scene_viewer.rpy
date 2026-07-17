@@ -1,4 +1,4 @@
-# Legacy basic-feature viewer: a `screen ss_demo` that cycles through the bundled
+# Basic-feature viewer: a `screen ss_demo` that cycles through the bundled
 # sample packs with the arrow keys, with a live timeline-event log overlay. Each
 # SS_DEMO_PACKS entry is (sprites_subdir, pack) so packs in different folders
 # coexist. (Reached from the start menu in script.rpy.)

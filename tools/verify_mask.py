@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless check for the mask / clipping-mask core (docs/09_mask).
+"""Headless check for the mask / clipping-mask core (SDK doc: 40_components/40_mask.md).
 
 Exercises the engine-independent half of masking without a GUI:
 
@@ -12,10 +12,10 @@ Exercises the engine-independent half of masking without a GUI:
     ``mask_meta``; and that drawing targets are stamped (``MeshPart.mask``) with
     the right rank / polarity;
   * **replay reference** — that :func:`ss_renpy.mask.mask_passes` (the CPU twin
-    of the GLSL ``ss_mask_passes``) honours scope (§2-1), OP (§2-3), polarity
-    (§2-4) and bbox-outside handling;
+    of the GLSL ``ss_mask_passes``) honours scope, OP, polarity and
+    bbox-outside handling;
   * **instance inheritance** — that :func:`ss_renpy.mask.attach_inherited`
-    propagates a parent's coverage to a sub-animation as one target (§3-2-2).
+    propagates a parent's coverage to a sub-animation as one target.
 
 Actual GL2 coverage rendering / replay still needs a GUI run (Shift+B browser).
 
@@ -66,7 +66,7 @@ def check_pack(lib, path: str, anim=None) -> bool:
     print(f"### {name}  parts={len(parts)}  writers={len(writers)} "
           f"(pure={len(pures)} clipping={len(clips)})  targets={len(targets)}")
 
-    # Spec §1-2 formula invariants must hold for every part.
+    # Spec formula invariants must hold for every part.
     for p in parts:
         _check(p.is_pure_mask == (p.is_mask_part or p.draw_as_mask),
                f"pure_mask formula on part {p.index}", fails)
@@ -126,9 +126,9 @@ def check_pack(lib, path: str, anim=None) -> bool:
                        f"writer {w.part_index} geometry not finite", fails)
                 _check(len(w.positions) >= 3 and len(w.triangles) >= 1,
                        f"writer {w.part_index} degenerate geometry", fails)
-                # Non-zero area: a point/line writer (e.g. a Shape whose verts
-                # never got built) rasterizes to nothing — no cut-out. This is
-                # the regression that hid the Shape-Mask-True hole.
+                # A zero-area writer (e.g. a Shape whose vertices were never
+                # built) rasterizes to nothing, so its cut-out silently
+                # disappears.
                 xs = [x for (x, y) in w.positions]
                 ys = [y for (x, y) in w.positions]
                 _check((max(xs) - min(xs)) > 1e-3 and (max(ys) - min(ys)) > 1e-3,
@@ -187,7 +187,7 @@ def check_replay() -> bool:
     _check(mask.mask_passes(_fm([]), 0, False, inside, covered()),
            "empty coverage should draw", fails)
 
-    # bbox-outside: visible_inside discards, outside-target draws (§3-2).
+    # bbox-outside: visible_inside discards, outside-target draws.
     one_mask = [(5, 0, 0, 0)]   # rank 5, bit 0, increment, pure mask
     _check(mask.mask_passes(_fm(one_mask), 2, True, outside, covered(0)) is False,
            "visible_inside outside-bbox should discard", fails)
