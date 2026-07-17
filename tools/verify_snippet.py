@@ -34,10 +34,10 @@ def main() -> int:
     print("== snippet generator verification ==\n")
 
     print("### default_role heuristic")
-    check("effect: has_effects + single anim", snippet.default_role(1, True) == "effect")
+    check("oneshot: has_effects + single anim", snippet.default_role(1, True) == "oneshot")
     check("character: multi anim", snippet.default_role(5, False) == "character")
     check("ui: single anim, no effects", snippet.default_role(1, False) == "ui")
-    check("character beats effect when multi-anim", snippet.default_role(3, True) == "character")
+    check("character beats oneshot when multi-anim", snippet.default_role(3, True) == "character")
 
     print("### character snippet (path-based)")
     s = snippet.build_snippet("ss_assets/Ringo/Ringo.ssab", "character", ["wait1", "joy", "walk"])
@@ -45,8 +45,8 @@ def main() -> int:
     check("aliases for each anim", '"wait1": "wait1",' in s and '"joy": "joy",' in s)
     check("Character() uses stem", 'define ringo_chr = Character("Ringo", image="ringo")' in s)
 
-    print("### effect snippet (path-based)")
-    s = snippet.build_snippet("ss_assets/ParticleEffect/e038.ssab", "effect", ["hit"])
+    print("### one-shot snippet (path-based)")
+    s = snippet.build_snippet("ss_assets/ParticleEffect/e038.ssab", "oneshot", ["hit"])
     check("one-shot loop=1 with path",
           'SSPlayer("ss_assets/ParticleEffect/e038.ssab", animation="hit", loop=1)' in s)
 

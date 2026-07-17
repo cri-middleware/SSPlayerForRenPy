@@ -7,18 +7,18 @@ testable headlessly (``tools/verify_snippet.py``).
 
 from __future__ import annotations
 
-ROLES = ("character", "effect", "ui")
+ROLES = ("character", "oneshot", "ui")
 
 
 def default_role(num_anims: int, has_effects: bool) -> str:
     """Heuristic *starting* role for a pack (the human can override in the UI).
 
     A pack with effect parts and a single animation is most likely a one-shot
-    effect; a multi-animation pack is most likely a character; anything else
-    defaults to a plain UI add.
+    play (a hit spark, a stinger, any fire-and-forget clip); a multi-animation
+    pack is most likely a character; anything else defaults to a plain UI add.
     """
     if has_effects and num_anims <= 1:
-        return "effect"
+        return "oneshot"
     if num_anims >= 2:
         return "character"
     return "ui"
@@ -30,7 +30,7 @@ def build_snippet(ssab_path: str, role: str, anims) -> str:
     ``ssab_path`` is the gamedir-relative ``.ssab`` path passed to ``SSPlayer()``
     (e.g. ``"ss_assets/Ringo/Ringo.ssab"``); the image / screen identifier is
     derived from its filename stem. ``character`` -> an ``image`` with an aliases
-    skeleton + a ``Character``; ``effect`` -> a one-shot ``image`` (loop=1);
+    skeleton + a ``Character``; ``oneshot`` -> a one-shot ``image`` (loop=1);
     ``ui`` -> a screen that adds it. ``anims`` seeds the first animation / the
     aliases (each mapped to itself, as a starting point to rename).
     """
@@ -40,7 +40,7 @@ def build_snippet(ssab_path: str, role: str, anims) -> str:
     if stem.endswith(".ssab"):
         stem = stem[:-len(".ssab")]
     low = stem.lower()
-    if role == "effect":
+    if role == "oneshot":
         return ('image %s = SSPlayer("%s", animation="%s", loop=1)\n'
                 '# show %s:\n#     xalign 0.5 yalign 0.5'
                 % (low, ssab_path, a0, low))
