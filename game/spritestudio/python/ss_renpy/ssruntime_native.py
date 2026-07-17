@@ -355,21 +355,13 @@ def _declare(lib: C.CDLL) -> None:
     # state getters
     f.ss_runtime_get_frame_no.argtypes = [P]
     f.ss_runtime_get_frame_no.restype = C.c_float
+    # ss_runtime_is_finished: "every configured loop has played" — a sticky
+    # state, cleared by the next play/setup and never raised by stop().
     for name in ("ss_runtime_is_looped", "ss_runtime_is_playing",
-                 "ss_runtime_is_pausing"):
+                 "ss_runtime_is_pausing", "ss_runtime_is_finished"):
         fn = getattr(f, name)
         fn.argtypes = [P]
         fn.restype = C.c_bool
-    # "Every configured loop has played" — a sticky state, cleared by the next
-    # play/setup, and never raised by stop(). Optional: runtimes older than the
-    # one that introduced it do not export it, and a stale game/spritestudio/libs
-    # survives download-sdk.sh's VERSION-stamp skip, so bind tolerantly and let
-    # the wrapper fall back (see player.py's _advance).
-    try:
-        f.ss_runtime_is_finished.argtypes = [P]
-        f.ss_runtime_is_finished.restype = C.c_bool
-    except AttributeError:
-        pass
     for name in ("ss_runtime_get_start_frame", "ss_runtime_get_end_frame",
                  "ss_runtime_get_fps", "ss_runtime_get_loops",
                  "ss_runtime_get_remain_loops"):
@@ -669,21 +661,13 @@ class _NativeRuntime:
         return bool(self._lib.ss_runtime_is_pausing(self._ctx))
 
     @property
-    def is_finished(self):
-        """True once every configured loop has played; None if unsupported.
+    def is_finished(self) -> bool:
+        """True once every configured loop has played.
 
         A sticky state, not a pulse: it stays true until the next play/setup, so
         callers wanting a one-shot notification take its rising edge. Never true
-        under an infinite loop count, nor after a commanded stop(). Returns None
-        when the native runtime does not export the query (older builds), so the
-        caller can fall back — see player.py's _advance."""
-        fn = getattr(self._lib, "ss_runtime_is_finished", None)
-        if fn is None:
-            return None
-        try:
-            return bool(fn(self._ctx))
-        except Exception:
-            return None
+        under an infinite loop count, nor after a commanded stop()."""
+        return bool(self._lib.ss_runtime_is_finished(self._ctx))
 
     @property
     def is_looped(self) -> bool:

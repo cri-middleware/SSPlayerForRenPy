@@ -30,28 +30,33 @@ init -9 python:
             return 0.0
 
     def ss_play_once(ssab, anim=None, at=None, tag=None, layer="master",
-                     wait=False, hide=True, speed=1.0, **kwargs):
-        """Show a SpriteStudio animation played ONCE (loop=1): an effect, a
-        full-screen cutscene, any one-shot pack.
+                     wait=False, hide=True, speed=1.0, loop=1, **kwargs):
+        """Show a SpriteStudio animation played a fixed number of times: an
+        effect, a full-screen cutscene, any one-shot pack.
 
         `at`    : a Transform/ATL for placement/scale (e.g. Transform(xalign=.5,
                   yalign=.5, zoom=1.5) to center + scale up a full-screen cutscene).
         `tag`   : the show tag (default derived from the .ssab stem).
-        `wait`  : block for one playthrough (a cutscene beat), then hide.
+        `wait`  : block for the animation's run (a cutscene beat), then hide.
         `hide`  : when waiting, hide afterwards (set False to leave the last frame).
+        `loop`  : play count (>= 1; default 1 = once). A few passes sometimes read
+                  better than one; a value below 1 is clamped to 1. This helper
+                  plays a *finite* run — for an endless loop show SSPlayer(loop=-1)
+                  directly instead.
         `**kwargs` go to SSPlayer (size, on_audio, ...).
 
         Non-blocking by default: it shows the animation (it freezes on its last
-        frame with loop=1); hide it yourself with :func:`ss_hide_once`, or pass
-        wait=True for a beat.
+        frame once the run ends); hide it yourself with :func:`ss_hide_once`, or
+        pass wait=True for a beat.
         """
         if tag is None:
             stem = ssab.replace("\\", "/").rsplit("/", 1)[-1]
             tag = "ss_once_" + (stem[:-len(".ssab")] if stem.endswith(".ssab") else stem).lower()
-        d = SSPlayer(ssab, animation=anim, loop=1, speed=speed, **kwargs)
+        loop = max(1, int(loop))   # finite run only: clamp an infinite/<1 loop to once
+        d = SSPlayer(ssab, animation=anim, loop=loop, speed=speed, **kwargs)
         renpy.show(tag, what=d, at_list=([at] if at is not None else []), layer=layer)
         if wait:
-            renpy.pause(ss_duration(ssab, anim, speed))
+            renpy.pause(ss_duration(ssab, anim, speed) * loop)
             if hide:
                 renpy.hide(tag, layer=layer)
         return tag

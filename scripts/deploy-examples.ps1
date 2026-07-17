@@ -84,6 +84,12 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
     if ($LASTEXITCODE -ne 0) {
         Write-Error "deploy-examples.ps1: conversion failed for $ProjectName ($LASTEXITCODE)"
     }
+    # Stamp the auto-importer freshness marker so a dev-mode launch does not
+    # reconvert this pack (cli_convert.py itself writes no marker). Non-fatal.
+    & $pythonCmd (Join-Path $RootDir "tools\ss_stamp_import.py") $workDir $Dest
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "deploy-examples.ps1: could not stamp import marker for $ProjectName (will reconvert on next dev launch)"
+    }
 }
 
 Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")

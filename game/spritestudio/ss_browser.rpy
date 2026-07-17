@@ -3,7 +3,7 @@
 # Press **Shift+B** in developer mode to toggle it. It lists every .ssab the
 # resolver can find (all discovered packs, incl. instance sub-packs), previews
 # any animation live, and saves a
-# ready-to-paste snippet for the role you pick (character / effect / UI) — so a
+# ready-to-paste snippet for the role you pick (character / one-shot / UI) — so a
 # creator picks the role while watching the animation, instead of guessing.
 #
 # It sits on top of the zero-config resolver + SSInternalPlayer. Only the hotkey
@@ -202,7 +202,7 @@ screen ss_browser():
                 hbox:
                     spacing 6
                     textbutton "Character" action SetVariable("ss_browser_role", "character") text_size 13
-                    textbutton "Effect" action SetVariable("ss_browser_role", "effect") text_size 13
+                    textbutton "One-shot" action SetVariable("ss_browser_role", "oneshot") text_size 13
                     textbutton "UI" action SetVariable("ss_browser_role", "ui") text_size 13
                 if ss_browser_pack and ss_browser_role:
                     $ _snip_disp = _ss_browser_escape(_ss_browser_snippet(ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]))
