@@ -1,7 +1,7 @@
 """Runtime routing and constants for libssruntime.
 
 This module exposes the runtime constants and dynamically delegates SSRuntime
-to either the native ctypes implementation (_NativeRuntime) or the Pyodide/JS 
+to either the native ctypes implementation (_NativeRuntime) or the Pyodide/JS
 implementation (_WebRuntime) depending on the environment.
 """
 

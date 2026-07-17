@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Headless verification of the M2 render core (plain CPython, no PIL/numpy).
 
-M2 adds full-fidelity Normal rendering: shear/free-deform-exact world meshes
+The M2 render core provides full-fidelity Normal rendering: shear/free-deform-exact world meshes
 plus per-vertex ``parts_color`` and the PartColor blend modes. None of that
 needs a GUI to be *correct* — only the final on-screen GL draw does — so this
 tool proves the engine-independent core:
 
   1. unit-tests the PartColor blend math (``eval_partcolor``) against the spec
-     cases in 10_parts_color §1-4 (rate-0 pass-through, Mix/Mul/Add/Sub @ rate 1);
+     cases in the SDK parts-color spec, 40_components/50_parts_color.md
+     (rate-0 pass-through, Mix/Mul/Add/Sub @ rate 1);
   2. for every pack, plays the first animation and validates each frame's
      ``build_mesh_parts`` output — finite positions, in-range triangles, UVs
      inside the atlas, colours in 0..1, blend index 0..3, the 5-vertex centre
@@ -20,7 +21,7 @@ tool proves the engine-independent core:
 Exits non-zero if any check fails.
 
 Usage:
-    python tools/verify_m2.py [dir_or_ssab ...]   # default: game/sprites/overall
+    python tools/verify_m2.py [dir_or_ssab ...]   # default: game/ss_assets/overall
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# 1. PartColor blend math (10_parts_color §1-4)
+# 1. PartColor blend math (the SDK parts-color spec, 40_components/50_parts_color.md)
 # --------------------------------------------------------------------------
 
 def _approx(a, b, eps=1e-6) -> bool:

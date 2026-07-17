@@ -54,9 +54,8 @@ launcher GUI（→ Android）から **Install SDK**、**Configure**（パッケ�
 > `libs/android/arm64-v8a/libssruntime.so`（大半の 64bit 端末）、`armeabi-v7a/`
 > （旧端末）、`x86_64/`（エミュレータ）。
 >
-> **`scripts/deploy-android.*` はこれを RAPT の jniLibs へ自動配置します。**
-> 標準ランチャーでビルドする場合は、RAPT にゲーム側からネイティブコードを注入するフックが
-> 無いため、各 `.so` を一度だけ手動で Ren'Py SDK の RAPT jniLibs にコピーしてください
+> RAPT にはゲーム側からネイティブコードを注入するフックが無いため、各 `.so` を
+> 一度だけ手動で Ren'Py SDK の RAPT jniLibs にコピーしてください
 > （iOS と同種の一度きりの手作業です）:
 >
 > ```

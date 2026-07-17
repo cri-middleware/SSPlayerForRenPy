@@ -1,6 +1,6 @@
 # SpriteStudio Player for Ren'Py — demo project configuration.
 #
-# This is part of the DEMO, not the library (see CLAUDE.md). It exists so the
+# This is part of the DEMO, not the library (see README.md). It exists so the
 # project runs as a standalone Ren'Py app via `renpy-sdk/renpy.sh .`.
 #
 # The key line is `gui.init(...)`: it triggers `layout.defaults()`
@@ -15,7 +15,7 @@ define config.version = "demo"
 # deploy-desktop.*). WITHOUT this, Ren'Py leaves the packaged app's
 # CFBundleExecutable / executable name empty, producing a `-mac.zip` whose `.app`
 # has no launcher binary and will not start. Downstream games should set their
-# own. See docs/export.md (Desktop Export).
+# own. See docs/en/export.md (Desktop Export).
 define build.name = "SSPlayerForRenPy"
 define config.save_directory = "SSPlayerForRenPy-demo"
 define config.window_title = "SpriteStudio Player for Ren'Py — Demo"
@@ -35,7 +35,7 @@ init python:
 # Optional: pack the demo's SpriteStudio assets into a .rpa archive. Ren'Py ships
 # game files LOOSE by default and only builds a `.rpa` for files classified into a
 # declared archive. SSPlayer loads packs through renpy.loader.load / Image, so
-# they work either loose OR inside a `.rpa` (CLAUDE.md §2) — a transparent toggle.
+# they work either loose OR inside a `.rpa` — a transparent toggle.
 define -30 ss_pack_assets_into_rpa = True   # set False to distribute assets loose
 init -20 python:
     # Keep this development repo's tooling / build output / docs out of the

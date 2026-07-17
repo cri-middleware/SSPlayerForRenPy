@@ -59,9 +59,8 @@ init -9 python:
     def ss_hide_once(tag, layer="master"):
         """Hide an animation previously shown by :func:`ss_play_once`.
 
-        Kept as the paired public helper even though the bundled demo never calls
-        it — a creator who shows a non-waiting one-shot (``wait=False``) needs it
-        to take the animation back down."""
+        The teardown paired with a non-waiting :func:`ss_play_once`
+        (``wait=False``): call it to take the one-shot animation back down."""
         renpy.hide(tag, layer=layer)
 
     def ss_auto_audio(player, frame, audio):

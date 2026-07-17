@@ -1,12 +1,12 @@
 """Decode the timeline events (UserData / Signal / Audio) the runtime reports.
 
-This is the data half of "Step 4 — interactive features" in the porting guide
-(``docs/06_playback_control`` §3). The Brain does not hand back event payloads
-over the C-API; it only reports, after each ``update``, the *indices* of the
-``EventsPerFrame`` records that the playhead passed through. We resolve those
-indices straight from the ``.ssab`` FlatBuffer.
+The Brain does not hand back event payloads over the C-API (SDK doc:
+30_core/20_playback_control.md); it only reports, after each ``update``, the
+*indices* of the ``EventsPerFrame`` records that the playhead passed through.
+We resolve those indices straight from the ``.ssab`` FlatBuffer.
 
-Index semantics (verified empirically against the overall packs):
+Index semantics (verified empirically against the SDK sample packs
+(UserData.ssab, Sound.ssab)):
   ``ss_runtime_get_passed_event_index(ctx, i)`` returns an index into the
   **currently-setup animation's** ``AnimationData.events`` vector (a vector of
   ``EventsPerFrame``). The resolved ``EventsPerFrame.frame_index`` equals the
@@ -67,12 +67,13 @@ class AudioEvent:
     """A sound-trigger marker (``PartAttributeAudio``).
 
     The runtime only *reports* the trigger; actually playing the sound is the
-    Player's job (``docs/00_limitations`` → "サウンド再生"). ``sound_name`` is the
-    alias; the two hashes address ``SoundList`` / ``SoundFile``. ``file_path`` is
-    that entry resolved to its ssab-relative audio file (empty when the pack
-    carries no matching ``SoundFile``, or when decoded without a sound map — the
-    host joins it with the pack base dir to play). ``loop_num`` is a *play count*
-    (docs/11 §4: SS has no infinite loop — ``n`` means play ``n`` times)."""
+    Player's job (SDK doc: 10_introduction/20_limitations.md, "Sound playback").
+    ``sound_name`` is the alias; the two hashes address ``SoundList`` /
+    ``SoundFile``. ``file_path`` is that entry resolved to its ssab-relative
+    audio file (empty when the pack carries no matching ``SoundFile``, or when
+    decoded without a sound map — the host joins it with the pack base dir to
+    play). ``loop_num`` is a *play count* (SS has no infinite loop — ``n`` means
+    play ``n`` times; SDK doc: 40_components/90_audio.md)."""
     part_index: int
     sound_name: str
     sound_name_hash: int
@@ -211,9 +212,10 @@ class EventResolver:
             if _s(a.Name()) == animation_name:
                 self._anim = a
                 break
-        # Pack-global audio table (docs/11 §4), built once so every resolved
-        # Audio event carries its file path. Guarded: a pack with no / malformed
-        # sound lists just yields an empty map (audio then decodes file-path-less).
+        # Pack-global audio table (SDK doc: 40_components/90_audio.md), built
+        # once so every resolved Audio event carries its file path. Guarded: a
+        # pack with no / malformed sound lists just yields an empty map (audio
+        # then decodes file-path-less).
         try:
             from ss_renpy.ssab_meta import SsabMeta
             self._sound_map = SsabMeta(ssab_bytes).sound_file_map()

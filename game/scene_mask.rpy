@@ -1,4 +1,4 @@
-# Mask / clipping-mask feature sample (09_mask). Shows the `overall/Mask` pack,
+# Mask / clipping-mask feature sample. Shows the `overall/Mask` pack,
 # which contains both pure masks (cut holes / keep OUTSIDE) and clipping
 # write-masks (confine INSIDE), plus a reversed mask and circle cut-outs.
 # (Reached from the start menu in script.rpy.)

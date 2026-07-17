@@ -71,15 +71,16 @@ SHAPE_STRIDE = 24
 # Vertex order within a part (indices into the 5-vertex local position/UV arrays).
 LT, RT, LB, RB, CENTER = 0, 1, 2, 3, 4
 
-# -- PartColor blend (texel<->vertex-colour, shader-side; 10_parts_color) -----
+# -- PartColor blend (texel<->vertex-colour, shader-side) ---------------------
 # This is a DIFFERENT axis from the framebuffer blend on DrawBatch.blend_type:
 # PartColor blend mixes texel and vertex colour *inside the shader* and only the
-# first four modes are valid; values >= 4 clamp to Mix (10_parts_color §1-1).
+# first four modes are valid; values >= 4 clamp to Mix (SDK doc:
+# 40_components/50_parts_color.md).
 PC_BLEND_MIX, PC_BLEND_MUL, PC_BLEND_ADD, PC_BLEND_SUB = 0, 1, 2, 3
 PC_BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub"}
 
-# Coefficient table from 10_parts_color §1-4-1 — (pixel_weight_adj, color_weight,
-# mul_flag). The generic formula evaluated per fragment (§1-4-3) is
+# Coefficient table from the SDK parts-color doc — (pixel_weight_adj,
+# color_weight, mul_flag). The generic formula evaluated per fragment is
 #   out_rgb = pixel*varg.x + mix(white, pixel, varg.z) * color * varg.y
 # with varg = (1 + c.x*rate, c.y*rate, c.z). rate == 0 makes it a texel pass-
 # through for every mode, which is exactly the part-colour-less default.
@@ -104,8 +105,8 @@ def parse(fb) -> FrameData:
 # --- Bulk struct reads (mirror SSPlayerForUnity's RawPartState* / command casts)
 # PartState and EffectDrawCommand are fixed-layout FlatBuffers *structs* stored in
 # contiguous vectors, so the whole array decodes in ONE struct call instead of
-# N × the per-element FlatBuffers accessor chain (Offset→Get→unpack→enforce), which
-# the profiler showed was ~31% of frame CPU. The field offsets below MIRROR the
+# N × the per-element FlatBuffers accessor chain (Offset→Get→unpack→enforce),
+# which profiling showed dominated frame CPU. The field offsets below MIRROR the
 # generated PartState.py (regenerate via scripts/generate-runtime-code if the
 # schema changes); the vector *base* is taken from the generated accessor so only
 # the intra-struct layout is duplicated, and a one-time self-check vs the accessor
@@ -113,10 +114,11 @@ def parse(fb) -> FrameData:
 _PS_SIZE = 144
 # UpdateFlag u64@0, Alpha f32@48, Priority f32@56, Mask f32@108,
 # PartColor i16@128, Shader i16@130, Hide bool@138 (little-endian). Priority/Mask
-# are the per-frame mask attributes (09_mask): Priority feeds draw order (the
-# runtime already sorts draw_order, but we keep it for diagnostics) and Mask is
-# the cutout value (0..255, a float despite the range). Shader indexes
-# FrameData.shaders (the per-part user-shader effect; -1 = none).
+# are the per-frame mask attributes (SDK doc: 40_components/40_mask.md):
+# Priority feeds draw order (the runtime already sorts draw_order, but we keep
+# it for diagnostics) and Mask is the cutout value (0..255, a float despite the
+# range). Shader indexes FrameData.shaders (the per-part user-shader effect;
+# -1 = none).
 _PS_REC = struct.Struct('<Q40xf4xf48xf16xhh6x?5x')
 _ps_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
 
@@ -206,13 +208,15 @@ def clamp_pc_blend(blend_type: int) -> int:
 
 
 def partcolor_varg(blend_idx: int, rate: float) -> tuple:
-    """Build the ``varg`` coefficient triple for one vertex (10_parts_color §1-4-2)."""
+    """Build the ``varg`` coefficient triple for one vertex (SDK doc:
+    40_components/50_parts_color.md)."""
     cx, cy, cz = _PC_COEF[clamp_pc_blend(blend_idx)]
     return (1.0 + cx * rate, cy * rate, cz)
 
 
 def eval_partcolor(pixel_rgb, color_rgb, blend_idx: int, rate: float) -> tuple:
-    """CPU reference of the PartColor fragment formula (10_parts_color §1-4-3).
+    """CPU reference of the PartColor fragment formula (SDK doc:
+    40_components/50_parts_color.md).
 
     ``pixel_rgb`` / ``color_rgb`` are 0..1 RGB triples. Returns the composited
     RGB. This is the authority the headless rasterizer and tests check against;
@@ -312,12 +316,12 @@ def _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask):
 def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
     """Build a :class:`MeshPart` for a Mesh(deform) part from the mesh SoA.
 
-    Per docs/08 §4: vertices are pre-computed WORLD coords (``x``/``y`` SoA),
-    UVs are interleaved texture-pixel at ``vertex_offset*2``, indices are
-    part-local 0-based, and the offset arrays are CSR (length ``num_parts+1``).
-    Returns ``None`` for an empty/degenerate range (non-Mesh part, bad offsets).
-    Colour is the part's hierarchical alpha on white (Mesh ``parts_color`` is
-    Whole-only; per-part tint is a later refinement).
+    Vertices are pre-computed WORLD coords (``x``/``y`` SoA), UVs are
+    interleaved texture-pixel at ``vertex_offset*2``, indices are part-local
+    0-based, and the offset arrays are CSR (length ``num_parts+1``). Returns
+    ``None`` for an empty/degenerate range (non-Mesh part, bad offsets). Colour
+    is the part's hierarchical alpha on white (Mesh ``parts_color``
+    (Whole-only) tint is not applied).
     """
     (mvx, nvx), (mvy, _nvy), (muv, nuv), (midx, ni), (voff, nvo), (ioff, nio) = mesh_soa
     if not mvx or not voff or not ioff:
@@ -359,10 +363,11 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     plus matching normalized bbox coords ((0, 0) = LT .. (1, 1) = RB). Positions
     are sent through the part's world matrix (exactly like a Normal part's local
     vertices); the fill is the PartColor with ``rate`` forced to 1.0 — a shape
-    has no texel to blend against (SCHEMA.md / 10_parts_color: Shape is rate-1.0),
-    so the (white) texture supplied by the render layer is fully replaced by the
-    interpolated corner colour. Returns ``None`` for a non-shape part or a
-    degenerate range (<3 valid verts, e.g. a size-collapsed shape).
+    has no texel to blend against (SCHEMA.md / SDK doc:
+    40_components/50_parts_color.md: Shape is rate-1.0), so the (white) texture
+    supplied by the render layer is fully replaced by the interpolated corner
+    colour. Returns ``None`` for a non-shape part or a degenerate range
+    (<3 valid verts, e.g. a size-collapsed shape).
     """
     (sv, nsv), (sb, nsb), (sc, nsc) = shape_soa
     if not sv or not sc or p >= nsc:
@@ -387,12 +392,12 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     # still fills solid).
     #
     # A Shape **bypasses the PartColor blend formula** (SSPlayerForWeb
-    # GeometryBuilder.buildShape, 10_parts_color): a textureless shape has no
-    # texel to blend against, so the blend mode is FORCED to Mix and the rate to
-    # 1.0 — the fill is the interpolated corner colour itself, regardless of the
-    # part's authored PartColor blend (Add/Sub against the white texel would
-    # otherwise blow out / invert). The authored ``blend`` from ``part_colors``
-    # is intentionally discarded.
+    # GeometryBuilder.buildShape; SDK doc: 40_components/50_parts_color.md): a
+    # textureless shape has no texel to blend against, so the blend mode is
+    # FORCED to Mix and the rate to 1.0 — the fill is the interpolated corner
+    # colour itself, regardless of the part's authored PartColor blend (Add/Sub
+    # against the white texel would otherwise blow out / invert). The authored
+    # ``blend`` from ``part_colors`` is intentionally discarded.
     _authored_blend, corners = part_colors(fd, ps, pcs)
     lt, rt, lb, rb = corners
     # Corner colours are loop-invariant — hoist the four .rgba reads out of the
@@ -571,16 +576,18 @@ class VertexColor:
     """One vertex's PartColor: RGBA (0..1) plus the texel blend ``rate``.
 
     ``rgba.a`` already has the part's hierarchical alpha pre-multiplied
-    (SCHEMA.md / 10_parts_color §1-3) — never re-multiply by ``PartState.alpha``.
-    ``rate`` is the texel<->colour blend strength; ``0`` = texel pass-through.
+    (SCHEMA.md / SDK doc: 40_components/50_parts_color.md) — never re-multiply
+    by ``PartState.alpha``. ``rate`` is the texel<->colour blend strength;
+    ``0`` = texel pass-through.
     """
     rgba: tuple   # (r, g, b, a) floats 0..1
     rate: float
 
 
-# Default for a part with no ``parts_color`` entry (10_parts_color §1-2-4):
-# white, hierarchical alpha, rate 0 → the generic formula returns the raw texel,
-# so the renderer needs no separate "has part colour?" branch.
+# Default for a part with no ``parts_color`` entry (SDK doc:
+# 40_components/50_parts_color.md): white, hierarchical alpha, rate 0 → the
+# generic formula returns the raw texel, so the renderer needs no separate
+# "has part colour?" branch.
 def _default_vertex_color(alpha: float) -> VertexColor:
     return VertexColor((1.0, 1.0, 1.0, max(0.0, min(1.0, alpha))), 0.0)
 
@@ -595,8 +602,8 @@ def _read_corner(kv) -> VertexColor:
 # --- Bulk PartColor decode (same idea as bulk_part_states) ------------------
 # PartAttributePartColor is a fixed 36-byte FlatBuffers *struct* in a contiguous
 # vector, so the whole PartsColor array decodes in ONE struct pass instead of
-# N parts x 4 corners x ~5 accessor chains (the profiler put part_colors at ~35%
-# of the FramePlan CPU on a colour-heavy pack). Layout MIRRORS the generated
+# N parts x 4 corners x ~5 accessor chains (profiling showed part_colors
+# dominating FramePlan CPU on colour-heavy packs). Layout MIRRORS the generated
 # PartAttributePartColor.py (regenerate via scripts/generate-runtime-code if the
 # schema changes): BlendType u8@0 (+3 pad), then Lt/Rt/Lb/Rb key-values at 4/12/
 # 20/28, each an RGBA byte quad (A,R,G,B) + f32 rate. A one-time self-check vs the
@@ -640,10 +647,10 @@ def bulk_part_colors(fd: FrameData):
     out = [_decode_pc_record(rec) for rec in _PC_REC.iter_unpack(blob)]
     if _pc_fastpath is None:
         # Validate the WHOLE record against the accessor path, not just the LT
-        # corner: docs/07 §2 warns SizeOf() cannot catch a same-size field
-        # reorder, so a partial check could let RT/LB/RB decode wrong while the
-        # fast path still reports "validated OK". The four corners live at
-        # struct offsets 4/12/20/28 (see _PC_REC).
+        # corner: SizeOf() cannot catch a same-size field reorder, so a partial
+        # check could let RT/LB/RB decode wrong while the fast path still
+        # reports "validated OK". The four corners live at struct offsets
+        # 4/12/20/28 (see _PC_REC).
         ref_b = clamp_pc_blend(p0.BlendType())
         ref_corners = (
             _read_corner(p0.Lt(SsAttributePartColorKeyValueColor())),
@@ -672,9 +679,9 @@ def part_colors(fd: FrameData, ps, pcs=None) -> tuple:
 
     ``blend_idx`` is clamped to the 4 valid PartColor modes. Parts without a
     ``parts_color`` entry (``PartState.part_color() < 0``) get the white /
-    rate-0 default on all four corners (10_parts_color §1-2/§1-2-4). Only the
-    Normal-part rule (four corners individual) is applied here; Mesh (Whole-only)
-    and Shape (rate forced 1.0) are M3+/Shape-kind concerns.
+    rate-0 default on all four corners (SDK doc: 40_components/50_parts_color.md).
+    Only the Normal-part rule (four corners individual) is applied here; Mesh
+    (Whole-only) and Shape (rate forced 1.0) are handled by their own builders.
 
     ``pcs`` is an optional pre-decoded :func:`bulk_part_colors` array; when given
     (the render hot path) the entry is read from it instead of the per-corner
@@ -732,10 +739,11 @@ class MeshPart:
     # shader is orthogonal to the geometry, so it is NOT part of equality.
     shader_id_hash: int = 0
     shader_params: tuple = ()
-    # Masking (09_mask): a ``ss_renpy.mask.MaskApply`` when this part is a masked
-    # target this frame, else None. Set by the mask layer after the draw plan is
-    # built (the render layer reads it to bind coverage + replay the stencil); it
-    # is intentionally NOT part of the equality/identity of the geometry.
+    # Masking (SDK doc: 40_components/40_mask.md): a ``ss_renpy.mask.MaskApply``
+    # when this part is a masked target this frame, else None. Set by the mask
+    # layer after the draw plan is built (the render layer reads it to bind
+    # coverage + replay the stencil); it is intentionally NOT part of the
+    # equality/identity of the geometry.
     mask: object = None
 
 
@@ -786,8 +794,9 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart, pcs=None) -> MeshPart:
     if use_center:
         # Centre vertex (index 4) — fan for smooth deform / gradient. The centre
         # colour/rate is the mean of the four corners; inlined over the fixed 4
-        # (== _avg but without the per-channel generator+call — this ran for
-        # nearly every part on a deform-heavy pack). ``a*0.25 == a/4.0`` exactly.
+        # (== _avg but without the per-channel generator+call — this executes
+        # for nearly every part on deform-heavy packs). ``a*0.25 == a/4.0``
+        # exactly.
         positions.append(part.positions[CENTER])
         uvs.append(part.uvs[CENTER])
         c0, c1, c2, c3 = colors
@@ -868,9 +877,9 @@ def _draw_batch_list(fd: FrameData):
                 b0._tab.Bytes[base:base + n * _DB_SIZE]))
             if _db_fastpath is None:
                 # Validate all 8 fields (incl. VertexCount@8 / IndexCount@10)
-                # against the accessor: docs/07 §2 warns SizeOf() cannot catch a
-                # same-size field reorder, so every decoded field is checked even
-                # though the walk itself ignores vcount/icount.
+                # against the accessor: SizeOf() cannot catch a same-size field
+                # reorder, so every decoded field is checked even though the
+                # walk itself ignores vcount/icount.
                 r = out[0]
                 if (r[0] == b0.StartRank() and r[1] == b0.Count()
                         and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
@@ -924,15 +933,15 @@ def iter_draw_plan(rt, fd: FrameData):
     stepping a child/effect slot, which invalidates the SoA pointers).
 
     Instance/Effect items are yielded even when ``hidden`` so their slots can
-    still be stepped (independent playback must keep advancing while off-screen,
-    docs/08 §3); the consumer suppresses *drawing* on ``hidden``.
+    still be stepped (independent playback must keep advancing while
+    off-screen); the consumer suppresses *drawing* on ``hidden``.
     """
     wm, wn = rt.world_matrices()
     lv, _ = rt.local_vertices()
     uv, _ = rt.local_uvs()
     cm, _ = rt.cell_meta()
     have_soa = bool(wm and lv)
-    # Mesh(deform) SoA (docs/08 §4) — separate CSR buffers; cheap pointer fetch
+    # Mesh(deform) SoA — separate CSR buffers; cheap pointer fetch
     # even when the pack has no Mesh parts (then ranges are empty / skipped).
     mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
                 rt.mesh_indices(), rt.mesh_vertex_offsets(),
@@ -944,16 +953,14 @@ def iter_draw_plan(rt, fd: FrameData):
                  rt.shape_vertex_counts())
     parts = bulk_part_states(fd)
     pcs = bulk_part_colors(fd)   # pre-decoded per-corner colours (hot path)
-    # DrawOrder is a Uint16 vector read once per part per batch; the generated
-    # accessor recomputes the vector base every call, so hoist the whole vector
-    # in one struct read (empty tuple mirrors the accessor's 0-on-absent).
     do = _draw_order_array(fd)
     # Parts emitted as a Mask batch write coverage only — no colour output. A pure
     # Mask-type part has ONLY a Mask batch (already yielded as "skip"), but a
     # ``draw_as_mask`` Shape/Normal/Mesh part ALSO emits its own colour batch at
     # the same draw-order slot; that colour batch must be suppressed (the part is
-    # the mask, not a drawn sprite — 09_mask). Clipping writers (``mask_write``)
-    # emit no Mask batch, so they are absent here and draw normally.
+    # the mask, not a drawn sprite — SDK doc: 40_components/40_mask.md). Clipping
+    # writers (``mask_write``) emit no Mask batch, so they are absent here and
+    # draw normally.
     batches = _draw_batch_list(fd)
     mask_only_parts = set()
     for (s, c, _th, _vc, _ic, _bl, kind, _fl) in batches:
@@ -1000,7 +1007,7 @@ def transform_mesh_part(mp: MeshPart, m, alpha_mul: float = 1.0) -> MeshPart:
     """Copy ``mp`` with its positions sent through 4x4 ``m`` and alpha scaled.
 
     Composes an Instance part's world matrix onto a child animation's geometry
-    (and folds the instance part's hierarchical alpha in), per docs/08 §1. ``m``
+    (and folds the instance part's hierarchical alpha in). ``m``
     is a 16-float column-major matrix (``None`` = identity); ``alpha_mul``
     multiplies every vertex colour's alpha.
     """

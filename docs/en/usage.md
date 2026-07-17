@@ -163,7 +163,7 @@ image boss = SSPlayer(
 - `on_signal`: Called when a Signal is reached
 - `on_audio`: Called when an audio playback specified frame is reached
 - `on_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
-- `on_looped`: Called each time a loop completes (1 iteration). The final loop finishes instead
+- `on_looped`: Called each time a loop iteration completes; the final iteration fires `on_finished` instead
 - `on_started`: Called when animation playback starts
 
 > [!NOTE]

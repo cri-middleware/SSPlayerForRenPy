@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 #
 # Build the Ren'Py Web export AND apply the two SSPlayer post-export steps the
-# Web target needs (docs\export.md §3, §4) but that the Ren'Py exporter cannot
+# Web target needs (docs/en/export.md, Web Export steps 1-2) but that the Ren'Py exporter cannot
 # do on its own:
 #   3. inject the ssruntime.js / .wasm module <script> into index.html, and
 #   4. copy game\spritestudio\libs\web\{ssruntime.js,ssruntime_bg.wasm} out of
@@ -52,7 +52,7 @@ if (Test-Path $PythonExe) {
     $RenpyExe = $Renpy;     $RenpyPre = @()
 }
 
-# --- 2. run the Web export ------------------------------------------------
+# --- run the Web export ----------------------------------------------------
 Write-Host ">> building Web export -> $Dest"
 & $RenpyExe @RenpyPre $Launcher web_build $RootDir --dest $Dest
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy-web.ps1: web_build failed ($LASTEXITCODE)"; exit 1 }
@@ -60,7 +60,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error "deploy-web.ps1: web_build failed ($LASTE
 $Index = Join-Path $Dest "index.html"
 if (-not (Test-Path $Index)) { Write-Error "deploy-web.ps1: export did not produce $Index"; exit 1 }
 
-# --- 3. inject the module <script> before renpy-pre.js (idempotent) -------
+# --- inject the module <script> before renpy-pre.js (idempotent) ----------
 $content = Get-Content -Raw $Index
 if ($content.Contains("spritestudio/libs/web/ssruntime.js")) {
     Write-Host ">> index.html: module script already present"
@@ -79,7 +79,7 @@ if ($content.Contains("spritestudio/libs/web/ssruntime.js")) {
     Set-Content -NoNewline -Path $Index -Value $content
 }
 
-# --- 4. copy the web runtime out of game.zip as real files ----------------
+# --- copy the web runtime out of game.zip as real files -------------------
 Write-Host ">> placing web runtime under $Dest\game\spritestudio\libs\web\"
 $OutWeb = Join-Path $Dest "game/spritestudio/libs/web"
 New-Item -ItemType Directory -Force -Path $OutWeb | Out-Null

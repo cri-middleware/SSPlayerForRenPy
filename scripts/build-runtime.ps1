@@ -2,8 +2,8 @@
 #
 # Build the native runtime libssruntime from the SpriteStudio-SDK and place it
 # in the library's per-platform/arch layout. Windows counterpart of
-# scripts/build-runtime.sh; modeled on SSPlayerForUnity's build-runtime.ps1
-# (same platform=/arch=/build= interface), adapted to the Ren'Py layout:
+# scripts/build-runtime.sh (same platform=/arch=/build= interface), adapted to
+# the Ren'Py layout:
 #
 #   game\spritestudio\libs\
 #     windows\x86_64\ssruntime.dll   windows\arm64\ssruntime.dll
@@ -64,23 +64,35 @@ $CargoFlags = if ($BUILD_MODE -eq "release") { @("--release") } else { @() }
 $SrcDir = ""
 Push-Location $SdkDir
 try {
+    # $ErrorActionPreference does not cover native commands, so every build
+    # step checks $LASTEXITCODE — otherwise a failed build would fall through
+    # to the placement phase and copy a stale artifact.
+    function Assert-BuildOk([string] $What) {
+        if ($LASTEXITCODE -ne 0) { Write-Error "build-runtime.ps1: $What failed ($LASTEXITCODE)" }
+    }
     if ($IS_HOST_BUILD) {
-        cargo build $CargoFlags -p ssruntime --features libc_alloc,panic-handler
+        # NB: the feature list must be quoted — a bare libc_alloc,panic-handler
+        # is a PowerShell array and reaches cargo as two separate arguments.
+        cargo build $CargoFlags -p ssruntime --features "libc_alloc,panic-handler"
+        Assert-BuildOk "cargo build (ssruntime)"
         cargo build $CargoFlags -p ssconverter
+        Assert-BuildOk "cargo build (ssconverter)"
         $SrcDir = "target/$BUILD_MODE"
     } else {
         switch ($PLATFORM) {
             "windows" {
                 $script = if ($ARCH -eq "arm64") { "./scripts/release-windows-arm64.ps1" } else { "./scripts/release-windows.ps1" }
                 & $script $BUILD_MODE
+                Assert-BuildOk "$script"
                 $SrcDir = if ($ARCH -eq "arm64") { "target/aarch64-pc-windows-msvc/$BUILD_MODE" } else { "target/x86_64-pc-windows-msvc/$BUILD_MODE" }
             }
-            "macos"   { & sh ./scripts/release-macos.sh $BUILD_MODE; $SrcDir = "target/universal-apple-darwin/$BUILD_MODE" }
-            "linux"   { & sh ./scripts/release-linux.sh $BUILD_MODE; $SrcDir = "target/$BUILD_MODE" }
-            "android" { & sh ./scripts/release-android.sh $BUILD_MODE; $SrcDir = "" }
-            "ios"     { & sh ./scripts/release-ios-xcframework.sh $BUILD_MODE; $SrcDir = "" }
+            "macos"   { & sh ./scripts/release-macos.sh $BUILD_MODE; Assert-BuildOk "release-macos.sh"; $SrcDir = "target/universal-apple-darwin/$BUILD_MODE" }
+            "linux"   { & sh ./scripts/release-linux.sh $BUILD_MODE; Assert-BuildOk "release-linux.sh"; $SrcDir = "target/$BUILD_MODE" }
+            "android" { & sh ./scripts/release-android.sh $BUILD_MODE; Assert-BuildOk "release-android.sh"; $SrcDir = "" }
+            "ios"     { & sh ./scripts/release-ios-xcframework.sh $BUILD_MODE; Assert-BuildOk "release-ios-xcframework.sh"; $SrcDir = "" }
             "web" {
                 & "$SdkDir/scripts/release-web.ps1" "$BUILD_MODE"
+                Assert-BuildOk "release-web.ps1"
                 $SrcDir = "web_skip"
             }
             default   { Write-Error "unknown platform '$PLATFORM'" }
@@ -88,7 +100,7 @@ try {
     }
 } finally { Pop-Location }
 
-# --- 1.5 licenses (mirror Unity) ------------------------------------------
+# --- 1.5 copy license notices alongside the libraries ---------------------
 New-Item -ItemType Directory -Force -Path $LibRoot | Out-Null
 if (Test-Path "$SdkDir/LICENSE.md") { Copy-Item "$SdkDir/LICENSE.md" "$LibRoot/" -Force }
 if (Test-Path "$SdkDir/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md") {

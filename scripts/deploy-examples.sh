@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Convert the SpriteStudio test projects into playback data under game/sprites/
-# (.ssab + referenced textures, via ssconverter-cli). Ren'Py counterpart of
-# SSPlayerForWeb's deploy-examples.
+# Convert the SpriteStudio test projects into playback data under
+# game/ss_assets/ (.ssab + referenced textures, via
+# tools/cli_convert.py).
 #
 # Scope: ONLY the playback data. The native libssruntime binary is the job of
 # scripts/build-runtime.{sh,ps1}, not this script.
-#   game/sprites/             <- deploy-examples.{sh,ps1}   (this script)
+#   game/ss_assets/           <- deploy-examples.{sh,ps1}   (this script)
 #   game/spritestudio/libs/   <- build-runtime.{sh,ps1}
 # Both are gitignored.
 #

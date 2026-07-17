@@ -9,7 +9,6 @@ init -10 python:
     import time
 
     def _ss_auto_import():
-        # Only run in developer mode
         if not config.developer:
             return
 
@@ -55,40 +54,58 @@ init -10 python:
             # (Checks all files like .ssae, .ssce, .png alongside the .sspj)
             sspj_dir = os.path.dirname(sspj_path)
             latest_source_mtime = 0
-            for root, _, files in os.walk(sspj_dir):
+            for root, dirs, files in os.walk(sspj_dir):
+                # Prune hidden directories (.git etc.) — their contents are not
+                # dot-prefixed and would spuriously trigger reconversion.
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
                 for f in files:
                     # Ignore hidden files
                     if f.startswith('.'):
                         continue
-                    mtime = os.path.getmtime(os.path.join(root, f))
+                    try:
+                        mtime = os.path.getmtime(os.path.join(root, f))
+                    except OSError:
+                        continue  # vanished mid-scan / dangling symlink
                     if mtime > latest_source_mtime:
                         latest_source_mtime = mtime
             
-            # 2. Check if output exists and find its newest modification time
-            # Since a project can output multiple .ssab files, we check the newest file 
-            # in the output directory. If it's older than the newest source file, we rebuild.
+            # 2. Conversion is needed unless the last run both SUCCEEDED and
+            # covered the current sources. Output mtimes alone cannot tell:
+            # the converter writes .ssab files before textures and returns an
+            # error part-way through on failure, which would leave fresh-looking
+            # partial output behind. So a success marker recording the source
+            # snapshot is written only on ConverterResult.Success (below), and
+            # only that marker skips reconversion.
+            marker_path = os.path.join(project_out_dir, ".ss_import_ok")
             needs_conversion = True
             if os.path.exists(project_out_dir):
-                latest_out_mtime = 0
                 has_files = False
-                for root, _, files in os.walk(project_out_dir):
-                    for f in files:
-                        if f.startswith('.'):
-                            continue
+                for root, dirs, files in os.walk(project_out_dir):
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    if any(not f.startswith('.') for f in files):
                         has_files = True
-                        mtime = os.path.getmtime(os.path.join(root, f))
-                        if mtime > latest_out_mtime:
-                            latest_out_mtime = mtime
-                
-                # If output has files and its latest file is newer than or equal to source's latest, skip conversion
-                if has_files and latest_out_mtime >= latest_source_mtime:
-                    needs_conversion = False
+                        break
+                if has_files:
+                    try:
+                        with open(marker_path, "r") as fh:
+                            if float(fh.read().strip()) >= latest_source_mtime:
+                                needs_conversion = False
+                    except (OSError, ValueError):
+                        pass  # missing/corrupt marker -> reconvert
 
             if needs_conversion:
                 print(f"[SpriteStudio] Auto-converting project: {project_name} ...")
                 
                 if converter is None:
-                    converter = SsConverter()
+                    try:
+                        converter = SsConverter()
+                    except (OSError, ImportError, AttributeError) as e:
+                        # ctypes.CDLL raises OSError on a missing/wrong-ABI
+                        # libssconverter; a present-but-stale library missing an
+                        # expected export raises AttributeError from _declare().
+                        # Disable cleanly instead of a traceback at launch.
+                        print(f"[SpriteStudio] Auto-importer disabled: could not load native converter ({e})")
+                        return
                 
                 def on_log(msg):
                     print(f"  [Converter] {msg.strip()}")
@@ -102,6 +119,17 @@ init -10 python:
                 res = converter.get_result()
                 if res == ConverterResult.Success:
                     print(f"[SpriteStudio] Successfully converted {project_name}.")
+                    # Stamp the source snapshot this conversion covered; the
+                    # freshness check above only trusts this marker.
+                    try:
+                        with open(marker_path, "w") as fh:
+                            # repr() keeps full float precision; "%f" truncates
+                            # to 6 decimals and rounds down ~half the time on
+                            # sub-microsecond mtimes, which would make the
+                            # freshness check below reconvert on every launch.
+                            fh.write(repr(latest_source_mtime))
+                    except OSError as e:
+                        print(f"[SpriteStudio] Warning: could not write import marker ({e})")
                     changed = True
                 else:
                     err = converter.get_error()
@@ -121,5 +149,5 @@ init -10 python:
                 print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
                       "newly imported packs may not appear in the browser until restart.")
 
-    # Execute auto-import
+    # Run once at init; the function itself gates on config.developer.
     _ss_auto_import()

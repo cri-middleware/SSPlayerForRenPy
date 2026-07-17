@@ -6,7 +6,7 @@
 #
 # This is a SEPARATE job from the other scripts (keep them decoupled):
 #   build-runtime.*   -> the native libssruntime    (game/spritestudio/libs/)
-#   deploy-examples.* -> the .ssab playback data     (game/sprites/)
+#   deploy-examples.* -> the .ssab playback data     (game/ss_assets/)
 #   fetch-renpy-sdk.* -> the Ren'Py editor/runtime   (renpy-sdk/, gitignored)
 #
 # Usage: scripts/fetch-renpy-sdk.sh [version]
@@ -22,7 +22,7 @@ DEST="$ROOT_DIR/renpy-sdk"
 BASE_URL="https://www.renpy.org/dl"
 VERSION_FILE="$ROOT_DIR/scripts/RENPY_VERSION.txt"
 
-usage() { sed -n '/^# Usage:/,/^#   8/p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '/^# Usage:/,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
 
 command -v curl >/dev/null || { echo "fetch-renpy-sdk.sh: curl not on PATH" >&2; exit 1; }

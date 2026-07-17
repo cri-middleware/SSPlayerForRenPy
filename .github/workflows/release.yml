@@ -31,12 +31,11 @@ concurrency:
   cancel-in-progress: true
 
 # NOTE: both jobs check out the SpriteStudio-SDK submodule and download its
-# Release assets. While that repo/its Releases are still private, checkout
-# (submodules: recursive) and download-sdk.sh fail on CI. They go green once
-# the SDK repo/release is made public (planned), with no extra auth.
+# Release assets, so they need the SpriteStudio-SDK repository and the release
+# pinned by scripts/SDK_VERSION.txt to be reachable (no extra auth required).
 jobs:
   # Headless verification gate: every engine-independent layer has a plain-
-  # CPython test under tools/ (CLAUDE.md §5), plus the Ren'Py lint. GL2
+  # CPython test under tools/ (AGENTS.md §5), plus the Ren'Py lint. GL2
   # rendering cannot be verified here — sign it off locally (Shift+B /
   # scripts/run-demo.*) before releasing.
   test:
@@ -118,6 +117,10 @@ jobs:
       - name: Package game/spritestudio
         id: pkg
         run: |
+          # Ship the license documents inside the drop-in folder so they travel
+          # with every copy (the vendored FlatBuffers runtime is Apache-2.0,
+          # which requires the license text to accompany redistribution).
+          cp LICENSE.md THIRD_PARTY_NOTICES.md game/spritestudio/
           ARTIFACT="SSPlayerForRenPy-${{ steps.meta.outputs.version }}.zip"
           cd game
           zip -r -X "../$ARTIFACT" spritestudio \

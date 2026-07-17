@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Headless check for Instance-part playback via the unified SSInternalPlayer.
 
-Instance children are now parent-driven ``SSInternalPlayer`` instances (not a
-bespoke SubPlayer). Drives ``Instance.ssab`` (whose parts embed the external
+Instance children are parent-driven ``SSInternalPlayer`` instances.
+Drives ``Instance.ssab`` (whose parts embed the external
 pack ``Instance_SourceAnime``) through every frame and validates that:
   * instance children actually render (mesh geometry appears),
   * every child texture hash resolves against the shared (root + external)

@@ -6,7 +6,6 @@ Thank you for your interest in contributing to SSPlayerForRenPy! We welcome all 
 - [Code of Conduct](#code-of-conduct)
 - [How Can I Contribute?](#how-can-i-contribute)
 - [Development Environment](#development-environment)
-- [Coding Standards](#coding-standards)
 
 ## Code of Conduct
 Please refer to [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
@@ -21,7 +20,7 @@ To maintain high performance and native integration with Ren'Py, please adhere t
 - **SDK Separation:** The core playback logic resides in the `SpriteStudio-SDK` submodule (Rust). Changes to core logic should be directed to the SDK repository, while Ren'Py-specific integrations belong in `game/spritestudio/`.
 
 ### Reporting Bugs
-If you find a bug, please use the provided Issue Templates. Include:
+If you find a bug, please open a [GitHub Issue](https://github.com/cri-middleware/SSPlayerForRenPy/issues). Include:
 - A clear, descriptive title.
 - Steps to reproduce.
 - Your Ren'Py version and OS.
@@ -69,10 +68,9 @@ By contributing to this project, you agree that your contributions will be licen
 SSPlayerForRenPy にご関心をお寄せいただき、ありがとうございます！ バグ報告、機能提案、ドキュメントの改善、コードの提供など、あらゆる形での貢献を歓迎します。
 
 ## 目次
-- [行動規範](#行動規範-1)
-- [貢献する方法](#貢献する方法-1)
-- [開発環境のセットアップ](#開発環境のセットアップ-1)
-- [コーディング規約](#コーディング規約-1)
+- [行動規範](#行動規範)
+- [貢献する方法](#貢献する方法)
+- [開発環境のセットアップ](#開発環境のセットアップ)
 
 ## 行動規範
 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) を参照してください。
@@ -87,7 +85,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 - **SDKの分離:** コアのアニメーション計算ロジックは `SpriteStudio-SDK` サブモジュール(Rust)に存在します。アルゴリズムやコアロジックの修正はSDK側のリポジトリへ、Ren'Py特有の実装は `game/spritestudio/` へ行ってください。
 
 ### バグの報告
-バグを発見した場合は、Issue テンプレートを使用して以下の情報を含めてください：
+バグを発見した場合は、[GitHub Issues](https://github.com/cri-middleware/SSPlayerForRenPy/issues) に以下の情報を含めて投稿してください：
 - 簡潔で分かりやすいタイトル
 - 再現手順
 - 利用している Ren'Py のバージョンとOS

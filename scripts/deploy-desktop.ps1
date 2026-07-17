@@ -10,7 +10,7 @@
 # scripts\deploy-desktop.sh on that OS instead.
 #
 # The win package needs game\spritestudio\libs\windows\x86_64\ssruntime.dll.
-# This repo ships only the macOS dylib, so fetch the Windows library first with
+# Native libraries are not committed to this repo, so fetch them first with
 # scripts\download-sdk.ps1 (prebuilt) or scripts\build-runtime.ps1 (from source).
 #
 # Usage: scripts\deploy-desktop.ps1 [dest_dir]

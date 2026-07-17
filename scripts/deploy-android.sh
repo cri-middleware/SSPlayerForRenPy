@@ -95,7 +95,7 @@ done
 # read-only nativeLibraryDir (W^X since API 29) — i.e. libs shipped in lib/<abi>/.
 # RAPT sources jniLibs from prototype/renpyandroid/src/main/jniLibs/<abi>/ (copied
 # into every build), so mirror our per-ABI .so there. Consumers building via the
-# stock launcher must do this copy once by hand — see docs/export.md (Android).
+# stock launcher must do this copy once by hand — see docs/en/export.md (Android Export).
 JNILIBS="$RAPT/prototype/renpyandroid/src/main/jniLibs"
 for abi in arm64-v8a armeabi-v7a x86_64; do
   so="$LIBS/android/$abi/libssruntime.so"

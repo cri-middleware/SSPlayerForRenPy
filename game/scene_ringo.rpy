@@ -64,7 +64,7 @@ label ringo_demo:
     hide ringo
     with dissolve
 
-    # Show Ringo_tyu and e040b together as a test case
+    # Bonus: Ringo_tyu and the e040b particle effect shown simultaneously.
     show ringo_tyu:
         xoffset 0 yoffset 150
     show effect_e040b:

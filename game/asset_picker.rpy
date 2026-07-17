@@ -76,9 +76,9 @@ init python:
 
 label asset_picker_demo:
     # Start unselected (the right pane shows "Select a pack on the left."). We
-    # deliberately do NOT auto-select a pack: previewing renders a live SSPlayer,
-    # and a few packs (e.g. the Mask sample) currently hit a mask-shader compile
-    # issue on some GPUs — letting the user choose avoids crashing on open.
+    # deliberately do NOT auto-select a pack: auto-building a live SSPlayer on
+    # open would turn any pack-specific render failure into a crash-on-open;
+    # letting the user pick keeps the browser reachable.
     call screen ss_asset_picker
     return
 
@@ -111,8 +111,7 @@ screen ss_asset_picker():
     # screens.rpy), so the default scrollbar styles are absent and a
     # `scrollbars`-enabled viewport collapses its content to zero size — the
     # Packs list then renders empty even though the index finds the packs.
-    # Mouse-wheel + drag scrolling works without those styles. (ss_browser.rpy
-    # had the same latent bug.)
+    # Mouse-wheel + drag scrolling works without those styles.
     hbox:
         xalign 0.5
         yalign 0.5

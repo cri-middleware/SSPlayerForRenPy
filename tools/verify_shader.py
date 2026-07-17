@@ -7,7 +7,7 @@ still needs a real GL2 run; use the Asset Browser, Shift+B, on
 ``overall/Shader.ssab``). Four layers:
 
   * **struct sanity** — that the bulk ``PartState`` decode record
-    (:data:`ss_renpy.framedata._PS_REC`, now carrying the ``shader`` short) still
+    (:data:`ss_renpy.framedata._PS_REC`, which includes the ``shader`` short) still
     matches ``PartState.SizeOf()`` so the fast path stays enabled;
   * **hash catalog** — that the render layer's name→id_hash map (built with the
     Brain's own ``ss_runtime_hash_string``) covers every ``ss-*`` variant and
@@ -64,7 +64,7 @@ def _check(cond, msg, fails):
 
 
 # --------------------------------------------------------------------------
-# 1. struct sanity (the fast-path record grew a `shader` field)
+# 1. struct sanity (the fast-path record must match PartState.SizeOf)
 # --------------------------------------------------------------------------
 def check_struct() -> bool:
     fails: list = []

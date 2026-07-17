@@ -118,7 +118,7 @@ foreach ($abi in @("armeabi-v7a", "x86_64")) {
 # read-only nativeLibraryDir (W^X since API 29) — i.e. libs shipped in lib\<abi>\.
 # RAPT sources jniLibs from prototype\renpyandroid\src\main\jniLibs\<abi>\ (copied
 # into every build), so mirror our per-ABI .so there. Consumers building via the
-# stock launcher must do this copy once by hand — see docs/export.md (Android).
+# stock launcher must do this copy once by hand — see docs/en/export.md (Android Export).
 $JniLibs = Join-Path $Rapt "prototype/renpyandroid/src/main/jniLibs"
 foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64")) {
     $so = Join-Path $Libs "android/$abi/libssruntime.so"
@@ -141,7 +141,8 @@ Write-Host ">> building Android $kind -> $Dest"
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy-android.ps1: android_build failed ($LASTEXITCODE)"; exit 1 }
 
 # --- report ---------------------------------------------------------------
-$Out = Get-ChildItem -Path $Dest -Include *.aab, *.apk -File -ErrorAction SilentlyContinue |
+# NB: -Include only applies when the path enumerates contents, hence the '*'.
+$Out = Get-ChildItem -Path (Join-Path $Dest '*') -Include *.aab, *.apk -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($Out) {
     $Adb = Join-Path $Rapt "Sdk/platform-tools/adb.exe"
