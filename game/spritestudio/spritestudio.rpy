@@ -1310,6 +1310,8 @@ init -10 python:
             # Last render time while audio was live — the off-screen reaper reads
             # it to tell an on-screen player (kept redrawing) from a swapped-out one.
             self._audio_last_render = 0.0
+            # The current frame number to restore on rollback/reshow.
+            self._saved_frame = -1.0
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
@@ -1477,11 +1479,28 @@ init -10 python:
                 raise Exception(
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
-            self._start_initial()
+
+            # If restoring from a saved state (e.g. after rollback unpickled this
+            # instance), restore the exact animation and frame.
+            if getattr(self, "_saved_frame", -1.0) >= 0.0:
+                core = self._core
+                core.set_speed(self.speed)
+                core.set_loop(1 if getattr(self, "_anim_queue", []) else self._initial_loop)
+                anim = getattr(self, "animation", None)
+                if not anim:
+                    anim = self._initial_animation
+                    if isinstance(anim, (list, tuple)) and anim:
+                        anim = anim[0]
+                if core.set_animation(anim):
+                    core.set_frame(self._saved_frame)
+                    core.play()
+            else:
+                self._start_initial()
+
             # Restore the per-part overrides the game had set before this core
             # was dropped (save/load, rollback, re-show). Runs AFTER
-            # _start_initial: setup_animation clears the Brain's override table,
-            # so applying them earlier would be undone by it.
+            # _start_initial / the saved-state restore: setup_animation clears the
+            # Brain's override table, so applying them earlier would be undone by it.
             self._reapply_overrides()
             # Preload this pack's audio once, at setup, if it has any (lazy:
             # no-op for packs with no sound). Done here, before the first
@@ -1777,6 +1796,7 @@ init -10 python:
             # (resets the animation sequence too).
             core = self._core
             if self._last_st is not None and st < self._last_st:
+                self._saved_frame = -1.0
                 self._start_initial(start_frame=0)
                 # A re-show restarts the animation, and that setup_animation
                 # dropped the Brain's visibility + non-Permanent overrides —
@@ -1798,6 +1818,7 @@ init -10 python:
             # this frame's z-ordered, world-space draw plan.
             _tg = time.perf_counter() if SS_PROFILE else 0.0
             plan = core.update(dt * 1000.0)
+            self._saved_frame = plan.frame_no
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
             self._dispatch_plan(plan)            # timeline events + on_looped
