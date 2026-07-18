@@ -1310,8 +1310,9 @@ init -10 python:
             # Last render time while audio was live — the off-screen reaper reads
             # it to tell an on-screen player (kept redrawing) from a swapped-out one.
             self._audio_last_render = 0.0
-            # The current frame number to restore on rollback/reshow.
+            # The current frame + loop count to restore on rollback/reshow.
             self._saved_frame = -1.0
+            self._saved_loop = self._initial_loop
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
@@ -1485,15 +1486,30 @@ init -10 python:
             if getattr(self, "_saved_frame", -1.0) >= 0.0:
                 core = self._core
                 core.set_speed(self.speed)
-                core.set_loop(1 if getattr(self, "_anim_queue", []) else self._initial_loop)
+                # Loop count: use the value the core actually last ran with
+                # (snapshotted each frame in render()). This preserves a runtime
+                # ss_set_loop / ss_play(loop=...) across rollback — mirroring how
+                # speed is carried above — and already encodes the sequence rule
+                # (1 for a mid-chain clip, the request for the final one).
+                core.set_loop(getattr(self, "_saved_loop", self._initial_loop))
                 anim = getattr(self, "animation", None)
                 if not anim:
                     anim = self._initial_animation
                     if isinstance(anim, (list, tuple)) and anim:
                         anim = anim[0]
                 if core.set_animation(anim):
-                    core.set_frame(self._saved_frame)
+                    # play() re-seeks to the section start, so seek to the saved
+                    # frame AFTER starting playback. Seeking first and then
+                    # play()ing would clobber the head back to frame 0 (i.e. the
+                    # animation would still reset on rollback), and update(0) on
+                    # the first post-rollback render then poses this exact frame.
                     core.play()
+                    core.set_frame(self._saved_frame)
+                else:
+                    # Saved animation is gone (e.g. the pack changed since the
+                    # save) — fall back to a fresh start rather than leaving the
+                    # core with no animation set (a silently blank sprite).
+                    self._start_initial()
             else:
                 self._start_initial()
 
@@ -1819,6 +1835,7 @@ init -10 python:
             _tg = time.perf_counter() if SS_PROFILE else 0.0
             plan = core.update(dt * 1000.0)
             self._saved_frame = plan.frame_no
+            self._saved_loop = core.loop
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
             self._dispatch_plan(plan)            # timeline events + on_looped
