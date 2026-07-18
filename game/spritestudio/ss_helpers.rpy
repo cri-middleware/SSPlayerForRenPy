@@ -12,20 +12,40 @@
 init -9 python:
 
     def ss_duration(ssab, anim=None, speed=1.0):
-        """Seconds one playthrough of `anim` takes (total_frames / fps / speed).
+        """Seconds `anim` takes to play through once (total_frames / fps / speed,
+        summed over a sequence).
 
-        `ssab` is the gamedir-relative .ssab path; `anim` defaults to the first
-        animation. Returns 0.0 if it can't be determined (so callers degrade to
-        "no wait")."""
+        `ssab` is the gamedir-relative .ssab path. `anim` is a single animation
+        name (defaults to the first animation), or a *list/tuple* naming a
+        sequence — the same shape SSPlayer's `animation=` accepts — in which
+        case the per-clip durations are summed (SSPlayer plays a sequence once
+        through, so the sum is its full run; measuring only the first clip would
+        wait too little). Returns 0.0 if it — or any clip of a sequence — can't
+        be determined (so callers degrade to "no wait")."""
         try:
             meta = SsabMeta(_ss_open_bytes(ssab))
             anims = meta.animations()
             if not anims:
                 return 0.0
-            a = next((x for x in anims if x.name == anim), anims[0])
-            if not a.fps:
+            spd = float(speed or 1.0)
+
+            def _one(name):
+                # name is None -> first available, mirroring SSPlayer / the Brain;
+                # an unknown name also falls back to the first (kept from before).
+                a = anims[0] if name is None else next(
+                    (x for x in anims if x.name == name), anims[0])
+                return (a.total_frame / float(a.fps)) / spd if a.fps else None
+
+            names = list(anim) if isinstance(anim, (list, tuple)) else [anim]
+            if not names:                  # empty sequence -> nothing to wait on
                 return 0.0
-            return (a.total_frame / float(a.fps)) / float(speed or 1.0)
+            total = 0.0
+            for n in names:
+                d = _one(n)
+                if d is None:              # a clip with unknown length -> give up
+                    return 0.0
+                total += d
+            return total
         except Exception:
             return 0.0
 
@@ -56,7 +76,11 @@ init -9 python:
         d = SSPlayer(ssab, animation=anim, loop=loop, speed=speed, **kwargs)
         renpy.show(tag, what=d, at_list=([at] if at is not None else []), layer=layer)
         if wait:
-            renpy.pause(ss_duration(ssab, anim, speed) * loop)
+            # A sequence (list/tuple anim) plays once through — SSPlayer forces
+            # loop=1 for it (see _setup_animation) — so `loop` only repeats a
+            # single-animation run; don't multiply the already-summed sequence.
+            reps = 1 if isinstance(anim, (list, tuple)) and len(anim) > 0 else loop
+            renpy.pause(ss_duration(ssab, anim, speed) * reps)
             if hide:
                 renpy.hide(tag, layer=layer)
         return tag
