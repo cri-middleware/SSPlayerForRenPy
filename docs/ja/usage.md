@@ -206,7 +206,7 @@ image ringo = SSPlayer(
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="../../assets/2-asset_browser.webm" type="video/webm">
 > </video>
-> <img src="../../assets/2-asset_browser.webp" width="100%" style="display: none;">
+> <img src="../assets/2-asset_browser.webp" width="100%" style="display: none;">
 
 ウィンドウは3ペイン構成です。
 
@@ -227,4 +227,4 @@ image ringo = SSPlayer(
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="../../assets/3-asset_browser_autoimport.webm" type="video/webm">
 > </video>
-> <img src="../../assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">
+> <img src="../assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">
