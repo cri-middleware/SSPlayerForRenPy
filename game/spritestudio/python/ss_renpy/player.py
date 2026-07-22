@@ -65,6 +65,33 @@ class FramePlan:
     frame_mask: object = None
 
 
+def _pack_rgba(color) -> int:
+    """A colour -> the packed ``0xRRGGBBAA`` the override C-API expects.
+
+    Accepts an already-packed int, or an ``(r, g, b[, a])`` sequence of 0..255
+    (alpha defaults to opaque). Components are clamped, never rescaled: an
+    override colour lives in the same 8-bit sRGB space as the authored
+    PartColor. Raises ValueError on anything else — a malformed colour is a
+    coding error, and a clear traceback beats a silent no-op.
+    """
+    if isinstance(color, int):
+        return color & 0xFFFFFFFF
+    try:
+        c = list(color)
+    except TypeError:
+        raise ValueError(
+            "colour must be a packed int or an (r, g, b[, a]) sequence, "
+            "got %r" % (color,)) from None
+    if len(c) == 3:
+        c.append(255)
+    if len(c) != 4:
+        raise ValueError(
+            "colour must be a packed int or an (r, g, b[, a]) sequence, "
+            "got %r" % (color,))
+    r, g, b, a = (max(0, min(255, int(round(v)))) for v in c)
+    return (r << 24) | (g << 16) | (b << 8) | a
+
+
 class SSInternalPlayer:
     """Pure, engine-independent playback of ONE animation from a ``.ssab`` pack.
 
@@ -606,6 +633,124 @@ class SSInternalPlayer:
         if i < 0 or self._last_hidden is None:
             return True
         return i in self._last_hidden
+
+    # -- part overrides -------------------------------------------------
+    # Per-part runtime overrides (color / cell / visibility): an imperative
+    # "make this part this colour / cell / hidden NOW" that the Brain applies on
+    # the resolved pose, so it wins over both the keyframe and any blend (SDK
+    # doc: 40_components/65_override_layer.md).
+    #
+    # The Brain owns the table and its whole lifecycle — a new animation drops
+    # visibility + non-Permanent color/cell overrides, a new pack drops
+    # everything — so this core keeps no copy and never re-applies. (The host
+    # displayable does keep a record, but only to restore overrides after Ren'Py
+    # drops and rebuilds the native core on save/load; that is host policy, the
+    # same tier that owns sequence chaining.)
+    #
+    # ``part`` is a part NAME or its integer index — the Pythonic form of the
+    # ``*_by_index`` method pairs the Godot / Unity ports carry. Indices are
+    # positional over the pack's parts and stable within one ``.ssab``, so
+    # resolve a name once with :meth:`part_index` and reuse it if you set
+    # overrides often. Every method returns False when the part is unknown or
+    # the runtime rejects the call.
+    def resolve_part(self, part) -> int:
+        """A part name *or* index -> its index, or -1 when unknown/unusable.
+
+        The single entry point every override method resolves through, so a
+        host can normalise a caller's part reference the same way (the
+        displayable keys its restore record by the resolved index).
+        """
+        if self._rt is None:
+            return -1
+        i = part if isinstance(part, int) else self.part_index(part)
+        return i if 0 <= i < len(self._part_infos) else -1
+
+    def set_part_visibility_override(self, part, hide: bool = True,
+                                     cascade: bool = False) -> bool:
+        """Force-hide ``part`` (``hide=True``) or revert it to the animation.
+
+        ``cascade`` propagates the force-hide to the part's descendants — new,
+        override-only behaviour (a keyframed hide never cascades in SS7).
+        Visibility takes no priority mode: it always wins, and a new animation
+        always clears it.
+        """
+        i = self.resolve_part(part)
+        if i < 0:
+            return False
+        return self._rt.set_part_visibility_override(i, 1 if hide else 0,
+                                                     cascade)
+
+    def clear_part_visibility_override(self, part) -> bool:
+        i = self.resolve_part(part)
+        return i >= 0 and self._rt.clear_part_visibility_override(i)
+
+    def set_part_color_override(
+            self, part, color, blend_op: int = ssruntime.BLEND_MIX,
+            priority: int = ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """Tint ``part`` with one colour (all four corners).
+
+        ``color`` is a packed ``0xRRGGBBAA`` int or an ``(r, g, b[, a])``
+        sequence of 0..255. It is interpreted in the same 8-bit sRGB space as
+        the authored PartColor and the Brain pre-multiplies alpha itself — pass
+        the colour as authored, without converting it. ``blend_op`` is
+        ``BLEND_MIX/MUL/ADD/SUB``. Normal parts only: other part types silently
+        ignore it (the call still succeeds), matching SS6's PartsColorChange.
+        """
+        i = self.resolve_part(part)
+        if i < 0:
+            return False
+        return self._rt.set_part_color_override(
+            i, blend_op, _pack_rgba(color), priority)
+
+    def set_part_color_override_corners(
+            self, part, corners, blend_op: int = ssruntime.BLEND_MIX,
+            priority: int = ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """Like :meth:`set_part_color_override` with four distinct corners,
+        given in the runtime's ``lt, rt, lb, rb`` order."""
+        i = self.resolve_part(part)
+        cols = list(corners) if corners is not None else []
+        if i < 0 or len(cols) != 4:
+            return False
+        return self._rt.set_part_color_override_corners(
+            i, blend_op, [_pack_rgba(c) for c in cols], priority)
+
+    def clear_part_color_override(self, part) -> bool:
+        i = self.resolve_part(part)
+        return i >= 0 and self._rt.clear_part_color_override(i)
+
+    def set_part_cell_override(
+            self, part, cellmap_name: str, cell_name: str,
+            priority: int = ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """Make ``part`` draw a different cell.
+
+        ``cellmap_name`` is written WITHOUT the ``.ssce`` extension; enumerate
+        the valid targets with :meth:`cellmap_names` / :meth:`cell_names`. The
+        cell is resolved immediately, so an unknown name returns False. Normal
+        and Mask parts only. Empty names revert the part to the animation.
+        """
+        i = self.resolve_part(part)
+        if i < 0:
+            return False
+        # (0, 0) is the Brain's "follow the animation" sentinel; "" hashes to 0
+        # only if we short-circuit, since fnv1a of "" is the non-zero basis.
+        cm = ssruntime.hash_string(cellmap_name) if cellmap_name else 0
+        cn = ssruntime.hash_string(cell_name) if cell_name else 0
+        return self._rt.set_part_cell_override(i, cm, cn, priority)
+
+    def clear_part_cell_override(self, part) -> bool:
+        i = self.resolve_part(part)
+        return i >= 0 and self._rt.clear_part_cell_override(i)
+
+    def clear_all_part_overrides(self) -> bool:
+        return self._rt is not None and self._rt.clear_all_part_overrides()
+
+    def cellmap_names(self) -> List[str]:
+        """Names of this pack's cellmaps (cell-override targets)."""
+        return [c.name for c in self._meta.cellmaps()]
+
+    def cell_names(self, cellmap_name: str) -> List[str]:
+        """Names of the cells in ``cellmap_name`` (cell-override targets)."""
+        return self._meta.cell_names(cellmap_name)
 
     # -- teardown ------------------------------------------------------
     def close(self) -> None:

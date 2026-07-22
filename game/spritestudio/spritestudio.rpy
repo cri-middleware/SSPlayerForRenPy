@@ -1314,6 +1314,12 @@ init -10 python:
             # Atlases still to force onto the GPU (see _prewarm_textures): None
             # until the first render snapshots them, then drained a few per frame.
             self._prewarm_pending = None
+            # Per-part overrides this game has set: {(part_index, kind): args}.
+            # The Brain owns the live table, but Ren'Py drops the native core on
+            # pickling and rebuilds it lazily, so the overrides would vanish on
+            # save/load without this record. Plain data (ints, strings, tuples),
+            # so it pickles with the displayable. See _reapply_overrides.
+            self._overrides = {}
 
         def __getstate__(self):
             """Drop the native-backed core + caches for pickling/saves; they are
@@ -1425,6 +1431,11 @@ init -10 python:
 
         # -- lazy native setup ---------------------------------------------
         def _ensure(self):
+            # A save written before per-part overrides existed restores a
+            # __dict__ without `_overrides`, and every override path runs
+            # through here first — so seed it before the early return.
+            if not hasattr(self, "_overrides"):
+                self._overrides = {}
             if self._core is not None:
                 return
             # Read the .ssab through Ren'Py's loader so it works loose or in a
@@ -1459,6 +1470,11 @@ init -10 python:
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
             self._start_initial()
+            # Restore the per-part overrides the game had set before this core
+            # was dropped (save/load, rollback, re-show). Runs AFTER
+            # _start_initial: setup_animation clears the Brain's override table,
+            # so applying them earlier would be undone by it.
+            self._reapply_overrides()
             # Preload this pack's audio once, at setup, if it has any (lazy:
             # no-op for packs with no sound). Done here, before the first
             # update() fires any Audio event.
@@ -1736,6 +1752,9 @@ init -10 python:
                 core.set_loop(1 if self._anim_queue else self._initial_loop)
                 if core.set_animation(cand):
                     core.play()
+                    # As in ss_set_animation: the Brain dropped visibility +
+                    # non-Permanent overrides, so drop them from the record too.
+                    self._prune_overrides_for_new_animation()
                     return True
                 self._warn_once(("chain", cand),
                                 "sequence animation %r not found; skipped"
@@ -1751,6 +1770,12 @@ init -10 python:
             core = self._core
             if self._last_st is not None and st < self._last_st:
                 self._start_initial(start_frame=0)
+                # A re-show restarts the animation, and that setup_animation
+                # dropped the Brain's visibility + non-Permanent overrides —
+                # mirror it. (The _ensure() rebuild path also goes through
+                # _start_initial but must NOT prune: it is restoring, not
+                # switching, which is why this lives here and not in there.)
+                self._prune_overrides_for_new_animation()
                 self._call_cb(self.on_started)
 
             # Pre-upload atlases so a large one first drawn deep in a long
@@ -2519,6 +2544,9 @@ init -10 python:
             self._anim_queue = []
             self.loop = self._initial_loop
             self._core.set_loop(self._initial_loop)
+            # setup_animation dropped the Brain's visibility + non-Permanent
+            # overrides; keep our restore record in step with it.
+            self._prune_overrides_for_new_animation()
             self.animation = self._core.animation
             renpy.redraw(self, 0)
             return True
@@ -2658,6 +2686,232 @@ init -10 python:
         def ss_is_part_hidden(self, name):
             """Whether ``name`` is hidden on the last rendered frame."""
             return self._core.is_part_hidden(name) if self._core else True
+
+        # -- part overrides ------------------------------------------------
+        # Per-part runtime overrides: "make this part this colour / cell /
+        # hidden NOW". The Brain applies them on the resolved pose, so an
+        # override wins over both the keyframe and any blend (SDK doc:
+        # 40_components/65_override_layer.md).
+        #
+        #     $ ringo.ss_set_part_color_override("apple", "#f00", blend_op=1)
+        #     $ ringo.ss_set_part_visibility_override("apple", True, cascade=True)
+        #     $ ringo.ss_clear_all_part_overrides()
+        #
+        # `part` is a part NAME or its index (ss_part_index). Colours take any
+        # Ren'Py colour form ("#f00", (255, 0, 0), Color(...)); they are read in
+        # the same 8-bit sRGB space as the authored PartColor and the Brain
+        # pre-multiplies alpha, so pass the colour as authored. Each method
+        # returns False when the part is unknown or the runtime rejects the call.
+        #
+        # Every setter asks for a redraw: an override changes the pose WITHOUT
+        # changing the frame number, so a paused (or quiescent) player would
+        # otherwise keep showing the previous frame until something else moved.
+        def _norm_color(self, color):
+            """Any Ren'Py colour form -> the packed 0xRRGGBBAA the core takes.
+
+            Accepts everything `Color()` does — "#f00", (255, 0, 0[, a]), a
+            Color — plus an already-packed 0xRRGGBBAA int."""
+            if isinstance(color, int):
+                return color & 0xFFFFFFFF
+            # Color() answers None for None and RAISES for anything else it
+            # cannot read (e.g. TypeError: not iterable). Either way the caller
+            # deserves to be told which value was wrong, not a bare traceback
+            # from inside Ren'Py's colour parser.
+            try:
+                c = renpy.color.Color(color)
+            except Exception:
+                c = None
+            if c is None:
+                raise ValueError(
+                    "ss: %r is not a colour — pass \"#rrggbb\", an "
+                    "(r, g, b[, a]) tuple, a Color, or a packed 0xRRGGBBAA int"
+                    % (color,))
+            r, g, b, a = c
+            return (r << 24) | (g << 16) | (b << 8) | a
+
+        def _record_override(self, part, kind, args):
+            """Remember a set/clear so it can be restored after Ren'Py drops and
+            rebuilds the native core (see _reapply_overrides). ``args=None``
+            forgets the entry. Keyed by the RESOLVED part index, so a name and
+            an index for the same part collapse to one record."""
+            i = self._core.resolve_part(part) if self._core else -1
+            if i < 0:
+                return
+            if args is None:
+                self._overrides.pop((i, kind), None)
+            else:
+                self._overrides[(i, kind)] = args
+
+        def _reapply_overrides(self):
+            """Re-apply the recorded overrides onto a freshly built core.
+
+            Ren'Py drops the native core on pickling (saves, rollback) and
+            rebuilds it lazily, which would silently lose every override the
+            game had set — so restoring them is host policy, the same tier that
+            re-applies the animation, loop and speed. The Brain still owns the
+            live table and its lifecycle; this only replays what the game asked
+            for. One-shot (OverwriteOnNextKeyframe) overrides are deliberately
+            never recorded: the Brain drops them when playback reaches the next
+            keyframe, and that handover is not observable from here, so
+            replaying one would resurrect an override that had already expired.
+            """
+            core = self._core
+            if core is None or not self._overrides:
+                return
+            for (i, kind), args in list(self._overrides.items()):
+                try:
+                    if kind == "visibility":
+                        core.set_part_visibility_override(i, args[0], args[1])
+                    elif kind == "color":
+                        color, blend_op, priority = args
+                        if isinstance(color, tuple):
+                            core.set_part_color_override_corners(
+                                i, color, blend_op, priority)
+                        else:
+                            core.set_part_color_override(
+                                i, color, blend_op, priority)
+                    elif kind == "cell":
+                        core.set_part_cell_override(i, args[0], args[1], args[2])
+                except Exception:
+                    # A record that no longer resolves (e.g. a cell removed by a
+                    # re-export) must not break the rebuild — drop it silently.
+                    self._overrides.pop((i, kind), None)
+
+        def _prune_overrides_for_new_animation(self):
+            """Mirror the Brain's own lifecycle on a CREATOR-initiated animation
+            change: visibility and non-Permanent colour/cell overrides are
+            dropped, Permanent ones survive.
+
+            Deliberately not called from _start_initial: that path also runs when
+            the core is merely rebuilt (save/load, re-show), and pruning there
+            would throw away the very records _reapply_overrides is restoring.
+            """
+            keep = {}
+            for key, args in self._overrides.items():
+                # Colour is (packed, blend_op, priority) and cell is
+                # (cellmap, cell, priority) — priority last in both; visibility
+                # has none and is always dropped.
+                if key[1] != "visibility" and args[2] == ssruntime.PRIORITY_PERMANENT:
+                    keep[key] = args
+            self._overrides = keep
+
+        def ss_set_part_visibility_override(self, part, hide=True, cascade=False):
+            """Force-hide ``part``, or revert it to the animation (``hide=False``).
+
+            ``cascade`` propagates the force-hide to the part's descendants.
+            Visibility takes no priority mode: it always wins, and any new
+            animation clears it."""
+            self._ensure()
+            if not self._core.set_part_visibility_override(part, hide, cascade):
+                return False
+            # hide=False IS the revert (the runtime drops the entry), so record
+            # it as a clear rather than as an override worth restoring.
+            self._record_override(
+                part, "visibility",
+                (True, bool(cascade)) if hide else None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_visibility_override(self, part):
+            """Clear a part's visibility override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_visibility_override(part):
+                return False
+            self._record_override(part, "visibility", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_color_override(self, part, color, blend_op=0, priority=1):
+            """Tint ``part`` with one colour (all four corners).
+
+            ``blend_op``: 0=Mix, 1=Mul, 2=Add, 3=Sub. ``priority``:
+            0=OverwriteOnNextKeyframe (one-shot), 1=HoldUntilNextAnimation
+            (default), 2=Permanent. Normal parts only — other part types
+            silently ignore it (the call still succeeds)."""
+            self._ensure()
+            packed = self._norm_color(color)
+            if not self._core.set_part_color_override(part, packed, blend_op,
+                                                      priority):
+                return False
+            if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "color", (packed, blend_op, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_color_override_corners(self, part, corners, blend_op=0,
+                                               priority=1):
+            """Like :meth:`ss_set_part_color_override` with four distinct corner
+            colours, given in ``left-top, right-top, left-bottom, right-bottom``
+            order."""
+            self._ensure()
+            cols = list(corners) if corners is not None else []
+            if len(cols) != 4:
+                return False
+            packed = tuple(self._norm_color(c) for c in cols)
+            if not self._core.set_part_color_override_corners(
+                    part, packed, blend_op, priority):
+                return False
+            if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "color", (packed, blend_op, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_color_override(self, part):
+            """Clear a part's colour override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_color_override(part):
+                return False
+            self._record_override(part, "color", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_cell_override(self, part, cellmap_name, cell_name,
+                                      priority=1):
+            """Make ``part`` draw a different cell.
+
+            ``cellmap_name`` is written WITHOUT the ``.ssce`` extension; list the
+            valid targets with :meth:`ss_cellmap_names` / :meth:`ss_cell_names`.
+            The cell is resolved immediately, so an unknown name returns False.
+            Normal and mask parts only. Empty names revert to the animation."""
+            self._ensure()
+            if not self._core.set_part_cell_override(part, cellmap_name,
+                                                     cell_name, priority):
+                return False
+            if not cellmap_name and not cell_name:
+                self._record_override(part, "cell", None)   # the revert sentinel
+            elif priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "cell",
+                                      (cellmap_name, cell_name, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_cell_override(self, part):
+            """Clear a part's cell override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_cell_override(part):
+                return False
+            self._record_override(part, "cell", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_all_part_overrides(self):
+            """Clear every per-part override on this player."""
+            self._ensure()
+            if not self._core.clear_all_part_overrides():
+                return False
+            self._overrides = {}
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_cellmap_names(self):
+            """Names of this pack's cellmaps (cell-override targets)."""
+            self._ensure()
+            return self._core.cellmap_names()
+
+        def ss_cell_names(self, cellmap_name):
+            """Names of the cells in ``cellmap_name`` (cell-override targets)."""
+            self._ensure()
+            return self._core.cell_names(cellmap_name)
 
     # Backwards-compatible alias for the original public class name.
     SpriteStudioDisplayable = SSPlayer

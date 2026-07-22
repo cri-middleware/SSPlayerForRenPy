@@ -89,6 +89,7 @@ rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) needs a GUI run — sign off v
 | Geometry/Mesh + PartColor | `framedata.py` | `verify_m2`, `verify_mesh` |
 | Instance / Effect / Shape | `instance.py`, `effect*.py`, `framedata.py` | `verify_instance`, `verify_effect`, `verify_shape` |
 | Mask / clipping | `mask.py` | `verify_mask` |
+| Part overrides (colour/cell/visibility) | `player.py`, `ssruntime_*.py` | `verify_override` |
 | User shaders (SS6 `ss-*`) | `framedata.read_shader` | `verify_shader` |
 | Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` |
 

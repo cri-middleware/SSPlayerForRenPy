@@ -63,6 +63,17 @@ PLAY_REVERSE = 1
 STYLE_NORMAL = 0
 STYLE_PINGPONG = 1
 
+# Override Layer: color blend_op and the color/cell priority_mode (visibility
+# takes no priority). Kept in step with the same names in ss_renpy.ssruntime.
+BLEND_MIX = 0
+BLEND_MUL = 1
+BLEND_ADD = 2
+BLEND_SUB = 3
+
+PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0
+PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1
+PRIORITY_PERMANENT = 2
+
 
 # --- by-value structs for the Instance / Effect slot API ------------------
 # These mirror the C structs in ``target/ssruntime.h`` *exactly* (field order
@@ -389,6 +400,41 @@ def _declare(lib: C.CDLL) -> None:
     # hashing helper (texture/animation name -> u32 fnv1a)
     f.ss_runtime_hash_string.argtypes = [C.c_char_p]
     f.ss_runtime_hash_string.restype = C.c_uint32
+
+    # --- Override Layer: per-part runtime overrides -----------------------
+    # Color / Cell / Visibility, applied by the Brain on the *resolved* pose so
+    # an override wins over both the keyframe and any blend (SDK doc:
+    # 40_components/65_override_layer.md). Parts are addressed by the positional
+    # part index. Declared as one optional group (same stale-lib tolerance as
+    # is_playing_forward above): they land together in one SDK version, so a
+    # drop-in whose libs predate the Override Layer simply leaves the whole group
+    # unbound and the wrapper reports "unsupported" instead of failing to load.
+    try:
+        f.ss_runtime_find_part_index.argtypes = [P, C.c_char_p]
+        f.ss_runtime_find_part_index.restype = C.c_int32
+        f.ss_runtime_set_part_visibility_override.argtypes = [
+            P, C.c_uint32, C.c_ubyte, C.c_ubyte]
+        f.ss_runtime_set_part_color_override.argtypes = [
+            P, C.c_uint32, C.c_ubyte, C.c_uint32, C.c_ubyte]
+        f.ss_runtime_set_part_color_override_corners.argtypes = [
+            P, C.c_uint32, C.c_ubyte, C.POINTER(C.c_uint32), C.c_ubyte]
+        f.ss_runtime_set_part_cell_override.argtypes = [
+            P, C.c_uint32, C.c_uint32, C.c_uint32, C.c_ubyte]
+        for name in ("ss_runtime_clear_part_visibility_override",
+                     "ss_runtime_clear_part_color_override",
+                     "ss_runtime_clear_part_cell_override"):
+            fn = getattr(f, name)
+            fn.argtypes = [P, C.c_uint32]
+            fn.restype = C.c_bool
+        f.ss_runtime_clear_all_part_overrides.argtypes = [P]
+        for name in ("ss_runtime_set_part_visibility_override",
+                     "ss_runtime_set_part_color_override",
+                     "ss_runtime_set_part_color_override_corners",
+                     "ss_runtime_set_part_cell_override",
+                     "ss_runtime_clear_all_part_overrides"):
+            getattr(f, name).restype = C.c_bool
+    except AttributeError:
+        pass
 
     # --- Instance / Effect slot API (``ss_effect_slot_*`` /
     # ``ss_instance_slot_*`` in the generated ssruntime.h) ------------------
@@ -837,6 +883,92 @@ class _NativeRuntime:
 
     def shape_vertex_counts(self):
         return self._soa_int32(self._lib.ss_runtime_get_shape_vertex_counts)
+
+    # -- Override Layer (per-part runtime overrides) ----------------------
+    # Thin wrappers over the ``ss_runtime_*_override`` C-API. The Brain applies
+    # them on the *resolved* pose, so an override wins over both the keyframe
+    # and any blend; it also owns the table and its whole lifecycle (a new
+    # animation drops visibility + non-Permanent color/cell; a new resource
+    # drops everything), so this wrapper keeps no copy.
+    #
+    # Every method returns False when the call is rejected — unknown part index,
+    # blend_op >= 4, priority_mode >= 3, unresolvable cell — or when the loaded
+    # library predates the Override Layer (see the optional bind in _declare).
+    def _override_fn(self, name):
+        """The named Override-Layer export, or None on a pre-Override library."""
+        return getattr(self._lib, name, None)
+
+    @property
+    def supports_overrides(self) -> bool:
+        """Whether the loaded library exports the Override Layer at all."""
+        return self._override_fn("ss_runtime_clear_all_part_overrides") is not None
+
+    def find_part_index(self, part_name: str) -> int:
+        """The Brain's own name -> part index lookup; -1 when not found.
+
+        The Player normally resolves names off the pack metadata instead (same
+        index space, and it works identically on web); this is the C-API's
+        equivalent, kept for cross-checking.
+        """
+        fn = self._override_fn("ss_runtime_find_part_index")
+        if fn is None:
+            return -1
+        return int(fn(self._ctx, part_name.encode("utf-8")))
+
+    def set_part_visibility_override(self, part: int, force: int,
+                                     cascade: bool = False) -> bool:
+        """``force``: 0 = clear/revert to the animation, 1 = force-hide.
+        ``cascade`` propagates the force-hide to the part's descendants."""
+        fn = self._override_fn("ss_runtime_set_part_visibility_override")
+        return bool(fn and fn(self._ctx, int(part), int(force),
+                              1 if cascade else 0))
+
+    def clear_part_visibility_override(self, part: int) -> bool:
+        fn = self._override_fn("ss_runtime_clear_part_visibility_override")
+        return bool(fn and fn(self._ctx, int(part)))
+
+    def set_part_color_override(self, part: int, blend_op: int, rgba: int,
+                                priority: int = PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """``rgba`` is packed ``0xRRGGBBAA`` in the same 8-bit sRGB space as the
+        authored PartColor — the Brain pre-multiplies alpha itself, so pass the
+        colour as authored. Fills all four corners."""
+        fn = self._override_fn("ss_runtime_set_part_color_override")
+        return bool(fn and fn(self._ctx, int(part), int(blend_op),
+                              int(rgba) & 0xFFFFFFFF, int(priority)))
+
+    def set_part_color_override_corners(self, part: int, blend_op: int,
+                                        corners_rgba,
+                                        priority: int = PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """Four distinct corners, in the runtime's ``lt, rt, lb, rb`` order."""
+        fn = self._override_fn("ss_runtime_set_part_color_override_corners")
+        corners = list(corners_rgba)
+        if fn is None or len(corners) != 4:
+            return False
+        buf = (C.c_uint32 * 4)(*[int(c) & 0xFFFFFFFF for c in corners])
+        return bool(fn(self._ctx, int(part), int(blend_op), buf, int(priority)))
+
+    def clear_part_color_override(self, part: int) -> bool:
+        fn = self._override_fn("ss_runtime_clear_part_color_override")
+        return bool(fn and fn(self._ctx, int(part)))
+
+    def set_part_cell_override(self, part: int, cellmap_name_hash: int,
+                               cell_name_hash: int,
+                               priority: int = PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
+        """Point a part at a different cell. Hashes are fnv1a-32 of the cellmap
+        name (without ``.ssce``) and the cell name; ``(0, 0)`` reverts to the
+        animation. The cell is resolved now, so an unknown name returns False."""
+        fn = self._override_fn("ss_runtime_set_part_cell_override")
+        return bool(fn and fn(self._ctx, int(part),
+                              int(cellmap_name_hash) & 0xFFFFFFFF,
+                              int(cell_name_hash) & 0xFFFFFFFF, int(priority)))
+
+    def clear_part_cell_override(self, part: int) -> bool:
+        fn = self._override_fn("ss_runtime_clear_part_cell_override")
+        return bool(fn and fn(self._ctx, int(part)))
+
+    def clear_all_part_overrides(self) -> bool:
+        fn = self._override_fn("ss_runtime_clear_all_part_overrides")
+        return bool(fn and fn(self._ctx))
 
     # -- Instance / Effect slots ------------------------------------------
     # Instance: stateless slot stepped against a *child* context per call.
