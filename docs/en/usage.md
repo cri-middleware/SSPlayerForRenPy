@@ -135,17 +135,17 @@ $ player.ss_play("run")
 
 ---
 
-## 5. Part Overrides (Color / Cell / Visibility)
+## 5. Part Overrides (Part Color / Cell / Visibility)
 
-A part override tells one part to be a given color, draw a given cell, or be hidden **right now**. It is applied to the resolved pose, so it wins over both the keyframes and any animation blending — you do not have to fight the animation to recolor a scarf or hide a hat.
+Per-part runtime overrides let a script say "make this part this color / this cell / hidden **now**". An override wins over both the keyframe and any animation blending, so it does not have to fight the animation.
 
 ```renpy
 $ ringo = SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="wait1")
 
-# Tint a part red (1 = Mul). Normal (image) parts only.
+# Tint a part red (1 = Mul). Applies to normal (image) parts.
 $ ringo.ss_set_part_color_override("apple", "#f00", blend_op=1)
 
-# Make a part draw a different cell (the cell map name has no ".ssce").
+# Make a part draw a different cell (cellmap name is written without ".ssce").
 $ ringo.ss_set_part_cell_override("apple", "Ringo", "effect3")
 
 # Force-hide a part, cascading to its descendants.
@@ -158,21 +158,31 @@ $ ringo.ss_clear_all_part_overrides()
 
 | Method | Description |
 |---|---|
-| `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | Color override (one color for the whole part) |
-| `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | Four corner colors, in `left-top, right-top, left-bottom, right-bottom` order |
+| `ss_part_index(part_name)` | Part index, or `-1` if the part is not in the asset |
+| `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | Part Color override (single color) |
+| `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | Four-corner form: left-top, right-top, left-bottom, right-bottom |
 | `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | Draw a different cell |
 | `ss_set_part_visibility_override(part, hide=True, cascade=False)` | Force-hide (`hide=False` reverts to the animation) |
-| `ss_clear_part_color_override(part)` / `ss_clear_part_cell_override(part)` / `ss_clear_part_visibility_override(part)` | Clear one override on one part |
+| `ss_clear_part_color_override` / `ss_clear_part_cell_override` / `ss_clear_part_visibility_override` | Clear one override on one part |
 | `ss_clear_all_part_overrides()` | Clear every override on the player |
-| `ss_cellmap_names()` / `ss_cell_names(cellmap_name)` | List the cell-override targets in the loaded pack |
+| `ss_cellmap_names()` / `ss_cell_names(cellmap_name)` | Discover the cellmap / cell names you can pass to a cell override |
 
-`part` is a part name or its index (`ss_part_index("apple")`). Indices are stable within one `.ssab`, so if you set overrides often, resolve the name once and reuse the index. Every method returns `False` when the part is unknown or the runtime rejects the call.
+The `part` argument of every method takes either a **part name** or a **part index**, and the call returns `False` when the part is unknown or the runtime rejects it.
 
-**Colors** take any Ren'Py color form — `"#f00"`, `(255, 0, 0)`, `Color(...)`. They are read in the same 8-bit sRGB space as the Part Color authored in SpriteStudio, and alpha is pre-multiplied for you, so pass the color as authored without converting it.
+**Colors** take any Ren'Py color form — `"#f00"`, `(255, 0, 0)`, `Color(...)`, or a packed `0xRRGGBBAA` int.
+
+The cellmap / cell names you can pass to a cell override are enumerated from the pack:
+
+```renpy
+$ print(ringo.ss_cellmap_names())       # -> ["Ringo", ...]
+$ print(ringo.ss_cell_names("Ringo"))   # -> ["effect3", ...]
+```
+
+> **On using part indices**: Part indices are stable within one asset (the same `.ssab`), so if you set overrides frequently, resolve the name once with `ss_part_index()` and reuse that index.
 
 ### Blend operation (`blend_op`)
 
-The same four operations as the keyframed Part Color. An out-of-range value fails the call and returns `False`.
+The `blend_op` of `ss_set_part_color_override()` offers the same four operations as the keyframed Part Color.
 
 | Value | Blend operation |
 |---|---|
@@ -181,23 +191,28 @@ The same four operations as the keyframed Part Color. An out-of-range value fail
 | `2` | Add |
 | `3` | Sub (subtract) |
 
+An out-of-range value fails the call and returns `False`.
+
 ### Priority mode (`priority`)
 
-Color and cell overrides conflict with the animation, so they take a `priority`. Visibility does not: it is a plain force-hide flag that always wins and is always cleared when a new animation is set up.
+Part Color and cell overrides conflict with the animation, so they take a `priority` (visibility does not — it is a plain force-hide flag, and any new animation clears it):
 
 | Value | Priority mode | Behavior |
 |---|---|---|
-| `0` | OverwriteOnNextKeyframe | Applies until playback reaches the next keyframe of that attribute |
-| `1` | HoldUntilNextAnimation (default) | Wins for the current animation; cleared when a new animation is set up |
-| `2` | Permanent | Survives animation changes, for as long as the same `.ssab` is playing |
+| `0` | OverwriteOnNextKeyframe | The override applies until the animation data updates that attribute |
+| `1` | HoldUntilNextAnimation (default) | The override wins for the current animation and is cleared when a new animation is set up |
+| `2` | Permanent | The override applies for as long as the same animation data (`.ssab`) is playing, surviving animation changes |
 
 ### Notes
 
-- **Color** applies to normal parts and **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
-- A cell override is resolved the moment you set it, so an unknown cell map / cell name fails immediately. List the valid names with `ss_cellmap_names()` / `ss_cell_names()`.
-- Setting or clearing an override redraws the sprite immediately, even while it is paused or stopped.
-- Overrides are restored when a saved game is loaded. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
-- Overrides do not reach parts **inside** an instance part (that child animation is a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
+- **Color** applies to normal parts, **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
+- Colors are interpreted in the same 8-bit sRGB space as the authored Part Color, and alpha is pre-multiplied by the runtime — pass the color as authored, without converting it yourself.
+- A cell override is resolved when you set it, so an unknown cellmap / cell name fails immediately (returns `False`).
+- Overrides live on the runtime, which owns their lifecycle. Do not re-apply them after an animation change; choose the priority mode that expresses what you want instead.
+- Overrides are restored when a saved game is loaded, so a costume change survives save / load. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
+- Overrides do not reach parts **inside** an instance part (the child animation runs as a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
+
+> **On when an override is reflected in the drawing**: setting or clearing an override redraws the sprite immediately, even while playback is stopped or paused — you do not have to nudge the frame to make it appear.
 
 ---
 
