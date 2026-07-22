@@ -13,3 +13,10 @@ e.g. `7.0.0b1`).
 - Initial public release: `SSPlayer` displayable for SpriteStudio 7 playback in
   Ren'Py, auto importer, asset browser, `SSCharacter` talking sprites, and
   desktop / Android / iOS / Web export support.
+- Per-part **Override Layer**: colour, cell and visibility overrides that win
+  over the keyframes (`ss_set_part_color_override` /
+  `ss_set_part_cell_override` / `ss_set_part_visibility_override`, their
+  `ss_clear_*` counterparts, and `ss_clear_all_part_overrides`), plus
+  `ss_cellmap_names` / `ss_cell_names` to discover cell-override targets.
+  Overrides are restored when a saved game is loaded (one-shot
+  `OverwriteOnNextKeyframe` overrides excepted, being momentary by design).

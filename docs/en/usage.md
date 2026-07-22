@@ -30,7 +30,7 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.
 ```
 
 > [!TIP]
-> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§7) below.
+> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§8) below.
 
 > [!NOTE]
 > The old `sprites_subdir` argument remains for backward compatibility, but it is unnecessary when specifying the path (deprecated).
@@ -135,7 +135,73 @@ $ player.ss_play("run")
 
 ---
 
-## 5. Handling Animation Events (User Data / Signals)
+## 5. Part Overrides (Color / Cell / Visibility)
+
+A part override tells one part to be a given color, draw a given cell, or be hidden **right now**. It is applied to the resolved pose, so it wins over both the keyframes and any animation blending — you do not have to fight the animation to recolor a scarf or hide a hat.
+
+```renpy
+$ ringo = SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="wait1")
+
+# Tint a part red (1 = Mul). Normal (image) parts only.
+$ ringo.ss_set_part_color_override("apple", "#f00", blend_op=1)
+
+# Make a part draw a different cell (the cell map name has no ".ssce").
+$ ringo.ss_set_part_cell_override("apple", "Ringo", "effect3")
+
+# Force-hide a part, cascading to its descendants.
+$ ringo.ss_set_part_visibility_override("apple_base", True, cascade=True)
+
+# Revert
+$ ringo.ss_clear_part_color_override("apple")
+$ ringo.ss_clear_all_part_overrides()
+```
+
+| Method | Description |
+|---|---|
+| `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | Color override (one color for the whole part) |
+| `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | Four corner colors, in `left-top, right-top, left-bottom, right-bottom` order |
+| `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | Draw a different cell |
+| `ss_set_part_visibility_override(part, hide=True, cascade=False)` | Force-hide (`hide=False` reverts to the animation) |
+| `ss_clear_part_color_override(part)` / `ss_clear_part_cell_override(part)` / `ss_clear_part_visibility_override(part)` | Clear one override on one part |
+| `ss_clear_all_part_overrides()` | Clear every override on the player |
+| `ss_cellmap_names()` / `ss_cell_names(cellmap_name)` | List the cell-override targets in the loaded pack |
+
+`part` is a part name or its index (`ss_part_index("apple")`). Indices are stable within one `.ssab`, so if you set overrides often, resolve the name once and reuse the index. Every method returns `False` when the part is unknown or the runtime rejects the call.
+
+**Colors** take any Ren'Py color form — `"#f00"`, `(255, 0, 0)`, `Color(...)`. They are read in the same 8-bit sRGB space as the Part Color authored in SpriteStudio, and alpha is pre-multiplied for you, so pass the color as authored without converting it.
+
+### Blend operation (`blend_op`)
+
+The same four operations as the keyframed Part Color. An out-of-range value fails the call and returns `False`.
+
+| Value | Blend operation |
+|---|---|
+| `0` | Mix (default) |
+| `1` | Mul (multiply) |
+| `2` | Add |
+| `3` | Sub (subtract) |
+
+### Priority mode (`priority`)
+
+Color and cell overrides conflict with the animation, so they take a `priority`. Visibility does not: it is a plain force-hide flag that always wins and is always cleared when a new animation is set up.
+
+| Value | Priority mode | Behavior |
+|---|---|---|
+| `0` | OverwriteOnNextKeyframe | Applies until playback reaches the next keyframe of that attribute |
+| `1` | HoldUntilNextAnimation (default) | Wins for the current animation; cleared when a new animation is set up |
+| `2` | Permanent | Survives animation changes, for as long as the same `.ssab` is playing |
+
+### Notes
+
+- **Color** applies to normal parts and **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
+- A cell override is resolved the moment you set it, so an unknown cell map / cell name fails immediately. List the valid names with `ss_cellmap_names()` / `ss_cell_names()`.
+- Setting or clearing an override redraws the sprite immediately, even while it is paused or stopped.
+- Overrides are restored when a saved game is loaded. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
+- Overrides do not reach parts **inside** an instance part (that child animation is a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
+
+---
+
+## 6. Handling Animation Events (User Data / Signals)
 You can receive information on "User Data" and "Signals" configured on the SpriteStudio side within Ren'Py. This makes it possible to play sound effects on specific frames or synchronize script progression.
 
 ### Receiving via Callbacks (Event-Driven)
@@ -173,7 +239,7 @@ image boss = SSPlayer(
 
 ---
 
-## 6. Utilities
+## 7. Utilities
 
 ### One-Shot Playback Made Easy (`ss_play_once`)
 Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
@@ -197,7 +263,7 @@ In developer mode, "runtime loaded / N pack(s)" is output to the log on startup.
 
 ---
 
-## 7. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
+## 8. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
 
 Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
 

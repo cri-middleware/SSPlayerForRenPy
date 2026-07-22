@@ -29,6 +29,22 @@ PLAY_REVERSE = 1
 STYLE_NORMAL = 0
 STYLE_PINGPONG = 1
 
+# --- Override Layer (per-part runtime overrides) --------------------------
+# blend_op of a part *color* override — the same four operations as the
+# authored PartColor blend type.
+BLEND_MIX = 0
+BLEND_MUL = 1
+BLEND_ADD = 2
+BLEND_SUB = 3
+
+# priority_mode: keyframe-vs-override precedence, for the attributes that
+# conflict with the animation (color + cell). Visibility takes none — it is a
+# plain force-hide flag that always wins and is dropped on a new animation.
+# Mirrors SS6's KindIgnoreAttribute (SDK: libs/ssruntime/src/core/override_layer.rs).
+PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0   # SS6 NON: one-shot, hands back to the keyframe
+PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1    # SS6 NOW_ANIMATION: wins for this animation
+PRIORITY_PERMANENT = 2                    # SS6 PERMANENT: survives animation changes
+
 _IS_WEB = sys.platform == "emscripten"
 
 

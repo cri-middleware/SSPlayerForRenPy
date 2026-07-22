@@ -218,6 +218,21 @@ class SsabMeta:
             ))
         return out
 
+    def cell_names(self, cellmap_name: str) -> list[str]:
+        """Names of the cells in ``cellmap_name`` (``[]`` when unknown).
+
+        The cellmap is named without its ``.ssce`` extension, matching how the
+        pack stores it. Together with :meth:`cellmaps` this enumerates the valid
+        targets of a per-part *cell override* (mirrors SSPlayerForUnity's
+        ``GetCellNames``).
+        """
+        for i in range(self._root.CellmapsLength()):
+            c = self._root.Cellmaps(i)
+            if _s(c.Name()) != cellmap_name:
+                continue
+            return [_s(c.Cells(j).Name()) for j in range(c.CellsLength())]
+        return []
+
     def parts(self) -> list[PartInfo]:
         """Enumerate every part with its type and (for Instance/Effect) refs.
 

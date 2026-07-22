@@ -358,6 +358,85 @@ class _WebRuntime:
         Instance animations never step)."""
         return self._ctx_id
 
+    # -- Override Layer (per-part runtime overrides) ----------------------
+    # Mirrors _NativeRuntime's wrappers over the ss_runtime_*_override C-API.
+    # The wasm-bindgen setters THROW on rejection where the C-API returns false,
+    # and a JS throw cannot be caught across the emscripten boundary (it aborts
+    # the frame) — so every call is wrapped in JS and surfaces a real bool, the
+    # same shape as setup_animation above.
+    def _override_call(self, js_call: str) -> bool:
+        emscripten.run_script(f"""
+            try {{
+                window.ss_ctxs[{self._ctx_id}].{js_call};
+                window.ss_override_ok = true;
+            }} catch (e) {{
+                window.ss_override_ok = false;
+            }}
+        """)
+        return emscripten.run_script_int("window.ss_override_ok ? 1 : 0") == 1
+
+    @property
+    def supports_overrides(self) -> bool:
+        """Whether the loaded wasm build exports the Override Layer at all."""
+        return emscripten.run_script_int(
+            f"(window.ss_ctxs[{self._ctx_id}].clear_all_part_overrides "
+            f"? 1 : 0)") == 1
+
+    def find_part_index(self, part_name: str) -> int:
+        import json
+        emscripten.run_script(f"""
+            try {{
+                window.ss_part_idx = window.ss_ctxs[{self._ctx_id}].find_part_index({json.dumps(part_name)});
+            }} catch (e) {{
+                window.ss_part_idx = -1;
+            }}
+        """)
+        return emscripten.run_script_int("window.ss_part_idx")
+
+    def set_part_visibility_override(self, part: int, force: int,
+                                     cascade: bool = False) -> bool:
+        return self._override_call(
+            "set_part_visibility_override(%d, %d, %s)"
+            % (int(part), int(force), "true" if cascade else "false"))
+
+    def clear_part_visibility_override(self, part: int) -> bool:
+        return self._override_call(
+            "clear_part_visibility_override(%d)" % int(part))
+
+    def set_part_color_override(self, part: int, blend_op: int, rgba: int,
+                                priority: int = 1) -> bool:
+        return self._override_call(
+            "set_part_color_override(%d, %d, %d, %d)"
+            % (int(part), int(blend_op), int(rgba) & 0xFFFFFFFF, int(priority)))
+
+    def set_part_color_override_corners(self, part: int, blend_op: int,
+                                        corners_rgba, priority: int = 1) -> bool:
+        corners = list(corners_rgba)
+        if len(corners) != 4:
+            return False
+        # The binding takes a &[u32]; wasm-bindgen wants a real typed array.
+        return self._override_call(
+            "set_part_color_override_corners(%d, %d, new Uint32Array([%s]), %d)"
+            % (int(part), int(blend_op),
+               ", ".join(str(int(c) & 0xFFFFFFFF) for c in corners),
+               int(priority)))
+
+    def clear_part_color_override(self, part: int) -> bool:
+        return self._override_call("clear_part_color_override(%d)" % int(part))
+
+    def set_part_cell_override(self, part: int, cellmap_name_hash: int,
+                               cell_name_hash: int, priority: int = 1) -> bool:
+        return self._override_call(
+            "set_part_cell_override(%d, %d, %d, %d)"
+            % (int(part), int(cellmap_name_hash) & 0xFFFFFFFF,
+               int(cell_name_hash) & 0xFFFFFFFF, int(priority)))
+
+    def clear_part_cell_override(self, part: int) -> bool:
+        return self._override_call("clear_part_cell_override(%d)" % int(part))
+
+    def clear_all_part_overrides(self) -> bool:
+        return self._override_call("clear_all_part_overrides()")
+
     # Active-event fetch (state kept on the JS side; step() consumes it)
     def active_event_instance(self, slot_index: int):
         # get_active_event_instance allocates a fresh WebEventInstanceInfo on the

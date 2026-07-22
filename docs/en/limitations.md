@@ -15,6 +15,7 @@ Restrictions and unimplemented features of the current SpriteStudio Player for R
 > - **Blend modes** — blending goes through Ren'Py's `config.gl_blend_func`, so modes with no GL equivalent (Division, Overlay) fall back to Mix.
 > - **Whole-part color tint on Mesh / Instance parts** — `parts_color` is applied per-vertex on Normal / Shape parts; a whole-part tint on Mesh parts is currently approximated (alpha only).
 > - **Masks on Effect particles** — mask / clipping applies to Normal, Mesh, and Shape parts; particles emitted by Effect parts are drawn unclipped even where the editor clips them.
+> - **Part overrides inside Instance parts** — a color / cell / visibility override reaches the parts of the animation you call it on, not the parts inside an Instance part (that nested child animation runs as a separate player). Force-hiding the Instance part itself does stop its contents from being drawn.
 
 ## Audio Playback
 
