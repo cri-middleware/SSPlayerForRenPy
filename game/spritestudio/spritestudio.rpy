@@ -1268,10 +1268,18 @@ init -10 python:
                 self._size = (int(size), int(size))
             else:
                 self._size = (int(size[0]), int(size[1]))
-            # Optional attachments: {part_name: displayable}. Drawn at each named
-            # part's current position every frame (e.g. a speech bubble on the
-            # head, an item in the hand). v1 is translation-only.
-            self._attachments = dict(attachments) if attachments else None
+            # Optional attachments: displayables pinned to a named part's live
+            # transform every frame (e.g. an item in the hand, an effect over the
+            # head, a second SS animation linked to a bone). Stored as a list of
+            # plain records
+            #   {"part": name, "child": displayable,
+            #    "drive_scale": bool, "on_hide": "follow"|"hide"}
+            # so several children can ride one part and the whole list pickles
+            # with the displayable (child displayables are picklable). The
+            # constructor also takes the ergonomic {part_name: child} dict;
+            # ss_attach / ss_detach edit the list at runtime. render() does the
+            # compositing (translation + rotation, scale when drive_scale).
+            self._attachments = self._init_attachments(attachments)
             # Optional event callbacks (the recommended Player API; SDK doc:
             # 30_core/20_playback_control.md). Each is invoked as
             # cb(self, frame_index, event) for the per-part events
@@ -1828,19 +1836,65 @@ init -10 python:
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
 
-            # Attachments: draw each {part_name: displayable} at that part's
-            # current position (v1 = translation only). Guarded so it can never
-            # break rendering; nudge with the child's own offset if needed.
+            # Attachments: draw each pinned child at its part's live transform.
+            # v1 composites translation + rotation, and scale when drive_scale;
+            # the child is always drawn in FRONT of the sprite (no z insertion
+            # between parts yet). The child's `anchor` point is pinned to the
+            # part and is the rotation/scale pivot. Guarded so a bad child can
+            # never break the frame. Children are few, so a Transform wrap only
+            # happens when the part is actually rotated/scaled — the common
+            # translation-only case stays allocation-free. See ss_attach.
             if self._attachments:
-                for _pname, _child in self._attachments.items():
+                for _rec in self._attachments:
                     try:
+                        _pname = _rec["part"]
                         _t = core.part_transform(_pname)
                         if _t is None:
                             continue
-                        _cr = renpy.render(_child, rw, rh, st, at)
-                        _cw, _ch = _cr.get_size()
-                        r.blit(_cr, (int(ox + _t["x"] - _cw / 2.0),
-                                     int(oy + _t["y"] - _ch / 2.0)))
+                        if _rec["on_hide"] == "hide" and \
+                                core.is_part_hidden(_pname):
+                            continue
+                        _child = _rec["child"]
+                        # Part rotation plus the child's fixed rest offset; both
+                        # the Transform wrap and the anchor math below use this
+                        # total, so the anchor rides the offset child too.
+                        _ang = _t["rotation"] + _rec["angle"]
+                        _sx, _sy = (_t["xscale"], _t["yscale"]) \
+                            if _rec["drive_scale"] else (1.0, 1.0)
+                        _ax, _ay = _rec["anchor"]
+                        _tx, _ty = ox + _t["x"], oy + _t["y"]
+                        if abs(_ang) < 1e-3 and abs(_sx - 1.0) < 1e-3 \
+                                and abs(_sy - 1.0) < 1e-3:
+                            # Pure translation: pin the anchor point directly.
+                            _cr = renpy.render(_child, rw, rh, st, at)
+                            _cw, _ch = _cr.get_size()
+                            r.blit(_cr, (int(_tx - _ax * _cw),
+                                         int(_ty - _ay * _ch)))
+                        else:
+                            # Rotate/scale about the child centre (Transform's
+                            # default), then offset so the ANCHOR lands on the
+                            # part. part_transform's scale is |magnitude| (a
+                            # mirrored part reads positive), so a negative-scale
+                            # flip is a v2/matrix concern.
+                            _c0 = renpy.render(_child, rw, rh, st, at)
+                            _cw, _ch = _c0.get_size()
+                            _cr = renpy.render(
+                                Transform(_child, rotate=_ang,
+                                          xzoom=_sx, yzoom=_sy),
+                                rw, rh, st, at)
+                            _rw2, _rh2 = _cr.get_size()
+                            # Vector centre->anchor, transformed the SAME way
+                            # Transform did (rotate clockwise-positive, y-down),
+                            # so the anchor rides the rotated bar. Coupled to
+                            # _ang: flip the rotate sign and the anchor follows.
+                            _th = math.radians(_ang)
+                            _cos, _sin = math.cos(_th), math.sin(_th)
+                            _vx = (_ax - 0.5) * _cw
+                            _vy = (_ay - 0.5) * _ch
+                            _px = _sx * _vx * _cos - _sy * _vy * _sin
+                            _py = _sx * _vx * _sin + _sy * _vy * _cos
+                            r.blit(_cr, (int(_tx - _rw2 / 2.0 - _px),
+                                         int(_ty - _rh2 / 2.0 - _py)))
                     except Exception:
                         pass
 
@@ -2686,6 +2740,120 @@ init -10 python:
         def ss_is_part_hidden(self, name):
             """Whether ``name`` is hidden on the last rendered frame."""
             return self._core.is_part_hidden(name) if self._core else True
+
+        # -- part attachments ----------------------------------------------
+        # Pin a displayable to a part's live transform: every frame it is drawn
+        # at that part's position (and rotation; scale too when drive_scale),
+        # so an item follows the hand, an effect rides the head, a second SS
+        # animation links to a bone. The child is ANY Ren'Py displayable — an
+        # image name, "file.png", a Transform(...), even another SSPlayer — so
+        # the whole Ren'Py composition stack rides along. This is the Ren'Py
+        # form of the Godot/Unity "part tracking": there is no scene tree to
+        # push to, so the child is composited INTO this player's render at the
+        # part, which matches those ports' "child of the player" case (the
+        # accurate one). Children draw in front of the sprite (v1: no z
+        # insertion between parts). Several may ride one part.
+        #
+        #     $ ringo.ss_attach("hand_R", "sword.png")
+        #     $ ringo.ss_attach("head", Transform("aura", zoom=1.2), on_hide="hide")
+        #     $ ringo.ss_attach("hand_R", "sword.png", anchor=(0.5, 1.0))  # grip
+        #     $ ringo.ss_detach(part="hand_R")
+        #
+        # anchor=(ax, ay) is the child point (as a 0..1 fraction of its size)
+        # pinned to the part and used as the rotation/scale pivot: (0.5, 0.5)
+        # centres it (default), (0.5, 1.0) puts the child's BOTTOM edge on the
+        # part (a held item's grip), (0.5, 0.0) the top edge.
+        #
+        # Overrides live on the Brain; attachments are pure host policy (like
+        # sequence chaining), so they are plain data that pickles straight into
+        # the save — no _reapply step needed.
+        def _init_attachments(self, attachments):
+            """Normalise the constructor's ``attachments`` into the record list.
+
+            Accepts the ergonomic ``{part_name: child}`` dict or a list of
+            records (what _duplicate passes back). Child references go through
+            ``renpy.displayable`` so an image name / "file.png" / a displayable
+            all work. Returns a fresh list (never aliased to the source)."""
+            out = []
+            if not attachments:
+                return out
+            src = attachments.items() if isinstance(attachments, dict) \
+                else [(r["part"], r) for r in attachments]
+            for part, val in src:
+                if isinstance(val, dict):          # a record (from _duplicate)
+                    out.append({"part": val["part"],
+                                "child": renpy.displayable(val["child"]),
+                                "drive_scale": bool(val.get("drive_scale", False)),
+                                "on_hide": val.get("on_hide", "follow"),
+                                "anchor": val.get("anchor", (0.5, 0.5)),
+                                "angle": val.get("angle", 0.0)})
+                else:                              # {part_name: child}
+                    out.append({"part": part,
+                                "child": renpy.displayable(val),
+                                "drive_scale": False, "on_hide": "follow",
+                                "anchor": (0.5, 0.5), "angle": 0.0})
+            return out
+
+        def ss_attach(self, part, child, drive_scale=False, on_hide="follow",
+                      anchor=(0.5, 0.5), angle=0.0):
+            """Pin ``child`` to ``part``; returns the normalised child.
+
+            ``part`` is a part name (need not exist yet — a child rides it once
+            the part appears). ``child`` is any displayable (image name,
+            "file.png", Transform(...), another SSPlayer). ``drive_scale`` also
+            matches the part's scale (position + rotation always apply).
+            ``on_hide``: "follow" keeps drawing while the part is hidden, "hide"
+            drops the child that frame. ``anchor=(ax, ay)`` is the child point
+            (0..1 fraction of its size) pinned to the part and used as the
+            rotation/scale pivot; default centres it, (0.5, 1.0) pins the bottom
+            edge (a grip). ``angle`` is a fixed rotation offset (degrees,
+            clockwise-positive) added on top of the part's rotation, to align
+            the child's rest orientation with the part's local axis (e.g. a
+            hand part carries the wrist angle, so a held item usually needs an
+            offset to lie along the fingers; -90 rotates it CCW)."""
+            child = renpy.displayable(child)
+            anchor = (float(anchor[0]), float(anchor[1]))
+            self._attachments.append({"part": part, "child": child,
+                                      "drive_scale": bool(drive_scale),
+                                      "on_hide": on_hide, "anchor": anchor,
+                                      "angle": float(angle)})
+            renpy.redraw(self, 0)
+            return child
+
+        def ss_detach(self, child=None, part=None):
+            """Remove attachments matching ``child`` and/or ``part``; returns the
+            count removed. Pass the child ss_attach returned (or the same
+            displayable). With neither given, removes nothing — use
+            ss_clear_attachments to drop them all."""
+            if child is None and part is None:
+                return 0
+            if child is not None:
+                child = renpy.displayable(child)
+            keep, removed = [], 0
+            for rec in self._attachments:
+                match_child = child is None or rec["child"] is child \
+                    or rec["child"] == child
+                match_part = part is None or rec["part"] == part
+                if match_child and match_part:
+                    removed += 1
+                else:
+                    keep.append(rec)
+            self._attachments = keep
+            if removed:
+                renpy.redraw(self, 0)
+            return removed
+
+        def ss_clear_attachments(self):
+            """Remove every attachment; returns the count removed."""
+            n = len(self._attachments)
+            self._attachments = []
+            if n:
+                renpy.redraw(self, 0)
+            return n
+
+        def ss_attachments(self):
+            """Current attachments as a list of ``(part_name, child)`` tuples."""
+            return [(r["part"], r["child"]) for r in self._attachments]
 
         # -- part overrides ------------------------------------------------
         # Per-part runtime overrides: "make this part this colour / cell /
