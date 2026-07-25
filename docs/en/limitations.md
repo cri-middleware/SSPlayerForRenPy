@@ -2,6 +2,8 @@
 
 Restrictions and unimplemented features of the current SpriteStudio Player for Ren'Py. (For the list of what *is* supported, see the usage docs.)
 
+This page covers what is specific to **this** player. The constraints that come from the shared runtime and therefore apply to every official player — `independent=true` parts under reverse playback and seeking, seeking not firing the events it skips, no reverse audio, single-`.ssab` blending, unvalidated `.ssab` input — are documented once in the portal: **[Shared Limitations](https://cri-middleware.github.io/SpriteStudio-Docs/sdk/limitations/)**.
+
 ## Not Yet Implemented
 
 > [!WARNING]
