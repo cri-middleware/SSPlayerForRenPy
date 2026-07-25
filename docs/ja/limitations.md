@@ -2,6 +2,8 @@
 
 現在の SpriteStudio Player for Ren'Py における制限事項・未実装の機能の一覧です。（サポートしている機能の一覧は利用ガイドを参照してください。）
 
+このページは **この Player 固有** の内容を扱います。共通ランタイム由来で、すべての公式 Player に当てはまる制約 — `independent=true` パーツの逆再生・シーク、シーク時に通過フレームのイベントが発火しないこと、オーディオの逆再生非対応、ブレンドが同一 `.ssab` 内に限られること、`.ssab` の入力検証を行わないこと — は、ポータルの **[共通の制限事項](https://cri-middleware.github.io/SpriteStudio-Docs/ja/sdk/limitations/)** に集約されています。
+
 ## 未実装 (Not Yet Implemented)
 
 > [!WARNING]
