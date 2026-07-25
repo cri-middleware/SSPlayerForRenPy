@@ -1280,6 +1280,11 @@ init -10 python:
             # ss_attach / ss_detach edit the list at runtime. render() does the
             # compositing (translation + rotation, scale when drive_scale).
             self._attachments = self._init_attachments(attachments)
+            # Per-attachment Transform cache (rotated/scaled children only),
+            # keyed by record index and rebuilt only when the part's angle/scale
+            # actually changes — kept OFF the record so it never pickles. Any
+            # attach/detach invalidates it (indices shift). See render().
+            self._xform_cache = {}
             # Optional event callbacks (the recommended Player API; SDK doc:
             # 30_core/20_playback_control.md). Each is invoked as
             # cb(self, frame_index, event) for the per-part events
@@ -1310,9 +1315,13 @@ init -10 python:
             # Last render time while audio was live — the off-screen reaper reads
             # it to tell an on-screen player (kept redrawing) from a swapped-out one.
             self._audio_last_render = 0.0
-            # The current frame + loop count to restore on rollback/reshow.
+            # The current frame + loop count to restore on rollback/reshow, plus
+            # whether playback was live at that point ("playing" / "paused" /
+            # "stopped"): restoring a paused, stopped or naturally finished
+            # player must NOT silently resume it (see _ensure / _playback_state).
             self._saved_frame = -1.0
             self._saved_loop = self._initial_loop
+            self._saved_state = "playing"
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
@@ -1344,6 +1353,7 @@ init -10 python:
             state["_prewarm_pending"] = None   # GPU textures are gone too; re-warm
             state["_audio_preloaded"] = False  # core is rebuilt; preload re-runs
             state["_audio_channels_used"] = set()
+            state["_xform_cache"] = {}         # pure render cache; rebuild lazily
             return state
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
@@ -1426,7 +1436,7 @@ init -10 python:
                 speed=self.speed,
                 sub_frame=self._sub_frame,
                 size=self._size,
-                attachments=self._attachments,
+                attachments=self._attach_list(),
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
@@ -1437,6 +1447,14 @@ init -10 python:
                 audio_channel=self._audio_channel,
                 **self.kwargs
             )
+            # Carry the overrides that survive an animation change. The copy
+            # builds its own core, whose setup_animation drops visibility and
+            # non-Permanent colour/cell overrides exactly as a creator-initiated
+            # switch does — so the Permanent ones are precisely what must ride
+            # along. Without this, an attribute switch (`show ringo talk`, or
+            # SSCharacter's lip-flap) silently threw away a costume the game had
+            # set Permanent, which docs/*/usage.md §5 promises persists.
+            rv._overrides = self._permanent_overrides()
             rv._duplicatable = False
             return rv
 
@@ -1498,13 +1516,30 @@ init -10 python:
                     if isinstance(anim, (list, tuple)) and anim:
                         anim = anim[0]
                 if core.set_animation(anim):
-                    # play() re-seeks to the section start, so seek to the saved
-                    # frame AFTER starting playback. Seeking first and then
-                    # play()ing would clobber the head back to frame 0 (i.e. the
-                    # animation would still reset on rollback), and update(0) on
-                    # the first post-rollback render then poses this exact frame.
-                    core.play()
-                    core.set_frame(self._saved_frame)
+                    # Restore the *state* too, not just the head. A save written
+                    # before this existed has no _saved_state -> "playing",
+                    # i.e. the previous behaviour.
+                    state = getattr(self, "_saved_state", "playing")
+                    if state == "stopped":
+                        # Paused-forever: a stopped player, or a one-shot that
+                        # had already finished. Deliberately NO play() — that
+                        # would resume it, and for a finished one-shot it would
+                        # also re-arm the completion edge so on_finished (and
+                        # sequence advance) fired a second time for the same
+                        # playthrough. set_animation left the head parked, so
+                        # seeking alone poses the saved frame.
+                        core.set_frame(self._saved_frame)
+                    else:
+                        # play() re-seeks to the section start, so seek to the
+                        # saved frame AFTER starting playback. Seeking first and
+                        # then play()ing would clobber the head back to frame 0
+                        # (i.e. the animation would still reset on rollback), and
+                        # update(0) on the first post-rollback render then poses
+                        # this exact frame.
+                        core.play()
+                        core.set_frame(self._saved_frame)
+                        if state == "paused":
+                            core.pause()
                 else:
                     # Saved animation is gone (e.g. the pack changed since the
                     # save) — fall back to a fresh start rather than leaving the
@@ -1742,9 +1777,24 @@ init -10 python:
             ``.frame_index`` and ``.users`` / ``.signals`` / ``.audios``). This is
             the rollback-safe, render-thread-safe way to consume events from a
             screen / interaction (vs the callbacks, which fire inside render()).
+
+            The queue behind it is bounded, so a caller that polls far less often
+            than the animation emits loses the OLDEST events. That would be
+            invisible — the returned list just quietly starts at the tail — so
+            warn once here (the core counts the evictions; nothing else could
+            tell a slow poller from a callback-only game, which drops nothing it
+            wanted).
             """
             self._ensure()
-            return self._core.poll_events()
+            events = self._core.poll_events()
+            if self._core.events_dropped:
+                self._warn_once(
+                    "event-overflow",
+                    "the event queue overflowed (%d dropped): ss_poll_events() "
+                    "is being drained slower than %s emits. Poll every "
+                    "interaction, or use the on_user_data / on_signal callbacks."
+                    % (self._core.events_dropped, self.ssab))
+            return events
 
         # -- texture prewarm ------------------------------------------------
         def _prewarm_textures(self, width, height, st, at, budget=2):
@@ -1804,6 +1854,27 @@ init -10 python:
                                 % (cand,))
             return False
 
+        # -- rollback state snapshot ---------------------------------------
+        def _playback_state(self, core):
+            """``"playing"`` / ``"paused"`` / ``"stopped"`` for the rollback record.
+
+            Ren'Py pickles this displayable without the native core and rebuilds
+            it lazily, so whether playback was *live* has to be carried as plain
+            data alongside the frame — otherwise every restore resumes. A
+            naturally finished one-shot reads as "stopped": the Brain parks it on
+            the final frame with is_playing false (SDK doc:
+            30_core/20_playback_control.md), and restoring it as playing would
+            re-fire the completion edge. Never raises — an unreadable state
+            degrades to the previous behaviour ("playing")."""
+            try:
+                if core.is_pausing():
+                    return "paused"
+                if core.is_finished() or not core.is_playing():
+                    return "stopped"
+            except Exception:
+                pass
+            return "playing"
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
@@ -1834,8 +1905,6 @@ init -10 python:
             # this frame's z-ordered, world-space draw plan.
             _tg = time.perf_counter() if SS_PROFILE else 0.0
             plan = core.update(dt * 1000.0)
-            self._saved_frame = plan.frame_no
-            self._saved_loop = core.loop
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
             self._dispatch_plan(plan)            # timeline events + on_looped
@@ -1852,6 +1921,16 @@ init -10 python:
                     renpy.redraw(self, 0)
                 else:
                     self._call_cb(self.on_finished)
+
+            # Rollback / save snapshot, taken AFTER the chaining block: on a
+            # chain-advance frame the head has just moved to the NEW clip's
+            # section start, and snapshotting before would pair the new
+            # animation with the OLD clip's last frame — an out-of-range seek
+            # whenever the next clip is shorter. Read from the core rather than
+            # `plan` so a degraded (exception) frame still records the true head.
+            self._saved_frame = core.frame_no
+            self._saved_loop = core.loop
+            self._saved_state = self._playback_state(core)
 
             _draw = 0.0
             # With an explicit `size`, report a box of that size and center the
@@ -1882,8 +1961,9 @@ init -10 python:
             # never break the frame. Children are few, so a Transform wrap only
             # happens when the part is actually rotated/scaled — the common
             # translation-only case stays allocation-free. See ss_attach.
-            if self._attachments:
-                for _rec in self._attachments:
+            _recs = self._attach_list()
+            if _recs:
+                for _i, _rec in enumerate(_recs):
                     try:
                         _pname = _rec["part"]
                         _t = core.part_transform(_pname)
@@ -1914,12 +1994,28 @@ init -10 python:
                             # part. part_transform's scale is |magnitude| (a
                             # mirrored part reads positive), so a negative-scale
                             # flip is a v2/matrix concern.
+                            #
+                            # The child's UNROTATED size drives the anchor
+                            # vector, so it is read live (an animated child may
+                            # resize); Ren'Py caches renders per
+                            # (displayable, w, h, st, at), and the Transform
+                            # renders the same child at the same st, so this is
+                            # a cache hit rather than a second real render.
                             _c0 = renpy.render(_child, rw, rh, st, at)
                             _cw, _ch = _c0.get_size()
-                            _cr = renpy.render(
-                                Transform(_child, rotate=_ang,
-                                          xzoom=_sx, yzoom=_sy),
-                                rw, rh, st, at)
+                            # Hot path: reuse the Transform while the part's
+                            # angle/scale hold steady (a fixed rest angle, an
+                            # idle pose), so the common case allocates nothing
+                            # per frame. A continuously rotating part genuinely
+                            # needs new parameters, and rebuilding beats
+                            # mutating a live displayable Ren'Py may have cached.
+                            _key = (_ang, _sx, _sy)
+                            _xf = self._xform_cache.get(_i)
+                            if _xf is None or _xf[0] != _key:
+                                _xf = (_key, Transform(_child, rotate=_ang,
+                                                       xzoom=_sx, yzoom=_sy))
+                                self._xform_cache[_i] = _xf
+                            _cr = renpy.render(_xf[1], rw, rh, st, at)
                             _rw2, _rh2 = _cr.get_size()
                             # Vector centre->anchor, transformed the SAME way
                             # Transform did (rotate clockwise-positive, y-down),
@@ -2581,11 +2677,18 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            # Deliberately returns no children: predicting every atlas up front
-            # stalls mid-animation when the background decode finishes and the
-            # main thread uploads massive PNGs. Atlases are prewarmed a few per
+            # Our own ATLASES are deliberately absent: predicting every atlas up
+            # front stalls mid-animation when the background decode finishes and
+            # the main thread uploads massive PNGs. They are prewarmed a few per
             # frame by _prewarm_textures() instead.
-            return []
+            #
+            # Attachment children ARE reported. They are ordinary displayables
+            # the game handed us, not pack textures, so they take the normal
+            # Ren'Py path: without this the predictor never loads them and the
+            # first frame one is drawn stalls on decode+upload — the very hitch
+            # _prewarm_textures exists to avoid — and Ren'Py could not manage
+            # their lifecycle either.
+            return [_r["child"] for _r in self._attach_list()]
 
         # -- hide / destroy: stop this player's audio -----------------------
         def _handles_event(self, event):
@@ -2832,6 +2935,31 @@ init -10 python:
                                 "anchor": (0.5, 0.5), "angle": 0.0})
             return out
 
+        def _attach_list(self):
+            """The attachment records — the single accessor every path uses.
+
+            Migrates state unpickled from a save written before attachments
+            became a record list: back then the attribute did not exist at all,
+            or held ``None`` / the ``{part: child}`` dict. Without this, a loaded
+            save would hit ``None.append`` in ss_attach, ``len(None)`` in
+            ss_clear_attachments, and a dict walk in render() that yields part
+            NAMES where records are expected (silently dropping every child).
+            Also seeds the non-pickled Transform cache render() reads."""
+            recs = getattr(self, "_attachments", None)
+            if not isinstance(recs, list):
+                recs = self._init_attachments(recs)
+                self._attachments = recs
+                self._xform_cache = {}
+            elif not hasattr(self, "_xform_cache"):
+                self._xform_cache = {}
+            return recs
+
+        def _invalidate_attachments(self):
+            """Drop the Transform cache: it is keyed by record index, so any
+            attach/detach shifts it. Cheap — it refills on the next render."""
+            self._xform_cache = {}
+            renpy.redraw(self, 0)
+
         def ss_attach(self, part, child, drive_scale=False, on_hide="follow",
                       anchor=(0.5, 0.5), angle=0.0):
             """Pin ``child`` to ``part``; returns the normalised child.
@@ -2851,11 +2979,11 @@ init -10 python:
             offset to lie along the fingers; -90 rotates it CCW)."""
             child = renpy.displayable(child)
             anchor = (float(anchor[0]), float(anchor[1]))
-            self._attachments.append({"part": part, "child": child,
-                                      "drive_scale": bool(drive_scale),
-                                      "on_hide": on_hide, "anchor": anchor,
-                                      "angle": float(angle)})
-            renpy.redraw(self, 0)
+            self._attach_list().append({"part": part, "child": child,
+                                        "drive_scale": bool(drive_scale),
+                                        "on_hide": on_hide, "anchor": anchor,
+                                        "angle": float(angle)})
+            self._invalidate_attachments()
             return child
 
         def ss_detach(self, child=None, part=None):
@@ -2868,7 +2996,7 @@ init -10 python:
             if child is not None:
                 child = renpy.displayable(child)
             keep, removed = [], 0
-            for rec in self._attachments:
+            for rec in self._attach_list():
                 match_child = child is None or rec["child"] is child \
                     or rec["child"] == child
                 match_part = part is None or rec["part"] == part
@@ -2878,20 +3006,20 @@ init -10 python:
                     keep.append(rec)
             self._attachments = keep
             if removed:
-                renpy.redraw(self, 0)
+                self._invalidate_attachments()
             return removed
 
         def ss_clear_attachments(self):
             """Remove every attachment; returns the count removed."""
-            n = len(self._attachments)
+            n = len(self._attach_list())
             self._attachments = []
             if n:
-                renpy.redraw(self, 0)
+                self._invalidate_attachments()
             return n
 
         def ss_attachments(self):
             """Current attachments as a list of ``(part_name, child)`` tuples."""
-            return [(r["part"], r["child"]) for r in self._attachments]
+            return [(r["part"], r["child"]) for r in self._attach_list()]
 
         # -- part overrides ------------------------------------------------
         # Per-part runtime overrides: "make this part this colour / cell /
@@ -2983,6 +3111,19 @@ init -10 python:
                     # re-export) must not break the rebuild — drop it silently.
                     self._overrides.pop((i, kind), None)
 
+        def _permanent_overrides(self):
+            """The subset of the override record that survives an animation
+            change: Permanent colour/cell entries.
+
+            Colour is ``(packed, blend_op, priority)`` and cell is
+            ``(cellmap, cell, priority)`` — priority last in both; visibility has
+            none and is always dropped. Tolerates a state unpickled before
+            overrides existed (no ``_overrides`` attribute)."""
+            return {key: args
+                    for key, args in getattr(self, "_overrides", {}).items()
+                    if key[1] != "visibility"
+                    and args[2] == ssruntime.PRIORITY_PERMANENT}
+
         def _prune_overrides_for_new_animation(self):
             """Mirror the Brain's own lifecycle on a CREATOR-initiated animation
             change: visibility and non-Permanent colour/cell overrides are
@@ -2992,14 +3133,7 @@ init -10 python:
             the core is merely rebuilt (save/load, re-show), and pruning there
             would throw away the very records _reapply_overrides is restoring.
             """
-            keep = {}
-            for key, args in self._overrides.items():
-                # Colour is (packed, blend_op, priority) and cell is
-                # (cellmap, cell, priority) — priority last in both; visibility
-                # has none and is always dropped.
-                if key[1] != "visibility" and args[2] == ssruntime.PRIORITY_PERMANENT:
-                    keep[key] = args
-            self._overrides = keep
+            self._overrides = self._permanent_overrides()
 
         def ss_set_part_visibility_override(self, part, hide=True, cascade=False):
             """Force-hide ``part``, or revert it to the animation (``hide=False``).

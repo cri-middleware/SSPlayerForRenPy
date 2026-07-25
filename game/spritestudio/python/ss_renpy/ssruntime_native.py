@@ -366,13 +366,23 @@ def _declare(lib: C.CDLL) -> None:
     # state getters
     f.ss_runtime_get_frame_no.argtypes = [P]
     f.ss_runtime_get_frame_no.restype = C.c_float
-    # ss_runtime_is_finished: "every configured loop has played" — a sticky
-    # state, cleared by the next play/setup and never raised by stop().
     for name in ("ss_runtime_is_looped", "ss_runtime_is_playing",
-                 "ss_runtime_is_pausing", "ss_runtime_is_finished"):
+                 "ss_runtime_is_pausing"):
         fn = getattr(f, name)
         fn.argtypes = [P]
         fn.restype = C.c_bool
+    # ss_runtime_is_finished: "every configured loop has played" — a sticky
+    # state, cleared by the next play/setup and never raised by stop(). Optional
+    # (same stale-lib tolerance as is_playing_forward below): it replaced the
+    # withdrawn ss_runtime_is_end_frame_reached, so a drop-in whose libs predate
+    # it must still LOAD — binding it in the mandatory loop above would abort
+    # load_library() and kill the whole player. The wrapper reports "not
+    # finished" when it is absent.
+    try:
+        f.ss_runtime_is_finished.argtypes = [P]
+        f.ss_runtime_is_finished.restype = C.c_bool
+    except AttributeError:
+        pass
     for name in ("ss_runtime_get_start_frame", "ss_runtime_get_end_frame",
                  "ss_runtime_get_fps", "ss_runtime_get_loops",
                  "ss_runtime_get_remain_loops"):
@@ -712,8 +722,19 @@ class _NativeRuntime:
 
         A sticky state, not a pulse: it stays true until the next play/setup, so
         callers wanting a one-shot notification take its rising edge. Never true
-        under an infinite loop count, nor after a commanded stop()."""
-        return bool(self._lib.ss_runtime_is_finished(self._ctx))
+        under an infinite loop count, nor after a commanded stop().
+
+        Reports False when the loaded runtime does not export the query (a
+        drop-in whose ``libs/`` predate it): completion then never fires, so a
+        one-shot's on_finished / sequence chaining stops working — bump
+        ``libs/`` to ``scripts/SDK_VERSION.txt`` — but the player still runs."""
+        fn = getattr(self._lib, "ss_runtime_is_finished", None)
+        if fn is None:
+            return False
+        try:
+            return bool(fn(self._ctx))
+        except Exception:
+            return False
 
     @property
     def is_looped(self) -> bool:

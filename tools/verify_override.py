@@ -103,7 +103,12 @@ def check_pack_rgba() -> bool:
         if got != want:
             print(f"    FAIL: {why}: {value!r} -> 0x{got:08X}, want 0x{want:08X}")
             ok = False
-    for bad in ("#ff0000", (1, 2), None):
+    # "#f00" / "#ff0000ff" are the trap: 4 and 9 chars, so the short forms slip
+    # through a bare length gate and die on int(round("#")) with a TypeError,
+    # breaking the documented ValueError contract. Colour STRINGS belong to the
+    # host layer (Ren'Py's Color()), never to this core.
+    for bad in ("#ff0000", "#f00", "#ff0000ff", "red", b"\xff\x00\x00",
+                (1, 2), None):
         try:
             _pack_rgba(bad)
         except ValueError:

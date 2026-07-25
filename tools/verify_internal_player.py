@@ -247,6 +247,89 @@ def check_finished_edge(lib) -> bool:
     return ok
 
 
+def check_restore_state(lib) -> bool:
+    """The rollback-restore mechanics SSPlayer._ensure() depends on.
+
+    Ren'Py pickles the displayable WITHOUT the core and rebuilds it lazily, so
+    the host restores the head by hand. A player that was paused, stopped, or
+    naturally finished must come back that way — restoring it with play() would
+    resume a paused sprite and re-trip the completion edge of a one-shot that
+    had already fired on_finished. This pins the two non-playing restores:
+
+      * "stopped": ``set_animation`` + ``set_frame`` with NO play() poses the
+        saved frame, leaves the head parked, and reports no finished edge;
+      * "paused":  play() -> set_frame() -> pause() holds that exact frame.
+    """
+    rel = "ss_assets/Ringo/Ringo.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### restore-state  SKIP (Ringo not found)"); return True
+    data = open(abs_ssab, "rb").read()
+    base = os.path.dirname(abs_ssab)
+
+    def _new():
+        return SSInternalPlayer(data, lib=lib, base_dir="ss_assets/Ringo",
+                                resource_manager=RecordingResourceManager(),
+                                pack_reader=filesystem_pack_reader(base))
+
+    print("### restore-state  a finished / paused player restores as it was")
+    ok = True
+    p = _new()
+    p.set_loop(1)
+    p.set_animation("attack1")
+    p.play()
+    dt_ms = 1000.0 / (p.fps or 30)
+    saved = None
+    for _ in range(400):
+        if p.update(dt_ms).finished:
+            saved = p.frame_no
+            break
+    finished_state = p.is_finished()
+    still_playing = p.is_playing()
+    p.close()
+    if saved is None:
+        print("    FAIL: 'attack1' never finished under set_loop(1)"); return False
+    # What the host's _playback_state() reads to classify it as "stopped".
+    if not finished_state or still_playing:
+        print(f"    FAIL: a completed one-shot should read is_finished=True / "
+              f"is_playing=False, got {finished_state}/{still_playing}"); ok = False
+
+    q = _new()                       # "stopped": seek only, never play()
+    q.set_loop(1)
+    q.set_animation("attack1")
+    q.set_frame(saved)
+    first = q.update(0.0)
+    second = q.update(dt_ms)
+    q_playing = q.is_playing()
+    q.close()
+    if abs(first.frame_no - saved) > 1e-3 or not first.items:
+        print(f"    FAIL: parked restore did not pose frame {saved} "
+              f"(frame={first.frame_no}, items={len(first.items)})"); ok = False
+    if first.finished or second.finished:
+        print("    FAIL: parked restore re-fired the finished edge"); ok = False
+    if q_playing or abs(second.frame_no - saved) > 1e-3:
+        print(f"    FAIL: parked restore resumed playing "
+              f"(playing={q_playing}, next frame={second.frame_no})"); ok = False
+
+    r = _new()                       # "paused": play -> seek -> pause
+    r.set_loop(1)
+    r.set_animation("attack1")
+    r.play()
+    r.set_frame(5.0)
+    r.pause()
+    held = r.update(0.0)
+    later = r.update(dt_ms * 3)
+    r_pausing = r.is_pausing()
+    r.close()
+    if not r_pausing or abs(held.frame_no - 5.0) > 1e-3 \
+            or abs(later.frame_no - 5.0) > 1e-3:
+        print(f"    FAIL: paused restore did not hold frame 5 "
+              f"(pausing={r_pausing}, {held.frame_no} -> {later.frame_no})"); ok = False
+
+    print(f"    saved_frame={saved}  -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def main() -> int:
     lib = ssruntime.load_library()
     targets = [
@@ -261,6 +344,7 @@ def main() -> int:
         allok &= check(lib, rel, base, anim, kind)
         print()
     allok &= check_finished_edge(lib)
+    allok &= check_restore_state(lib)
     allok &= check_loop_counts(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
