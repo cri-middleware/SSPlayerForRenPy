@@ -34,6 +34,11 @@ from ss_renpy.instance import InstanceRig, collect_ordered
 from ss_renpy.resource import RecordingResourceManager, ResourceManager
 from ss_renpy.ssab_meta import SsabMeta
 
+# Cap on the un-drained :meth:`SSInternalPlayer.poll_events` queue. Callback-only
+# hosts never drain it, so it must be bounded; a poller that drains every
+# interaction never comes close. Overflow is counted, not silent (events_dropped).
+EVENT_QUEUE_MAX = 256
+
 
 @dataclass
 class FramePlan:
@@ -76,6 +81,15 @@ def _pack_rgba(color) -> int:
     """
     if isinstance(color, int):
         return color & 0xFFFFFFFF
+    # Strings are iterable, so a colour string ("#f00", "#ff0000ff") would slip
+    # past the length gates below and die on int(round("#")) with a TypeError —
+    # breaking this function's ValueError contract. Colour *names* are a host
+    # concern (the Ren'Py layer parses them via Color()); this core takes only
+    # packed ints and 0..255 sequences.
+    if isinstance(color, (str, bytes, bytearray)):
+        raise ValueError(
+            "colour must be a packed int or an (r, g, b[, a]) sequence, not a "
+            "string — parse %r in the host layer first" % (color,))
     try:
         c = list(color)
     except TypeError:
@@ -187,8 +201,12 @@ class SSInternalPlayer:
         self._evt: Optional[EventResolver] = None
         # Bounded: hosts that consume events via callbacks alone never call
         # poll_events(), so an unbounded queue would grow for the whole session
-        # (a looping talking sprite emits UserData markers indefinitely).
-        self._event_queue: deque = deque(maxlen=256)
+        # (a looping talking sprite emits UserData markers indefinitely). The
+        # bound is lossy for a host that DOES poll but drains slower than the
+        # animation emits, so overflow is counted (never silent) — see
+        # :attr:`events_dropped`, which the Ren'Py layer surfaces as a warning.
+        self._event_queue: deque = deque(maxlen=EVENT_QUEUE_MAX)
+        self._events_dropped = 0
         self._was_finished = False
 
         # part-query snapshots (last rendered frame)
@@ -275,6 +293,17 @@ class SSInternalPlayer:
 
     def is_pausing(self) -> bool:
         return bool(self._rt and self._rt.is_pausing)
+
+    def is_finished(self) -> bool:
+        """The Brain's sticky completion STATE (every configured loop played).
+
+        Distinct from ``FramePlan.finished``, which is its rising edge: this
+        stays true until the next play/setup, never trips for an infinite loop,
+        and is never raised by a commanded :meth:`stop` (SDK doc:
+        30_core/20_playback_control.md). The host reads it to tell a naturally
+        finished player from a merely stopped one — e.g. when snapshotting
+        playback state for rollback."""
+        return bool(self._rt and self._rt.is_finished)
 
     def is_playing_forward(self) -> bool:
         """Whether the head is advancing forward (direction + ping-pong leg;
@@ -454,17 +483,21 @@ class SSInternalPlayer:
         ``draw_order``, so the normal render walk (``render_at`` →
         ``collect_ordered``) never runs for it and its slots would freeze. Stepping
         here keeps independent descendants advancing while off-screen (SDK doc:
-        40_components/10_instance.ja.md). Never raises."""
-        try:
-            sf = self.sub_frame if sub_frame is None else sub_frame
-            if self._instances is not None:
-                for pi in list(self._instances.part_indices()):
+        40_components/10_instance.ja.md). Never raises — and guards each slot on
+        its own, so one wedged child cannot freeze its siblings' clocks."""
+        sf = self.sub_frame if sub_frame is None else sub_frame
+        if self._instances is not None:
+            for pi in list(self._instances.part_indices()):
+                try:
                     self._instances.step_idle(pi, frame_no, dt_s, looped, sf)
-            if self._effects is not None:
-                for pi in list(self._effects.part_indices()):
+                except Exception:
+                    pass
+        if self._effects is not None:
+            for pi in list(self._effects.part_indices()):
+                try:
                     self._effects.step_idle(pi, frame_no, dt_s, looped)
-        except Exception:
-            pass
+                except Exception:
+                    pass
 
     def pause(self) -> None:
         if self._rt and not self._rt.is_pausing:
@@ -549,6 +582,11 @@ class SSInternalPlayer:
         if self._enable_events and self._evt is not None and self._evt.available:
             try:
                 for fe in self._evt.collect(rt):
+                    if len(self._event_queue) == EVENT_QUEUE_MAX:
+                        # deque(maxlen) evicts from the LEFT, i.e. the oldest —
+                        # exactly the markers a poller most likely still needs.
+                        # Count it so the loss is reportable instead of silent.
+                        self._events_dropped += 1
                     self._event_queue.append(fe)
                     events_out.append(fe)
             except Exception:
@@ -605,6 +643,15 @@ class SSInternalPlayer:
         q = list(self._event_queue)
         self._event_queue.clear()
         return q
+
+    @property
+    def events_dropped(self) -> int:
+        """How many queued FrameEvents the bounded queue has evicted, ever.
+
+        Non-zero means a poller is draining slower than the animation emits, so
+        :meth:`poll_events` returned only the tail of what happened — poll every
+        interaction (or use the push callbacks) if it keeps climbing."""
+        return self._events_dropped
 
     # -- part query ----------------------------------------------------
     def part_names(self) -> List[str]:

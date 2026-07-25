@@ -224,8 +224,15 @@ class _WebRuntime:
         """True once every configured loop has played.
 
         Mirrors the native backend: a sticky state, so callers take its rising
-        edge."""
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_finished() ? 1 : 0") == 1
+        edge. Feature-detected in JS — it replaced the withdrawn
+        ``is_end_frame_reached``, so a wasm build that predates it would throw a
+        TypeError on every frame, and a JS throw cannot be caught across the
+        emscripten boundary (it aborts the frame rather than raising in Python).
+        Absent -> False, matching the native wrapper: completion never fires,
+        but playback survives."""
+        return emscripten.run_script_int(
+            f"(function(c){{try{{return (c.is_finished && c.is_finished())?1:0;}}"
+            f"catch(e){{return 0;}}}})(window.ss_ctxs[{self._ctx_id}])") == 1
 
     @property
     def is_looped(self) -> bool:
@@ -233,7 +240,15 @@ class _WebRuntime:
 
     @property
     def is_playing_forward(self) -> bool:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_playing_forward() ? 1 : 0") == 1
+        """Whether the head advances forward (direction + ping-pong leg).
+
+        Feature-detected like is_finished above: an older wasm build may not
+        export it, and the resulting JS TypeError would be uncatchable. Absent
+        -> True (assume forward), matching the native wrapper."""
+        return emscripten.run_script_int(
+            f"(function(c){{try{{return (!c.is_playing_forward || "
+            f"c.is_playing_forward())?1:0;}}catch(e){{return 1;}}}})"
+            f"(window.ss_ctxs[{self._ctx_id}])") == 1
 
     @property
     def fps(self) -> int:

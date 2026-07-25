@@ -12,7 +12,7 @@ define ringo_chr = SSCharacter(
 )
 
 # `attachments` pins the ♪ to the "head" part so it follows the animation
-# (v1 = translation only).
+# (position + rotation; ss_attach adds anchor / angle / drive_scale at runtime).
 image ringo_point = SSPlayer(
     "ss_assets/Ringo/Ringo.ssab",
     animation="wait1",

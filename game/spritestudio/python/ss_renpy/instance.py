@@ -115,20 +115,25 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     # not draw_order — matching the Unity/Web ports and the SDK porting contract
     # (40_components/{10_instance,20_effect}.ja.md). draw_order/visibility gate
     # *drawing* only. Each slot is stepped exactly once per frame (the walk above
-    # already stepped the parts present in the plan). Guarded so a stepping
-    # failure never discards the frame already built in ``out``.
-    try:
-        if instances is not None:
-            for pi in instances.part_indices():
-                if pi not in stepped_inst:
+    # already stepped the parts present in the plan). Guarded PER SLOT so a
+    # stepping failure never discards the frame already built in ``out`` — and
+    # never cancels the remaining slots either: one wedged child (e.g. a torn-down
+    # ctx) would otherwise freeze every other hidden clock, every frame, forever.
+    if instances is not None:
+        for pi in instances.part_indices():
+            if pi not in stepped_inst:
+                try:
                     instances.step_idle(pi, parent_frame, dt, parent_looped,
                                         sub_frame)
-        if effects is not None:
-            for pi in effects.part_indices():
-                if pi not in stepped_fx:
+                except Exception:
+                    pass
+    if effects is not None:
+        for pi in effects.part_indices():
+            if pi not in stepped_fx:
+                try:
                     effects.step_idle(pi, parent_frame, dt, parent_looped)
-    except Exception:
-        pass
+                except Exception:
+                    pass
     return out
 
 
@@ -226,8 +231,12 @@ class InstanceRig:
 
         Returns ``[]`` when the part has no resolvable child or the slot reports
         not-visible. Always steps the slot (independent children keep their own
-        clock). On an ``EventInstance`` edge the child is
-        (re)started so its own start events fire.
+        clock) — and, when not visible, still recurses into the child's own
+        slots exactly as :meth:`step_idle` does, so a nested independent
+        Effect/Instance does not freeze behind the runtime's visibility gate
+        (the same freeze ``collect_ordered``'s leftover pass fixes for parts the
+        Brain drops from ``draw_order``). On an ``EventInstance`` edge the child
+        is (re)started so its own start events fire.
         """
         ch = self._children.get(part_index)
         if ch is None:
@@ -243,6 +252,11 @@ class InstanceRig:
         if r.transitioned:
             ch.sub.play()
         if not r.visible:
+            # Not drawn this frame, but the child's own Instance/Effect slots
+            # must still advance (see the docstring); render_at would build
+            # renderables nobody uses, so step only.
+            ch.sub.step_slots_only(r.child_frame_no, r.child_looped, dt,
+                                   sub_frame)
             return []
         return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame)
 

@@ -264,14 +264,34 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 
-### Attaching Something to a Part (`attachments`)
-Make a displayable follow a named part (like a hand or head). Note: v1 only supports translation.
+### Attaching Something to a Part (`attachments` / `ss_attach`)
+Pin any displayable to a named part (a hand, the head): every frame it is drawn at that part's live position and rotation, so a held item follows the hand and an effect rides the head. The child can be an image name, a `"file.png"`, a `Transform(...)` — even another `SSPlayer`.
+
+Set them up front:
 ```renpy
 image ringo = SSPlayer(
     "ss_assets/Ringo/Ringo.ssab",
     attachments={"head": Text("! ", size=40), "hand_r": "sword.png"},
 )
 ```
+…or attach and detach while the game runs:
+```renpy
+# Grip the sword by its bottom edge and lay it along the fingers
+$ sword = ringo.ss_attach("hand_r", "sword.png", anchor=(0.5, 1.0), angle=-90)
+$ ringo.ss_detach(part="hand_r")     # or ss_detach(child=sword)
+$ ringo.ss_clear_attachments()       # drop them all
+```
+
+| Option | Meaning |
+| --- | --- |
+| `anchor=(ax, ay)` | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot. |
+| `angle` | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part. A hand part carries the wrist angle, so a held item usually needs one. |
+| `drive_scale` | Also match the part's scale. Position and rotation always apply. |
+| `on_hide` | `"follow"` (default) keeps drawing the child while the part is hidden; `"hide"` drops it for those frames. |
+
+`ss_attachments()` returns the current ones as `(part_name, child)` pairs, and several children can ride the same part. Attachments are kept in saves and across rollback.
+
+Two things it does not do yet: children always draw **in front of** the whole sprite (they cannot be inserted between parts), and a mirrored (negative-scale) part is not mirrored on the child.
 
 ### Checking Behavior (Diagnostics)
 In developer mode, "runtime loaded / N pack(s)" is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).

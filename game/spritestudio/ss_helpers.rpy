@@ -62,7 +62,9 @@ init -9 python:
         `loop`  : play count (>= 1; default 1 = once). A few passes sometimes read
                   better than one; a value below 1 is clamped to 1. This helper
                   plays a *finite* run — for an endless loop show SSPlayer(loop=-1)
-                  directly instead.
+                  directly instead. With a SEQUENCE (`anim` as a list), the count
+                  applies to the LAST clip: the lead-in clips play once each and
+                  the final one repeats, matching SSPlayer's own chaining.
         `**kwargs` go to SSPlayer (size, on_audio, ...).
 
         Non-blocking by default: it shows the animation (it freezes on its last
@@ -76,11 +78,21 @@ init -9 python:
         d = SSPlayer(ssab, animation=anim, loop=loop, speed=speed, **kwargs)
         renpy.show(tag, what=d, at_list=([at] if at is not None else []), layer=layer)
         if wait:
-            # A sequence (list/tuple anim) plays once through — SSPlayer forces
-            # loop=1 for it (see _setup_animation) — so `loop` only repeats a
-            # single-animation run; don't multiply the already-summed sequence.
-            reps = 1 if isinstance(anim, (list, tuple)) and len(anim) > 0 else loop
-            renpy.pause(ss_duration(ssab, anim, speed) * reps)
+            # How long SSPlayer actually runs this: for a SEQUENCE it forces
+            # loop=1 on every clip but the last, and gives the LAST one the
+            # requested `loop` (see _start_initial / _advance_to_next_in_sequence
+            # in spritestudio.rpy) — so the run is sum(all clips) + the extra
+            # replays of the final clip. A single animation just repeats `loop`
+            # times. Getting this wrong hides the sprite mid-animation.
+            total = ss_duration(ssab, anim, speed)
+            if isinstance(anim, (list, tuple)) and len(anim) > 0:
+                # total == 0.0 means "undeterminable" (ss_duration's no-wait
+                # answer); adding the tail replays to it would invent a wait.
+                if loop > 1 and total > 0.0:
+                    total += (loop - 1) * ss_duration(ssab, anim[-1], speed)
+            else:
+                total *= loop
+            renpy.pause(total)
             if hide:
                 renpy.hide(tag, layer=layer)
         return tag
