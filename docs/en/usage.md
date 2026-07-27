@@ -30,7 +30,7 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.
 ```
 
 > [!TIP]
-> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§8) below.
+> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§9) below.
 
 > [!NOTE]
 > The old `sprites_subdir` argument remains for backward compatibility, but it is unnecessary when specifying the path (deprecated).
@@ -131,11 +131,97 @@ $ player.ss_play("run")
 
 - **Separation of Loading and Playback**: `ss_set_animation("run")` only loads and cues the animation; it does not start playing. `ss_play()` starts the playback.
 - **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()`, frame control `ss_set_frame()` / `ss_get_frame()`, speed `ss_set_speed()`, and looping `ss_set_loop()` are available.
-- **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame.
+- **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame. For the whole part-query set, and for making a displayable follow a part, see the **Part Tracking** section (§5) below.
 
 ---
 
-## 5. Part Overrides (Part Color / Cell / Visibility)
+## 5. Part Tracking (Following a Specified Part)
+
+A feature that makes a displayable you provide (a weapon, an effect, a hit marker) follow a specified part every frame. This player has no scene tree to place the follower into, so the child is **composited into the player's own render** at the part's position. You own the child and its contents; the player only draws it — and because it rides inside the player's render, any `at` clause, `Transform`, or `zoom` applied to the player carries the child along with it.
+
+> The child can be any Ren'Py displayable: an image name, a `"file.png"`, a `Text(...)`, a `Solid(...)`, a `Transform(...)` — even another `SSPlayer`.
+
+Configure it by passing `attachments=` to the constructor, as a `{part_name: child}` dict.
+
+```renpy
+image ringo = SSPlayer(
+    "ss_assets/Ringo/Ringo.ssab",
+    attachments={"head": Text("!", size=40), "hand_r": "sword.png"},
+)
+```
+
+| Setting | Description |
+|---|---|
+| **part** | The name of the part to follow (the PartData name in the `.ssab`). `ss_part_names()` lists them, and the Asset Browser (Shift+B) shows them per pack |
+| **child** | The displayable to make follow |
+| **anchor** | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot |
+| **angle** | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part's local axis |
+| **drive_scale** | When ON, the part's scale is also reflected. OFF (default) is position and rotation only |
+| **on_hide** | Behavior on frames where the part is hidden. `"follow"` (keep drawing; default) / `"hide"` (drop the child for those frames) |
+
+### Registering from a Script
+
+Attachments can also be added and removed at runtime instead of through the constructor.
+
+```renpy
+# Grip the sword by its bottom edge and lay it along the fingers
+$ sword = ringo.ss_attach("hand_r", "sword.png", anchor=(0.5, 1.0), angle=-90)
+
+# Also reflect the part's scale, and stop drawing on hidden frames
+$ ringo.ss_attach("head", "aura.png", drive_scale=True, on_hide="hide")
+
+# Remove (by child, by part, or all of them)
+$ ringo.ss_detach(child=sword)
+$ ringo.ss_detach(part="hand_r")
+$ ringo.ss_clear_attachments()
+```
+
+| Method | Description |
+|---|---|
+| `ss_attach(part, child, drive_scale, on_hide, anchor, angle)` | Adds an attachment and returns the normalized child (pass it back to `ss_detach`) |
+| `ss_detach(child=None, part=None)` | Removes every attachment matching that child and / or part, and returns the number removed. With neither given it removes nothing |
+| `ss_clear_attachments()` | Removes every attachment and returns the number removed |
+| `ss_attachments()` | The current attachments as `(part_name, child)` pairs |
+| `ss_part_names()` / `ss_part_index(part_name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
+| `ss_is_part_hidden(part_name)` | Whether the part is hidden on the last rendered frame |
+| `ss_part_transform(part_name)` | The part's transform for the last rendered frame, or `None` |
+
+> When you only need the part's position at a single moment (a projectile spawn point, for example) rather than continuous following, calling `ss_part_transform()` directly is simpler.
+
+> **`show <tag>` draws a copy.** An `SSPlayer` registered with `image` is duplicated every time it is shown, so `attachments=` given to the constructor does carry into the copy — but a later `ss_attach()` on the variable you kept edits the template, not what is on screen. To attach while the game runs, keep one instance and show that object with `show expression player as tag`.
+
+### Timing and Accuracy
+
+Attachments are composited inside the player's own `render()`, in the same pass that computes the frame's pose, so **a child never lags the animation** — there is no separate drive step that could run at the wrong moment.
+
+`ss_part_transform()` returns the pose the compositing itself uses, in player-local pixels with the animation's origin at the center of the player's box.
+
+| Key | Meaning |
+|---|---|
+| `x` / `y` | Position in px, relative to the animation origin. Y is **down-positive** |
+| `rotation` | Degrees, **clockwise-positive** |
+| `xscale` / `yscale` | Scale as a **magnitude** (always positive) |
+
+It returns `None` until the first frame has been rendered, and for a part that is not in the frame being drawn. A child whose part reads `None` is simply skipped for that frame.
+
+`anchor` doubles as the rotation / scale pivot, and the child's unrotated size is measured every frame, so a child that changes size keeps its anchor. A hand part carries the wrist angle, so a held item usually needs an `angle` offset to lie along the fingers rather than standing straight up.
+
+Because `xscale` / `yscale` are magnitudes, a **mirrored (negative-scale) part is not mirrored on the child** — under `drive_scale` a flipped part scales the child by the absolute amount instead of flipping it.
+
+### Notes
+
+- **Children draw in front of the whole sprite.** They cannot be inserted between parts, so a child cannot be made to pass behind the character's body.
+- The part name does not have to exist yet. A child registered for a part that is not in the current animation is simply not drawn, and starts riding on its own once the part appears.
+- Part names resolve against the parts of the pack the player itself is playing. **Parts inside an Instance part (the child animation) cannot be specified** (the Instance part itself can).
+- If several parts share a name, the **last** one in the pack is used. Rename duplicates in SpriteStudio when you need a specific one.
+- Prefer a **Normal (image) part** as the target. A Mesh part's pivot stays where the undeformed part was, so a child pinned to it drifts away from the deformed shape you see on screen.
+- Several children can ride the same part, and one player can carry as many attachments as you like.
+- Attachments are plain data, so they are **saved with the game and survive rollback** — there is no re-registration step after a load.
+- A child that fails to render is skipped for that frame and can never break the sprite.
+
+---
+
+## 6. Part Overrides (Part Color / Cell / Visibility)
 
 Per-part runtime overrides let a script say "make this part this color / this cell / hidden **now**". An override wins over both the keyframe and any animation blending, so it does not have to fight the animation.
 
@@ -216,7 +302,7 @@ Part Color and cell overrides conflict with the animation, so they take a `prior
 
 ---
 
-## 6. Handling Animation Events (User Data / Signals)
+## 7. Handling Animation Events (User Data / Signals)
 You can receive information on "User Data" and "Signals" configured on the SpriteStudio side within Ren'Py. This makes it possible to play sound effects on specific frames or synchronize script progression.
 
 ### Receiving via Callbacks (Event-Driven)
@@ -254,7 +340,7 @@ image boss = SSPlayer(
 
 ---
 
-## 7. Utilities
+## 8. Utilities
 
 ### One-Shot Playback Made Easy (`ss_play_once`)
 Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
@@ -264,41 +350,12 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 
-### Attaching Something to a Part (`attachments` / `ss_attach`)
-Pin any displayable to a named part (a hand, the head): every frame it is drawn at that part's live position and rotation, so a held item follows the hand and an effect rides the head. The child can be an image name, a `"file.png"`, a `Transform(...)` — even another `SSPlayer`.
-
-Set them up front:
-```renpy
-image ringo = SSPlayer(
-    "ss_assets/Ringo/Ringo.ssab",
-    attachments={"head": Text("! ", size=40), "hand_r": "sword.png"},
-)
-```
-…or attach and detach while the game runs:
-```renpy
-# Grip the sword by its bottom edge and lay it along the fingers
-$ sword = ringo.ss_attach("hand_r", "sword.png", anchor=(0.5, 1.0), angle=-90)
-$ ringo.ss_detach(part="hand_r")     # or ss_detach(child=sword)
-$ ringo.ss_clear_attachments()       # drop them all
-```
-
-| Option | Meaning |
-| --- | --- |
-| `anchor=(ax, ay)` | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot. |
-| `angle` | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part. A hand part carries the wrist angle, so a held item usually needs one. |
-| `drive_scale` | Also match the part's scale. Position and rotation always apply. |
-| `on_hide` | `"follow"` (default) keeps drawing the child while the part is hidden; `"hide"` drops it for those frames. |
-
-`ss_attachments()` returns the current ones as `(part_name, child)` pairs, and several children can ride the same part. Attachments are kept in saves and across rollback.
-
-Two things it does not do yet: children always draw **in front of** the whole sprite (they cannot be inserted between parts), and a mirrored (negative-scale) part is not mirrored on the child.
-
 ### Checking Behavior (Diagnostics)
 In developer mode, "runtime loaded / N pack(s)" is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).
 
 ---
 
-## 8. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
+## 9. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
 
 Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
 
