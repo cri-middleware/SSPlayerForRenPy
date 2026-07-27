@@ -9,6 +9,10 @@ name: Release
 #   __version__ (PEP 440, e.g. 7.0.0b1 — the Ren'Py package's own version,
 #   independent of SDK_VERSION.txt, which only pins which native SDK libs
 #   download-sdk.sh fetches).
+# - Policy: a beta (X.Y.ZbN) is still published as the *latest* release, so
+#   prerelease stays false — README / docs hand out the
+#   releases/latest/download/SSPlayerForRenPy.zip link, which only resolves for
+#   a non-prerelease release.
 on:
   workflow_dispatch:
     inputs:
@@ -123,7 +127,14 @@ jobs:
           cp LICENSE.md THIRD_PARTY_NOTICES.md game/spritestudio/
           ARTIFACT="SSPlayerForRenPy-${{ steps.meta.outputs.version }}.zip"
           cd game
-          zip -r -X "../$ARTIFACT" spritestudio \
+          # -y stores symlinks AS symlinks. libs/macos/libssruntime.framework is a
+          # versioned macOS bundle (Versions/Current + the bundle-root aliases are
+          # symlinks) and zip otherwise FOLLOWS them, flattening the bundle into
+          # plain copies — which invalidates its code signature (`codesign --verify`
+          # → "bundle format is ambiguous"), so a game bundling the extracted
+          # framework can no longer be signed / notarised. The SDK's own release
+          # zip stores them the same way (`zip -ry`).
+          zip -r -X -y "../$ARTIFACT" spritestudio \
             -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
           cd ..
           # Version-less alias so README/docs can point at a stable
@@ -134,6 +145,21 @@ jobs:
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
           echo "alias=$ALIAS" >> "$GITHUB_OUTPUT"
           unzip -l "$ARTIFACT" | tail -n 5
+
+      # Regression guard for the -y above: consumers get the macOS framework only
+      # through this zip, so a flattened bundle would ship unnoticed (the repo's
+      # own working tree always has the real symlinks).
+      - name: Verify macOS framework symlinks survived packaging
+        run: |
+          unzip -q "${{ steps.pkg.outputs.artifact }}" -d zipcheck
+          FW="zipcheck/spritestudio/libs/macos/libssruntime.framework"
+          for link in "$FW/Versions/Current" "$FW/libssruntime"; do
+            if [ ! -L "$link" ]; then
+              echo "::error::$link is not a symlink — the macOS framework was flattened (zip needs -y)"
+              exit 1
+            fi
+          done
+          rm -rf zipcheck
 
       # --- Web export (playable demo, hosted on GitHub Pages) -------------
       # The heavy Ren'Py Web build lives here in the release pipeline; the Pages
