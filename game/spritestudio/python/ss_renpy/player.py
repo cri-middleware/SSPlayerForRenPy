@@ -197,6 +197,9 @@ class SSInternalPlayer:
         # style 0 = normal, 1 = ping-pong.
         self._direction = 0
         self._style = 0
+        # Frame skipping (on = the runtime's own default): also reset by
+        # setup_animation, so tracked and re-applied the same way.
+        self._skip_frames = True
 
         # rigs (built at the end of construction) / events (per-animation, built
         # by set_animation)
@@ -330,6 +333,24 @@ class SSInternalPlayer:
         return bool(self._rt.is_playing_forward) if self._rt else True
 
     @property
+    def playback_direction(self) -> int:
+        """The configured direction (0 = forward, 1 = reverse).
+
+        The *setting*, not the instantaneous heading — on a ping-pong return leg
+        this still reads forward while :meth:`is_playing_forward` reads False."""
+        return self._rt.playback_direction if self._rt else self._direction
+
+    @property
+    def playback_style(self) -> int:
+        """The configured style (0 = normal, 1 = ping-pong)."""
+        return self._rt.playback_style if self._rt else self._style
+
+    @property
+    def skip_frames(self) -> bool:
+        """Whether frame skipping is on; see :meth:`set_skip_frames`."""
+        return self._rt.skip_frames if self._rt else self._skip_frames
+
+    @property
     def frame_no(self) -> float:
         return self._rt.frame_no if self._rt else 0.0
 
@@ -400,6 +421,9 @@ class SSInternalPlayer:
         # range, meaningless against a different clip.)
         if self._direction or self._style:
             self._rt.set_playback_direction(self._direction, self._style)
+        # ...and frame skipping, which setup_animation turns back on.
+        if not self._skip_frames:
+            self._rt.set_skip_frames(False)
         # Timeline events are per-animation; rebuild the resolver.
         if self._enable_events:
             try:
@@ -551,6 +575,20 @@ class SSInternalPlayer:
         self._style = style
         if self._rt:
             self._rt.set_playback_direction(direction, style)
+
+    def set_skip_frames(self, skip: bool) -> None:
+        """Toggle frame skipping (on by default).
+
+        On, ``update`` advances by the elapsed time and keeps real-time pace,
+        skipping frames after a stall; off, it advances exactly one frame per
+        update, so nothing is skipped and the animation stretches instead. See
+        :meth:`ssruntime.SSRuntime.set_skip_frames`.
+
+        Remembered like direction/style — ``setup_animation`` resets it to on —
+        so it survives an animation switch, including host sequence chaining."""
+        self._skip_frames = bool(skip)
+        if self._rt:
+            self._rt.set_skip_frames(self._skip_frames)
 
     def set_frame_rate(self, fps: int) -> None:
         if self._rt:

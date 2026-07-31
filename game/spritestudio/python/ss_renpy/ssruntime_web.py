@@ -201,6 +201,14 @@ class _WebRuntime:
     def set_playback_direction(self, direction: int, style: int = 0):
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_playback_direction({direction}, {style});")
 
+    def set_skip_frames(self, skip: bool) -> None:
+        """Toggle frame skipping (see the native wrapper). Feature-detected:
+        an older wasm build simply keeps the runtime default."""
+        emscripten.run_script(
+            f"(function(c){{try{{if(c.set_skip_frames)"
+            f"c.set_skip_frames({'true' if skip else 'false'});}}catch(e){{}}}})"
+            f"(window.ss_ctxs[{self._ctx_id}])")
+
     def update(self, dt_seconds: float) -> float:
         return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].update({_jsnum(dt_seconds * 1000.0)}).toString()"))
 
@@ -249,6 +257,34 @@ class _WebRuntime:
             f"(function(c){{try{{return (!c.is_playing_forward || "
             f"c.is_playing_forward())?1:0;}}catch(e){{return 1;}}}})"
             f"(window.ss_ctxs[{self._ctx_id}])") == 1
+
+    @property
+    def playback_direction(self) -> int:
+        """Configured direction (0 = forward, 1 = reverse); see the native
+        wrapper. Feature-detected -> 0 on a build without the query."""
+        return self._mode_getter("get_playback_direction", 0)
+
+    @property
+    def playback_style(self) -> int:
+        """Configured style (0 = normal, 1 = ping-pong); -> 0 when absent."""
+        return self._mode_getter("get_playback_style", 0)
+
+    @property
+    def skip_frames(self) -> bool:
+        """Whether frame skipping is on (the runtime default) -> True when
+        the query is absent."""
+        return self._mode_getter("get_skip_frames", 1) == 1
+
+    def _mode_getter(self, method: str, default: int) -> int:
+        """Read an optional playback-mode query off the JS context.
+
+        Feature-detected like is_playing_forward above: calling a method an
+        older wasm build does not export raises an uncatchable JS TypeError,
+        so the guard runs inside the script and returns ``default`` instead."""
+        return emscripten.run_script_int(
+            f"(function(c){{try{{return c.{method}?"
+            f"(c.{method}()|0):{default};}}catch(e){{return {default};}}}})"
+            f"(window.ss_ctxs[{self._ctx_id}])")
 
     @property
     def fps(self) -> int:

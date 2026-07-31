@@ -221,6 +221,72 @@ def check_loop_counts(lib) -> bool:
     return ok
 
 
+def check_playback_modes(lib) -> bool:
+    """The playback-mode knobs read back, and survive an animation switch.
+
+    ``setup_animation`` resets direction / ping-pong / frame-skip in the Brain,
+    so the core has to re-apply them — otherwise a reverse sprite silently
+    turns forward the moment a sequence chains to its next clip. Also pins the
+    two frame-skip modes behaviourally: Timed (on) advances by the elapsed
+    time, Fixed (off) by exactly one frame per update."""
+    rel = "ss_assets/overall/UserData.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### playback-modes  SKIP (UserData not found)"); return True
+    data = open(abs_ssab, "rb").read()
+
+    def mk():
+        return SSInternalPlayer(
+            data, lib=lib, base_dir="ss_assets/overall",
+            resource_manager=RecordingResourceManager(),
+            pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
+
+    print("### playback-modes  direction / ping-pong / frame-skip")
+    ok = True
+    p = mk()
+    try:
+        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        if got != (0, 0, True):
+            print(f"    FAIL: defaults are {got}, want (0, 0, True)"); ok = False
+        p.set_playback_direction(1, 1)
+        p.set_skip_frames(False)
+        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        if got != (1, 1, False):
+            print(f"    FAIL: after set they read {got}, want (1, 1, False)")
+            ok = False
+        p.set_animation(p.animation_names()[0])      # resets them in the Brain
+        after = (p.playback_direction, p.playback_style, p.skip_frames)
+        if after != (1, 1, False):
+            print(f"    FAIL: set_animation lost them: {after}, want (1, 1, False)")
+            ok = False
+    finally:
+        p.close()
+
+    # One update long enough to cover the whole animation: Timed follows the
+    # clock, Fixed advances a single frame.
+    heads = {}
+    for skip in (True, False):
+        q = mk()
+        try:
+            q.set_skip_frames(skip)
+            q.set_animation(q.animation_names()[0])
+            q.set_loop(1)
+            q.play()
+            span = max(1, q.total_frames - 1)
+            heads[skip] = q.update(1000.0 / (q.fps or 30) * span).frame_no
+        finally:
+            q.close()
+    if heads.get(True, 0) <= heads.get(False, 0):
+        print(f"    FAIL: frame-skip made no difference: {heads}"); ok = False
+    if heads.get(False) != 1.0:
+        print(f"    FAIL: with skip off one update advanced to {heads.get(False)},"
+              f" want exactly 1 frame"); ok = False
+
+    print(f"    one long update -> timed={heads.get(True)} fixed={heads.get(False)}"
+          f"  -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def check_finished_edge(lib) -> bool:
     """The pure core reports the play->stop edge via ``FramePlan.finished``; the
     HOST advances the sequence. The core itself has no queue. We act as the host:
@@ -367,6 +433,7 @@ def main() -> int:
     allok &= check_finished_edge(lib)
     allok &= check_restore_state(lib)
     allok &= check_loop_counts(lib)
+    allok &= check_playback_modes(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1
