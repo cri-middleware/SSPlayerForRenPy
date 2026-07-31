@@ -5,8 +5,8 @@
 resolution. It exposes an imperative API —
 
     p = SSInternalPlayer(ssab_bytes, lib=lib, base_dir="ss_assets/Ringo",
-                         resource_manager=rm, pack_reader=reader)
-    p.set_animation("walk")     # Brain setup_animation + rm.acquire(textures)
+                         resource_manager=rm, pack_reader=reader)  # + textures
+    p.set_animation("walk")     # Brain setup_animation (cheap switch)
     p.play()
     plan = p.update(dt_ms)      # advance -> engine-agnostic FramePlan
 
@@ -147,11 +147,14 @@ class SSInternalPlayer:
             # resolves every part's texture_hash, including those from
             # external instance packs.
             self._texmap = texmap if texmap is not None else {}
-            self._texmap.update(self._meta.texture_hash_map())
-            # This pack's own cellmap images, acquired on set_animation.
-            # External packs' images are acquired by the loader as they load.
-            self._own_images = [c.image_path for c in self._meta.cellmaps()
-                                if c.image_path]
+            own_map = self._meta.texture_hash_map()
+            self._texmap.update(own_map)
+            # Every image this pack draws from — cellmap atlases AND texture-
+            # change (TCHG) targets, deduped, acquired once at the end of
+            # construction. External packs' images are acquired by the loader as
+            # they load.
+            self._own_images = list(dict.fromkeys(
+                p for p in own_map.values() if p))
             # Static per-part info indexed by part index (== draw-plan slot
             # index). Cached once: the mask layer reads the static mask flags
             # from it every frame, and it is also the name->index source.
@@ -195,7 +198,8 @@ class SSInternalPlayer:
         self._direction = 0
         self._style = 0
 
-        # rigs / events (built lazily on first set_animation)
+        # rigs (built at the end of construction) / events (per-animation, built
+        # by set_animation)
         self._instances: Optional[InstanceRig] = None
         self._effects: Optional[EffectRig] = None
         self._evt: Optional[EventResolver] = None
@@ -212,6 +216,16 @@ class SSInternalPlayer:
         # part-query snapshots (last rendered frame)
         self._last_world: list = []
         self._last_hidden: Optional[set] = None
+
+        # Everything a *pack* implies is done here, at load: textures, and the
+        # Instance/Effect rigs (parts, effect definitions and the external packs
+        # a child references are all pack-static, so none of it depends on which
+        # animation is selected). This keeps set_animation a cheap, synchronous
+        # switch a game can call on the hot path — the same split the other ports
+        # settled on (load -> setAnimation -> play). Runs last, so the recursive
+        # child players the Instance rig builds see a fully constructed owner.
+        self._acquire_textures(self._own_images)
+        self._build_rigs()
 
     # -- texture / pack resolution -------------------------------------
     def texture_path(self, texture_hash: int) -> str:
@@ -357,12 +371,14 @@ class SSInternalPlayer:
 
     # -- playback control ----------------------------------------------
     def set_animation(self, name: Optional[str] = None) -> bool:
-        """Load + pose an animation (does NOT start playback).
+        """Switch + pose an animation (does NOT start playback).
 
-        Runs the Brain's ``setup_animation`` and asks the ResourceManager to
-        acquire this pack's textures, rebuilds the timeline-event resolver, and
-        (re)arms the Instance/Effect rigs. ``name=None`` selects the first
-        animation. Returns ``False`` if the animation is unknown.
+        Cheap and synchronous — a game may call it on the hot path: every
+        resource the pack implies (textures, Instance/Effect rigs) was already
+        acquired at construction. This runs the Brain's ``setup_animation``,
+        rebuilds the per-animation timeline-event resolver, and re-arms the rig
+        slots. ``name=None`` selects the first animation. Returns ``False`` if
+        the animation is unknown.
         """
         if not name:
             names = self.animation_names()
@@ -384,20 +400,16 @@ class SSInternalPlayer:
         # range, meaningless against a different clip.)
         if self._direction or self._style:
             self._rt.set_playback_direction(self._direction, self._style)
-        # Textures for this pack (set_animation owns texture loading). External
-        # instance packs' textures are acquired by the loader as they load.
-        self._acquire_textures(self._own_images)
         # Timeline events are per-animation; rebuild the resolver.
         if self._enable_events:
             try:
                 self._evt = EventResolver(self._data, name)
             except Exception:
                 self._evt = None
-        # Build rigs once, then just re-arm on subsequent switches.
-        if self._instances is None and self._effects is None:
-            self._build_rigs()
-        else:
-            self._reset_slots()
+        # The rigs themselves are pack-static (built at construction); a switch
+        # only re-arms their slots so the new animation's Instance/Effect parts
+        # fire from the top.
+        self._reset_slots()
         return True
 
     def play(self, start_frame: float = -1.0) -> None:

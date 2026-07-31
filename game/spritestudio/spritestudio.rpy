@@ -1478,9 +1478,9 @@ init -10 python:
                     "e.g. \"ss_assets/Ringo/Ringo.ssab\") and that the file ships "
                     "with the game. [%s]" % (self.ssab, e))
             # Build the engine-independent core; the RenPyResourceManager we hand
-            # it backs texture loading with Ren'Py's image cache (set_animation
-            # acquires this pack's textures), and the pack_reader resolves external
-            # instance packs co-located with the .ssab (also archive-aware).
+            # it backs texture loading with Ren'Py's image cache (constructing the
+            # core acquires this pack's textures), and the pack_reader resolves
+            # external instance packs co-located with the .ssab (also archive-aware).
             self._rm = RenPyResourceManager()
             try:
                 self._core = SSInternalPlayer(
@@ -2709,21 +2709,22 @@ init -10 python:
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
-        # engine-independent core. set_animation/play are split (SDK doc:
-        # 30_core/20_playback_control.md): set_animation loads+poses; ss_play
-        # starts.
+        # engine-independent core. load/set_animation/play are split (SDK doc:
+        # 30_core/20_playback_control.md): building the core loads the pack and
+        # everything it implies (textures, Instance/Effect rigs), set_animation
+        # switches+poses, ss_play starts.
         def ss_set_animation(self, name):
-            """Load + pose animation ``name`` (does NOT start playback).
+            """Switch + pose animation ``name`` (does NOT start playback).
 
-            Front-loads the heavy work — native setup, texture acquisition, and
-            Instance child-context allocation — so a later :meth:`ss_play` starts
-            instantly (the setAnimation/play split).
+            Cheap enough to call on the hot path: the pack's textures and
+            Instance child contexts were acquired when the core was built, so
+            this is native setup for the new animation and nothing more.
             """
             if self._core is None:
                 # First build: _ensure() arms the constructor's animation via
                 # _start_initial(); fall through so `name` is applied on top
-                # (the pack's atlases are shared, so the extra set_animation
-                # costs no meaningful texture work).
+                # (the pack's resources are already loaded by then, so the extra
+                # set_animation is just the switch).
                 self._ensure()
             if not name or name == self._core.animation:
                 return True

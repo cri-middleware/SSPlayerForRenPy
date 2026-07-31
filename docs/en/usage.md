@@ -125,11 +125,12 @@ $ anim_names = player.ss_animation_names()
 # Get the currently playing animation name
 $ current_anim = player.ss_get_animation()
 
-# Switch to an arbitrary animation (load + cue -> play)
+# Switch to an arbitrary animation (switch + cue -> play)
 $ player.ss_play("run")
 ```
 
-- **Separation of Loading and Playback**: `ss_set_animation("run")` only loads and cues the animation; it does not start playing. `ss_play()` starts the playback.
+- **Separation of Switching and Playback**: `ss_set_animation("run")` only switches to the animation and cues it; it does not start playing. `ss_play()` starts the playback.
+- **Switching is cheap**: everything the `.ssab` needs — textures included — is loaded in one go when the sprite is first shown, so `ss_set_animation()` is light enough to call every frame (there is no per-animation loading).
 - **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()`, frame control `ss_set_frame()` / `ss_get_frame()`, speed `ss_set_speed()`, and looping `ss_set_loop()` are available.
 - **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame. For the whole part-query set, and for making a displayable follow a part, see the **Part Tracking** section (§5) below.
 

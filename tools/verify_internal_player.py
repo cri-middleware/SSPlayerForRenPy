@@ -4,14 +4,15 @@
 Exercises the canonical imperative flow with NO Ren'Py:
 
     p = SSInternalPlayer(bytes, lib=..., base_dir=..., resource_manager=rm,
-                         pack_reader=...)
-    p.set_animation(name)   # -> Brain setup + rm.acquire(textures)
+                         pack_reader=...)   # -> rm.acquire(textures)
+    p.set_animation(name)   # -> Brain setup (a cheap, resource-free switch)
     p.play()
     plan = p.update(dt_ms)  # -> FramePlan (z-ordered world-space items)
 
 and validates, per pack kind:
   * animation names enumerate;
-  * ``set_animation`` asks the ResourceManager for this pack's textures;
+  * *loading* asks the ResourceManager for every texture the pack draws from,
+    and ``set_animation`` then acquires nothing;
   * ``update`` yields finite, texture-resolved geometry (and effect batches /
     instance children where expected);
   * timeline events drain via ``poll_events``.
@@ -60,17 +61,29 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     if name not in p.animation_names():
         print(f"    FAIL: {name!r} not in animation_names()"); return False
 
-    # set_animation must request this pack's (root) textures.
+    # Loading must request every texture this pack draws from — cellmap atlases
+    # AND texture-change (TCHG) targets, which live in a separate table and would
+    # otherwise leave those batches textureless (SDK doc:
+    # 30_core/10_initialization.md).
     expect_tex = {(base_dir + "/" + c.image_path) for c in meta.cellmaps()
                   if c.image_path}
+    expect_tex |= {(base_dir + "/" + t.name) for t in meta.external_textures()
+                   if t.name}
+    missing_tex = expect_tex - rm.acquired_set
+    if missing_tex:
+        print(f"    FAIL: loading did not acquire {sorted(missing_tex)}")
+        ok = False
+    # ...so that set_animation is a cheap switch a game can call per frame.
+    acquired_at_load = set(rm.acquired_set)
     if not p.set_animation(name):
         print(f"    FAIL: set_animation({name!r})"); return False
     if p.animation != name:
         print(f"    FAIL: animation is {p.animation!r}, expected {name!r}")
         ok = False
-    missing_tex = expect_tex - rm.acquired_set
-    if missing_tex:
-        print(f"    FAIL: set_animation did not acquire {sorted(missing_tex)}")
+    late_tex = rm.acquired_set - acquired_at_load
+    if late_tex:
+        print(f"    FAIL: set_animation acquired {sorted(late_tex)} "
+              f"(textures belong to load)")
         ok = False
 
     p.play()
@@ -131,6 +144,13 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     elif kind == "events":
         if events_seen == 0:
             print("    FAIL: no timeline events drained"); ok = False
+    elif kind == "texchange":
+        # A part with a texture-change (TCHG) attribute draws from a file in
+        # `external_textures`, keyed by the FILE-name hash — a namespace no
+        # cellmap covers. The unresolved-hash check above is the real assertion
+        # (a cellmaps-only player drops those parts); require geometry too.
+        if max_mesh == 0:
+            print("    FAIL: no mesh geometry produced"); ok = False
 
     print("    ->", "PASS" if ok else "FAIL")
     return ok
@@ -337,6 +357,7 @@ def main() -> int:
         ("ss_assets/overall/Instance.ssab",       "ss_assets/overall",        None,       "instance"),
         ("ss_assets/ParticleEffect/e001.ssab",    "ss_assets/ParticleEffect", "emission", "effect"),
         ("ss_assets/overall/UserData.ssab",       "ss_assets/overall",        None,       "events"),
+        ("ss_assets/overall/TextureChange.ssab",  "ss_assets/overall",        None,       "texchange"),
     ]
     print("== SSInternalPlayer (engine-independent core) verification ==\n")
     allok = True
