@@ -55,6 +55,18 @@ class CellMapInfo:
 
 
 @dataclass(frozen=True)
+class ExternalTextureInfo:
+    """A texture referenced by a *texture change* (``TCHG``) attribute.
+
+    ``name`` is the texture's file name, resolved against the pack dir exactly
+    like a cellmap ``image_path``; ``name_hash`` is the hash of that FILE name —
+    a different namespace from a cellmap's *name* hash, and the key such a part's
+    ``DrawBatch.texture_hash`` carries (SDK doc: 30_core/10_initialization.md)."""
+    name: str
+    name_hash: int
+
+
+@dataclass(frozen=True)
 class SoundFileInfo:
     """One entry of a pack ``SoundList`` (SDK doc: 40_components/90_audio.md).
 
@@ -304,19 +316,40 @@ class SsabMeta:
                 name=_s(e.Name()), name_hash=e.NameHash(), fps=e.Fps()))
         return out
 
+    def external_textures(self) -> list[ExternalTextureInfo]:
+        """Textures targeted by a *texture change* (``TCHG``) attribute.
+
+        A second texture table alongside :meth:`cellmaps`, listing files that no
+        cellmap points at (SDK doc: 30_core/10_initialization.md §3 — "the two
+        load targets are ``cellmaps()`` and ``external_textures()``")."""
+        out: list[ExternalTextureInfo] = []
+        for i in range(self._root.ExternalTexturesLength()):
+            t = self._root.ExternalTextures(i)
+            out.append(ExternalTextureInfo(
+                name=_s(t.Name()), name_hash=t.NameHash()))
+        return out
+
     def texture_hash_map(self) -> dict[int, str]:
         """Map every plausible ``DrawBatch.texture_hash`` key to its image path.
 
-        ``DrawBatch.texture_hash`` is an FNV1a hash tied to the cellmap. The SDK
-        carries both the cellmap *name* hash and the *image-path* hash, so we
-        register both as keys to the same image path — whichever the runtime
-        emits, lookups resolve.
+        ``DrawBatch.texture_hash`` is an FNV1a hash drawn from TWO namespaces:
+        a cellmap's own hash for an ordinary part, and a texture FILE-name hash
+        for a part whose drawing applies a texture change (``TCHG``). The former
+        is carried as both the cellmap *name* hash and the *image-path* hash, so
+        we register both; the latter lives in ``external_textures`` — miss it and
+        those batches resolve to no texture and the part silently vanishes.
+
+        One file legitimately appears under several keys (an atlas that is also a
+        TCHG target); the host's ResourceManager dedupes by path.
         """
         m: dict[int, str] = {}
         for c in self.cellmaps():
             if c.image_path:
                 m[c.name_hash] = c.image_path
                 m[c.image_path_hash] = c.image_path
+        for t in self.external_textures():
+            if t.name:
+                m[t.name_hash] = t.name
         return m
 
     # -- audio (SDK doc: 40_components/90_audio.md) ---------------------

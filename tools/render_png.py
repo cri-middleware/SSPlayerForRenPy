@@ -39,13 +39,31 @@ BLEND_ADD = framedata.BLEND_NAMES and 2  # BlendType.Add == 2
 
 
 def load_atlases(meta: SsabMeta, base: str) -> dict:
+    """``DrawBatch.texture_hash`` -> atlas image, keyed from BOTH texture tables.
+
+    Cellmaps cover ordinary parts; ``external_textures`` covers parts whose
+    drawing applies a texture change (``TCHG``), whose hash is of the FILE name.
+    Skipping the second table leaves those quads without an atlas and this
+    renderer drops them (see the ``atlases.get(th) is None`` guard below) — the
+    silent-vanishing-part failure the shipped player also has to avoid.
+    """
     tex = {}
+    cache = {}
+
+    def _load(rel):
+        if rel not in cache:
+            cache[rel] = Image.open(os.path.join(base, rel)).convert("RGBA")
+        return cache[rel]
+
     for c in meta.cellmaps():
         if not c.image_path:
             continue
-        img = Image.open(os.path.join(base, c.image_path)).convert("RGBA")
+        img = _load(c.image_path)
         tex[c.name_hash] = img
         tex[c.image_path_hash] = img
+    for t in meta.external_textures():
+        if t.name:
+            tex[t.name_hash] = _load(t.name)
     return tex
 
 

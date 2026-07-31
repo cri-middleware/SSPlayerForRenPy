@@ -4,14 +4,15 @@
 Exercises the canonical imperative flow with NO Ren'Py:
 
     p = SSInternalPlayer(bytes, lib=..., base_dir=..., resource_manager=rm,
-                         pack_reader=...)
-    p.set_animation(name)   # -> Brain setup + rm.acquire(textures)
+                         pack_reader=...)   # -> rm.acquire(textures)
+    p.set_animation(name)   # -> Brain setup (a cheap, resource-free switch)
     p.play()
     plan = p.update(dt_ms)  # -> FramePlan (z-ordered world-space items)
 
 and validates, per pack kind:
   * animation names enumerate;
-  * ``set_animation`` asks the ResourceManager for this pack's textures;
+  * *loading* asks the ResourceManager for every texture the pack draws from,
+    and ``set_animation`` then acquires nothing;
   * ``update`` yields finite, texture-resolved geometry (and effect batches /
     instance children where expected);
   * timeline events drain via ``poll_events``.
@@ -60,17 +61,29 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     if name not in p.animation_names():
         print(f"    FAIL: {name!r} not in animation_names()"); return False
 
-    # set_animation must request this pack's (root) textures.
+    # Loading must request every texture this pack draws from — cellmap atlases
+    # AND texture-change (TCHG) targets, which live in a separate table and would
+    # otherwise leave those batches textureless (SDK doc:
+    # 30_core/10_initialization.md).
     expect_tex = {(base_dir + "/" + c.image_path) for c in meta.cellmaps()
                   if c.image_path}
+    expect_tex |= {(base_dir + "/" + t.name) for t in meta.external_textures()
+                   if t.name}
+    missing_tex = expect_tex - rm.acquired_set
+    if missing_tex:
+        print(f"    FAIL: loading did not acquire {sorted(missing_tex)}")
+        ok = False
+    # ...so that set_animation is a cheap switch a game can call per frame.
+    acquired_at_load = set(rm.acquired_set)
     if not p.set_animation(name):
         print(f"    FAIL: set_animation({name!r})"); return False
     if p.animation != name:
         print(f"    FAIL: animation is {p.animation!r}, expected {name!r}")
         ok = False
-    missing_tex = expect_tex - rm.acquired_set
-    if missing_tex:
-        print(f"    FAIL: set_animation did not acquire {sorted(missing_tex)}")
+    late_tex = rm.acquired_set - acquired_at_load
+    if late_tex:
+        print(f"    FAIL: set_animation acquired {sorted(late_tex)} "
+              f"(textures belong to load)")
         ok = False
 
     p.play()
@@ -131,6 +144,13 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     elif kind == "events":
         if events_seen == 0:
             print("    FAIL: no timeline events drained"); ok = False
+    elif kind == "texchange":
+        # A part with a texture-change (TCHG) attribute draws from a file in
+        # `external_textures`, keyed by the FILE-name hash — a namespace no
+        # cellmap covers. The unresolved-hash check above is the real assertion
+        # (a cellmaps-only player drops those parts); require geometry too.
+        if max_mesh == 0:
+            print("    FAIL: no mesh geometry produced"); ok = False
 
     print("    ->", "PASS" if ok else "FAIL")
     return ok
@@ -198,6 +218,72 @@ def check_loop_counts(lib) -> bool:
         p.close()
 
     print(f"    loop=3 -> {got3}  loop=1 -> {got1}  -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def check_playback_modes(lib) -> bool:
+    """The playback-mode knobs read back, and survive an animation switch.
+
+    ``setup_animation`` resets direction / ping-pong / frame-skip in the Brain,
+    so the core has to re-apply them — otherwise a reverse sprite silently
+    turns forward the moment a sequence chains to its next clip. Also pins the
+    two frame-skip modes behaviourally: Timed (on) advances by the elapsed
+    time, Fixed (off) by exactly one frame per update."""
+    rel = "ss_assets/overall/UserData.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### playback-modes  SKIP (UserData not found)"); return True
+    data = open(abs_ssab, "rb").read()
+
+    def mk():
+        return SSInternalPlayer(
+            data, lib=lib, base_dir="ss_assets/overall",
+            resource_manager=RecordingResourceManager(),
+            pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
+
+    print("### playback-modes  direction / ping-pong / frame-skip")
+    ok = True
+    p = mk()
+    try:
+        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        if got != (0, 0, True):
+            print(f"    FAIL: defaults are {got}, want (0, 0, True)"); ok = False
+        p.set_playback_direction(1, 1)
+        p.set_skip_frames(False)
+        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        if got != (1, 1, False):
+            print(f"    FAIL: after set they read {got}, want (1, 1, False)")
+            ok = False
+        p.set_animation(p.animation_names()[0])      # resets them in the Brain
+        after = (p.playback_direction, p.playback_style, p.skip_frames)
+        if after != (1, 1, False):
+            print(f"    FAIL: set_animation lost them: {after}, want (1, 1, False)")
+            ok = False
+    finally:
+        p.close()
+
+    # One update long enough to cover the whole animation: Timed follows the
+    # clock, Fixed advances a single frame.
+    heads = {}
+    for skip in (True, False):
+        q = mk()
+        try:
+            q.set_skip_frames(skip)
+            q.set_animation(q.animation_names()[0])
+            q.set_loop(1)
+            q.play()
+            span = max(1, q.total_frames - 1)
+            heads[skip] = q.update(1000.0 / (q.fps or 30) * span).frame_no
+        finally:
+            q.close()
+    if heads.get(True, 0) <= heads.get(False, 0):
+        print(f"    FAIL: frame-skip made no difference: {heads}"); ok = False
+    if heads.get(False) != 1.0:
+        print(f"    FAIL: with skip off one update advanced to {heads.get(False)},"
+              f" want exactly 1 frame"); ok = False
+
+    print(f"    one long update -> timed={heads.get(True)} fixed={heads.get(False)}"
+          f"  -> {'PASS' if ok else 'FAIL'}")
     return ok
 
 
@@ -337,6 +423,7 @@ def main() -> int:
         ("ss_assets/overall/Instance.ssab",       "ss_assets/overall",        None,       "instance"),
         ("ss_assets/ParticleEffect/e001.ssab",    "ss_assets/ParticleEffect", "emission", "effect"),
         ("ss_assets/overall/UserData.ssab",       "ss_assets/overall",        None,       "events"),
+        ("ss_assets/overall/TextureChange.ssab",  "ss_assets/overall",        None,       "texchange"),
     ]
     print("== SSInternalPlayer (engine-independent core) verification ==\n")
     allok = True
@@ -346,6 +433,7 @@ def main() -> int:
     allok &= check_finished_edge(lib)
     allok &= check_restore_state(lib)
     allok &= check_loop_counts(lib)
+    allok &= check_playback_modes(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1

@@ -1212,8 +1212,8 @@ init -10 python:
         _audio_live = set()
 
         def __init__(self, ssab, animation=None, sprites_subdir=None,
-                     loop=-1, speed=1.0, sub_frame=True, size=None,
-                     attachments=None,
+                     loop=-1, speed=1.0, sub_frame=True, frame_skip=True,
+                     size=None, attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
                      on_finished=None, on_looped=None, on_started=None,
                      aliases=None, audio_channel=None, **kwargs):
@@ -1322,6 +1322,14 @@ init -10 python:
             self._saved_frame = -1.0
             self._saved_loop = self._initial_loop
             self._saved_state = "playing"
+            # Playback modes the Brain resets on every setup_animation and that
+            # a rebuilt core would lose entirely: reverse / ping-pong, and frame
+            # skipping (on by default, like `sub_frame` — both keep the runtime's
+            # own default). Plain data, so they pickle with the displayable and
+            # _ensure re-applies them to the new core.
+            self._playback_direction = 0
+            self._playback_style = 0
+            self._frame_skip = bool(frame_skip)
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
@@ -1435,6 +1443,7 @@ init -10 python:
                 loop=self._initial_loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
+                frame_skip=getattr(self, "_frame_skip", True),
                 size=self._size,
                 attachments=self._attach_list(),
                 on_user_data=self.on_user_data,
@@ -1478,9 +1487,9 @@ init -10 python:
                     "e.g. \"ss_assets/Ringo/Ringo.ssab\") and that the file ships "
                     "with the game. [%s]" % (self.ssab, e))
             # Build the engine-independent core; the RenPyResourceManager we hand
-            # it backs texture loading with Ren'Py's image cache (set_animation
-            # acquires this pack's textures), and the pack_reader resolves external
-            # instance packs co-located with the .ssab (also archive-aware).
+            # it backs texture loading with Ren'Py's image cache (constructing the
+            # core acquires this pack's textures), and the pack_reader resolves
+            # external instance packs co-located with the .ssab (also archive-aware).
             self._rm = RenPyResourceManager()
             try:
                 self._core = SSInternalPlayer(
@@ -1498,6 +1507,17 @@ init -10 python:
                 raise Exception(
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
+
+            # Re-apply the playback modes onto the fresh core BEFORE any
+            # set_animation below: the core tracks them itself from here on and
+            # re-applies them after each setup_animation. A save written before
+            # these existed restores a __dict__ without them, hence getattr.
+            _dir = getattr(self, "_playback_direction", 0)
+            _sty = getattr(self, "_playback_style", 0)
+            if _dir or _sty:
+                self._core.set_playback_direction(_dir, _sty)
+            if not getattr(self, "_frame_skip", True):
+                self._core.set_skip_frames(False)
 
             # If restoring from a saved state (e.g. after rollback unpickled this
             # instance), restore the exact animation and frame.
@@ -2709,21 +2729,22 @@ init -10 python:
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
-        # engine-independent core. set_animation/play are split (SDK doc:
-        # 30_core/20_playback_control.md): set_animation loads+poses; ss_play
-        # starts.
+        # engine-independent core. load/set_animation/play are split (SDK doc:
+        # 30_core/20_playback_control.md): building the core loads the pack and
+        # everything it implies (textures, Instance/Effect rigs), set_animation
+        # switches+poses, ss_play starts.
         def ss_set_animation(self, name):
-            """Load + pose animation ``name`` (does NOT start playback).
+            """Switch + pose animation ``name`` (does NOT start playback).
 
-            Front-loads the heavy work — native setup, texture acquisition, and
-            Instance child-context allocation — so a later :meth:`ss_play` starts
-            instantly (the setAnimation/play split).
+            Cheap enough to call on the hot path: the pack's textures and
+            Instance child contexts were acquired when the core was built, so
+            this is native setup for the new animation and nothing more.
             """
             if self._core is None:
                 # First build: _ensure() arms the constructor's animation via
                 # _start_initial(); fall through so `name` is applied on top
-                # (the pack's atlases are shared, so the extra set_animation
-                # costs no meaningful texture work).
+                # (the pack's resources are already loaded by then, so the extra
+                # set_animation is just the switch).
                 self._ensure()
             if not name or name == self._core.animation:
                 return True
@@ -2844,8 +2865,45 @@ init -10 python:
 
         def ss_set_playback_direction(self, direction, style=0):
             """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
+            # Kept on the displayable too: Ren'Py drops the native core on
+            # pickling (save / rollback / re-show) and rebuilds it with the
+            # runtime defaults, so without this record a reverse or ping-pong
+            # sprite would quietly revert to forward on the next load.
+            self._playback_direction = int(direction)
+            self._playback_style = int(style)
             if self._core:
                 self._core.set_playback_direction(direction, style)
+
+        def ss_get_playback_direction(self):
+            """The configured direction (0=forward, 1=reverse) — the setting, not
+            the instantaneous heading: on a ping-pong return leg this still
+            reads forward."""
+            # getattr: a save written before these existed unpickles without them.
+            return (self._core.playback_direction if self._core
+                    else getattr(self, "_playback_direction", 0))
+
+        def ss_get_playback_style(self):
+            """The configured style (0=normal, 1=ping-pong)."""
+            return (self._core.playback_style if self._core
+                    else getattr(self, "_playback_style", 0))
+
+        def ss_set_frame_skip_enabled(self, enabled):
+            """Toggle frame skipping (default on).
+
+            On, playback follows the clock: after a stall (a slow frame, a
+            re-shown window) it catches up by skipping ahead, so a 2-second
+            animation always takes 2 seconds. Off, the head advances exactly one
+            frame per rendered frame — nothing is skipped, and a stall stretches
+            the animation instead. Turn it off when every frame must be seen
+            (a short effect, a frame-counted cutscene); leave it on when timing
+            matters more (a sprite synced to dialogue or audio)."""
+            self._frame_skip = bool(enabled)
+            if self._core:
+                self._core.set_skip_frames(self._frame_skip)
+
+        def ss_is_frame_skip_enabled(self):
+            return (self._core.skip_frames if self._core
+                    else getattr(self, "_frame_skip", True))
 
         def ss_set_frame_rate(self, fps):
             if self._core:

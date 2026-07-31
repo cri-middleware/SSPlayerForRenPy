@@ -400,6 +400,21 @@ def _declare(lib: C.CDLL) -> None:
         f.ss_runtime_is_playing_forward.restype = C.c_bool
     except AttributeError:
         pass
+    # The playback-mode readbacks and the frame-skip toggle. Declared as one
+    # optional group (same stale-lib tolerance as is_playing_forward above): a
+    # drop-in whose libs predate them must still LOAD, and the wrappers then
+    # report the runtime's own defaults.
+    try:
+        f.ss_runtime_get_playback_direction.argtypes = [P]
+        f.ss_runtime_get_playback_direction.restype = C.c_int32
+        f.ss_runtime_get_playback_style.argtypes = [P]
+        f.ss_runtime_get_playback_style.restype = C.c_int32
+        f.ss_runtime_get_skip_frames.argtypes = [P]
+        f.ss_runtime_get_skip_frames.restype = C.c_bool
+        f.ss_runtime_set_skip_frames.argtypes = [P, C.c_bool]
+        f.ss_runtime_set_skip_frames.restype = None
+    except AttributeError:
+        pass
 
     # events
     f.ss_runtime_get_passed_event_count.argtypes = [P]
@@ -690,6 +705,25 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_playback_direction(
             self._ctx, int(direction), int(style))
 
+    def set_skip_frames(self, skip: bool) -> None:
+        """Toggle frame skipping — the runtime's two advance modes.
+
+        On (the default) is *Timed*: ``update`` advances by the exact elapsed
+        time, so playback keeps real-time pace and a long delta skips frames.
+        Off is *Fixed*: the delta is accumulated and the head advances by
+        **exactly one frame per update**, so no frame is ever skipped and a
+        stall stretches the animation instead of dropping it
+        (``libs/ssruntime/src/core/playback_controller.rs``). Either way the
+        frames crossed are still reported, so events do not go missing.
+        No-op on a runtime that predates the export."""
+        fn = getattr(self._lib, "ss_runtime_set_skip_frames", None)
+        if fn is None:
+            return
+        try:
+            fn(self._ctx, bool(skip))
+        except Exception:
+            pass
+
     def update(self, dt_seconds: float) -> float:
         """Advance by ``dt_seconds`` **seconds**; returns current frame (float).
 
@@ -757,6 +791,42 @@ class _NativeRuntime:
             return bool(fn(self._ctx))
         except Exception:
             return True
+
+    @property
+    def playback_direction(self) -> int:
+        """The *configured* direction (PLAY_FORWARD / PLAY_REVERSE).
+
+        The setting, not the instantaneous heading — on a ping-pong return leg
+        this still reads FORWARD while :attr:`is_playing_forward` reads False.
+        Assumes forward when the runtime does not export the query."""
+        return self._mode_getter("ss_runtime_get_playback_direction",
+                                 PLAY_FORWARD)
+
+    @property
+    def playback_style(self) -> int:
+        """The configured style (STYLE_NORMAL / STYLE_PINGPONG); NORMAL when the
+        runtime does not export the query."""
+        return self._mode_getter("ss_runtime_get_playback_style", STYLE_NORMAL)
+
+    @property
+    def skip_frames(self) -> bool:
+        """Whether frame skipping is on (the runtime default); see
+        :meth:`set_skip_frames`. Reports the default when unavailable."""
+        return bool(self._mode_getter("ss_runtime_get_skip_frames", True))
+
+    def _mode_getter(self, symbol: str, default):
+        """Read an optional playback-mode query, falling back to its default.
+
+        These landed after the first shipped runtimes, so a drop-in carrying
+        older ``libs/`` simply reports the runtime's own defaults rather than
+        failing (the same tolerance :attr:`is_playing_forward` uses)."""
+        fn = getattr(self._lib, symbol, None)
+        if fn is None:
+            return default
+        try:
+            return fn(self._ctx)
+        except Exception:
+            return default
 
     @property
     def fps(self) -> int:

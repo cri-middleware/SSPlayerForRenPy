@@ -59,6 +59,13 @@ def audit_pack(lib, path: str) -> dict:
         dims = png_size(os.path.join(base, c.image_path)) if c.image_path else None
         tex[c.name_hash] = (c.image_path, dims, "name_hash")
         tex[c.image_path_hash] = (c.image_path, dims, "image_path_hash")
+    # The other texture table: files a texture-change (TCHG) part draws from,
+    # keyed by FILE-name hash. Without these the unresolved-hash report below
+    # flags every TCHG batch.
+    for t in meta.external_textures():
+        if t.name:
+            tex[t.name_hash] = (t.name, png_size(os.path.join(base, t.name)),
+                                "external_texture")
 
     result = {"name": name, "anims": [a.name for a in anims],
               "cellmaps": [(c.name, c.image_path) for c in cellmaps],

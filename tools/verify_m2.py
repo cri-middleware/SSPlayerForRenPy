@@ -111,11 +111,17 @@ def verify_pack(lib, path: str) -> dict:
     meta = SsabMeta(data)
     anims = meta.animations()
     base = os.path.dirname(path)
+    # Both texture tables: cellmaps for ordinary parts, external_textures for
+    # texture-change (TCHG) parts (keyed by FILE-name hash). A hash missing here
+    # silently skips that part's UV check below.
     tex = {}
     for c in meta.cellmaps():
         dims = png_size(os.path.join(base, c.image_path)) if c.image_path else None
         tex[c.name_hash] = dims
         tex[c.image_path_hash] = dims
+    for t in meta.external_textures():
+        if t.name:
+            tex[t.name_hash] = png_size(os.path.join(base, t.name))
 
     res = {"name": name, "errors": [], "frames": 0, "parts": 0,
            "partcolor": 0, "free_deform": 0, "center_fan": 0, "uv_oob": 0,
