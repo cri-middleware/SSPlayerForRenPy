@@ -23,6 +23,7 @@ For detailed specifications, import procedures, and API references, please visit
 - [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/) — 🚧 live after the first release
 - [**Documentation (English)**](./docs/en/index.md)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
+- [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place — 🚧 live after the first release
 
 ### Quick Links
 - [Setup Guide](docs/en/setup.md)
