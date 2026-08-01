@@ -554,8 +554,10 @@ init -10 python:
                 # SS_MASK_COVERAGE_SUPERSAMPLE instead.
                 # This mirrors Godot's ss_library_fs.glsl ss_mask_passes() exactly,
                 # float-emulated (no integer bitwise ops in ES 1.00): the writer's
-                # bit lives in coverage channel i/8 bit i%8 (mod/exp2 test), invert
-                # is `255 - s`, increment is `mod(s + 1, 256)`.
+                # bit lives in coverage channel i/8 bit i%8 (mod/exp2 test). The
+                # two OPs replay into SEPARATE accumulators (parity for invert,
+                # counter for increment) and the coverage is their union — see
+                # mask.mask_passes, the CPU authority this must reproduce.
                 fragment_300="""
                     if (u_mask_count > 0) {
                         bool inside = u_mask_inside > 0.5;
@@ -572,7 +574,11 @@ init -10 python:
                             // corrupt the per-bit decode).
                             vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
                             vec4 cov = texture2D(tex1, cuv);
-                            float stencil = 0.0;
+                            // Two accumulators, never one: invert and increment
+                            // do not commute, so a shared one would make the
+                            // coverage depend on writer order (SDK doc §3-1-4).
+                            float parity = 0.0;   // mask_influence == 1: odd overlap
+                            float count = 0.0;    // mask_influence == 0: any overlap
                             for (int i = 0; i < 24; i++) {
                                 if (i >= u_mask_count) break;
                                 vec4 m = u_mask_meta[i];
@@ -588,10 +594,10 @@ init -10 python:
                                 float byte = floor(cval * 255.0 + 0.5);
                                 if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
                                     continue;
-                                if (m.y > 0.5) stencil = 255.0 - stencil; // invert
-                                else stencil = mod(stencil + 1.0, 256.0); // incr
+                                if (m.y > 0.5) parity = 1.0 - parity;     // invert
+                                else count += 1.0;                       // incr
                             }
-                            bool masked = stencil >= 0.5;
+                            bool masked = parity >= 0.5 || count >= 0.5; // union
                             if (masked != inside) discard;               // inside/outside rule
                         }
                     }

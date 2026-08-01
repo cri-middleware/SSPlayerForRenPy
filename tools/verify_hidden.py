@@ -162,7 +162,7 @@ class _StubSub:
     def step_slots_only(self, frame_no, looped, dt, sub_frame=None):
         self.stepped.append(frame_no)
 
-    def render_at(self, frame_no, looped, dt, sub_frame=None):
+    def render_at(self, frame_no, looped, dt, sub_frame=None, inherited=None):
         self.rendered.append(frame_no)
         return []
 

@@ -42,7 +42,8 @@ def display_frame(frame_no: float, sub_frame: bool):
 
 
 def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
-                    parent_looped, sub_frame, part_infos=None, frame_mask=None):
+                    parent_looped, sub_frame, part_infos=None, frame_mask=None,
+                    inherited=None):
     """Z-ordered renderables for ``rt`` at the current frame.
 
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
@@ -51,19 +52,24 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     Effect parts are stepped. Shared by the root player and Instance-child
     players (both ``SSInternalPlayer``, via :meth:`SSInternalPlayer.render_at`).
 
-    Masking (SDK doc: 40_components/40_mask.md): when ``part_infos`` +
-    ``frame_mask`` are supplied (the root's ``update``), each Normal/Mesh target
-    is stamped via :func:`mask.attach_target`, and a masked **instance** part
-    propagates its coverage to the *whole* sub-animation via
-    :func:`mask.attach_inherited` (single-stage). Instance children are seeked
-    through ``render_at``
-    *without* these args, so they never build/attach their own coverage — they
-    only inherit, exactly as the spec / Godot port require.
+    Masking (SDK doc: 40_components/40_mask.md): the root's ``update`` supplies
+    ``part_infos`` + ``frame_mask`` and each Normal/Mesh target is stamped via
+    :func:`mask.attach_target`. An Instance part hands its sub-animation the
+    **composed** context from :func:`mask.inherit_for` (§2-6: ``mask_influence``
+    by AND, ``visible_inside_mask`` by OR), which arrives here as ``inherited``
+    when this player *is* that sub-animation; its parts then compose their own
+    settings on top. The sub-animation is therefore not judged as one opaque
+    blob by the Instance part alone — a caller cannot force "inside" onto a child
+    that opted out, nor the reverse. Composing on the way down (rather than
+    patching the child's output afterwards) is what makes nesting chain for
+    free. Children never build coverage: ``frame_mask`` stays ``None`` for them
+    and they sample the root's, exactly as the spec / Godot port require.
     """
     # Materialize first: this fully drains the transient SoA buffers into copied
     # MeshParts / matrices, so the child/effect Brain calls below are safe.
     plan = list(framedata.iter_draw_plan(rt, fd))
-    do_mask = frame_mask is not None and part_infos is not None
+    do_mask = part_infos is not None and (frame_mask is not None
+                                          or inherited is not None)
     out = []
     # Part indices whose slot the draw-plan walk below steps this frame. The
     # Brain omits Hide'd Instance/Effect parts from draw_order (SDK doc:
@@ -77,25 +83,28 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
         if tag == "mesh":
             mp = item[1]
             if do_mask:
-                mask.attach_target(mp, frame_mask, part_infos)
+                mask.attach_target(mp, frame_mask, part_infos, inherited)
             out.append(("mesh", mp))
         elif tag == "instance":
             _, p, mat, alpha, hidden = item
             stepped_inst.add(p)
+            # Composed BEFORE the child is built, so the child stamps its own
+            # parts with the effective context and the parent has nothing left to
+            # patch afterwards (SDK doc: 40_components/40_mask.md §2-6).
+            child_ctx = (mask.inherit_for(p, part_infos, frame_mask, inherited)
+                         if do_mask else None)
             child_items = (instances.collect(
-                p, parent_frame, dt, parent_looped, sub_frame)
+                p, parent_frame, dt, parent_looped, sub_frame, child_ctx)
                 if instances is not None else [])
             if hidden:
                 continue   # stepped for timing above; just not drawn
-            inst_info = (part_infos[p] if do_mask and 0 <= p < len(part_infos)
-                         else None)
-            inst_rank = frame_mask.rank_of.get(p) if do_mask else None
             for ctag, payload in child_items:
                 if ctag == "mesh":
-                    tmp = framedata.transform_mesh_part(payload, mat, alpha)
-                    if do_mask and inst_rank is not None:
-                        mask.attach_inherited(tmp, frame_mask, inst_info, inst_rank)
-                    out.append(("mesh", tmp))
+                    # transform_mesh_part carries ``mask`` over; the child's
+                    # geometry lands in the root's world space here, which is the
+                    # space the coverage UV is derived in.
+                    out.append(("mesh",
+                                framedata.transform_mesh_part(payload, mat, alpha)))
                 else:  # "fx"
                     out.append(("fx",
                                 transform_effect_batch(payload, mat, alpha)))
@@ -226,7 +235,8 @@ class InstanceRig:
             self._rt.instance_slot_reset(ch.slot)
             ch.sub.reset_slots()
 
-    def collect(self, part_index, parent_frame, dt, parent_looped, sub_frame):
+    def collect(self, part_index, parent_frame, dt, parent_looped, sub_frame,
+                inherited=None):
         """Step one instance part and return the child's child-space renderables.
 
         Returns ``[]`` when the part has no resolvable child or the slot reports
@@ -237,6 +247,10 @@ class InstanceRig:
         (the same freeze ``collect_ordered``'s leftover pass fixes for parts the
         Brain drops from ``draw_order``). On an ``EventInstance`` edge the child
         is (re)started so its own start events fire.
+
+        ``inherited`` is the composed mask context for the sub-animation (SDK
+        doc: 40_components/40_mask.md §2-6), passed straight through to the
+        child's ``render_at`` so it can stamp its own parts.
         """
         ch = self._children.get(part_index)
         if ch is None:
@@ -258,7 +272,8 @@ class InstanceRig:
             ch.sub.step_slots_only(r.child_frame_no, r.child_looped, dt,
                                    sub_frame)
             return []
-        return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame)
+        return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame,
+                                inherited)
 
     def part_indices(self):
         """Part indices of every Instance slot this rig owns — the full set to

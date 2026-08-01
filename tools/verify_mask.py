@@ -13,9 +13,12 @@ Exercises the engine-independent half of masking without a GUI:
     the right rank / polarity;
   * **replay reference** — that :func:`ss_renpy.mask.mask_passes` (the CPU twin
     of the GLSL ``ss_mask_passes``) honours scope, OP, polarity and
-    bbox-outside handling;
-  * **instance inheritance** — that :func:`ss_renpy.mask.attach_inherited`
-    propagates a parent's coverage to a sub-animation as one target.
+    bbox-outside handling, and that the two OPs replay into separate
+    accumulators so coverage never depends on writer order (SDK doc §3-1-4);
+  * **instance composition** — that :func:`ss_renpy.mask.inherit_for` /
+    :func:`ss_renpy.mask.attach_target` compose a caller's context with each
+    sub-animation part's own settings (§2-6: ``mask_influence`` by AND,
+    ``visible_inside_mask`` by OR), chaining through nesting.
 
 Actual GL2 coverage rendering / replay still needs a GUI run (Shift+B browser).
 
@@ -228,13 +231,48 @@ def check_replay() -> bool:
     _check(mask.mask_passes(_fm(two), 2, False, inside, covered()) is True,
            "two masks: uncovered -> draw", fails)
 
+    # -- OP plane split (SDK doc §3-1-4) ----------------------------------
+    # Invert writers are PARITY: an odd overlap covers, an even one does not.
+    # Two overlapping inverts cancel; three cover. (Two alone cannot tell parity
+    # from an "exactly one" reading — three is what distinguishes them, and
+    # SS7.5 is parity.)
+    inv2 = [(5, 0, 1, 0), (6, 1, 1, 0)]
+    inv3 = [(5, 0, 1, 0), (6, 1, 1, 0), (7, 2, 1, 0)]
+    _check(mask.mask_passes(_fm(inv2), 2, False, inside, covered(0, 1)) is True,
+           "invert x2: even overlap cancels -> draw", fails)
+    _check(mask.mask_passes(_fm(inv3), 2, False, inside, covered(0, 1, 2)) is False,
+           "invert x3: odd overlap covers -> discard", fails)
+
+    # Mixed influence overlapping: the coverage is the UNION of the two planes
+    # and must NOT depend on the order the writers were emitted in. With one
+    # shared accumulator `incr -> invert` covered while `invert -> incr` did not.
+    incr_first = [(5, 0, 0, 0), (6, 1, 1, 0)]     # increment at 5, invert at 6
+    inv_first = [(5, 0, 1, 0), (6, 1, 0, 0)]      # invert at 5, increment at 6
+    for label, meta in (("incr->invert", incr_first), ("invert->incr", inv_first)):
+        _check(mask.mask_passes(_fm(meta), 2, False, inside,
+                                covered(0, 1)) is False,
+               f"mixed OP ({label}): overlap is the union -> discard", fails)
+        _check(mask.mask_passes(_fm(meta), 2, False, inside, covered(0)) is False,
+               f"mixed OP ({label}): first writer alone covers -> discard", fails)
+        _check(mask.mask_passes(_fm(meta), 2, False, inside, covered(1)) is False,
+               f"mixed OP ({label}): second writer alone covers -> discard", fails)
+        _check(mask.mask_passes(_fm(meta), 2, False, inside, covered()) is True,
+               f"mixed OP ({label}): uncovered -> draw", fails)
+
+    # An invert writer must not be able to cancel a counter writer's coverage:
+    # two inverts (which cancel each other) plus one increment stays covered.
+    mixed3 = [(5, 0, 1, 0), (6, 1, 0, 0), (7, 2, 1, 0)]
+    _check(mask.mask_passes(_fm(mixed3), 2, False, inside,
+                            covered(0, 1, 2)) is False,
+           "mixed OP: cancelling inverts must not clear the counter", fails)
+
     print("### replay (mask_passes)", "PASS" if not fails else
           f"FAIL ({len(fails)})")
     return not fails
 
 
 # --------------------------------------------------------------------------
-# 4. instance inheritance (attach_inherited)
+# 4. instance-hierarchy composition (inherit_for / attach_target)
 # --------------------------------------------------------------------------
 class _FakePart:
     def __init__(self, mask_influence, visible_inside_mask):
@@ -243,36 +281,80 @@ class _FakePart:
 
 
 class _FakeMesh:
-    def __init__(self):
+    def __init__(self, part_index=0):
+        self.part_index = part_index
         self.mask = None
 
 
-def check_inheritance() -> bool:
+def _child_mask(caller_ctx, child_part):
+    """``attach_target`` on a one-part sub-animation under ``caller_ctx``."""
+    mp = _FakeMesh(0)
+    mask.attach_target(mp, None, [child_part], caller_ctx)
+    return mp.mask
+
+
+def check_composition() -> bool:
     fails: list = []
-    fm = mask.FrameMask(writers=[None], meta=[(5, 0, 0, 0)], max_mask_rank=5)
+    # One pure-mask writer at rank 5: ranks below it are in scope.
+    fm = mask.FrameMask(writers=[None], meta=[(5, 0, 0, 0)], max_mask_rank=5,
+                        rank_of={0: 2, 1: 7})
 
-    # Instance part is a target in scope -> child inherits, judged by the
-    # instance part's rank + polarity (NOT the child part's own).
-    mp = _FakeMesh()
-    mask.attach_inherited(mp, fm, _FakePart(True, False), inst_rank=2)
-    _check(mp.mask is not None and mp.mask.rank == 2 and
-           mp.mask.visible_inside is False and mp.mask.frame_mask is fm,
-           "in-scope instance target should inherit parent's coverage", fails)
+    # -- inherit_for: the Instance part composes onto ROOT_CONTEXT ---------
+    ctx = mask.inherit_for(0, [_FakePart(True, False)], fm)
+    _check(ctx is not None and ctx.rank == 2 and ctx.influence is True and
+           ctx.visible_inside is False and ctx.frame_mask is fm,
+           "instance target should yield a context at its own rank", fails)
 
-    # Instance part opts out (mask_influence == 0) -> no inheritance.
-    mp2 = _FakeMesh()
-    mask.attach_inherited(mp2, fm, _FakePart(False, False), inst_rank=2)
-    _check(mp2.mask is None, "opted-out instance should not inherit", fails)
+    # mask_influence == 0 latches the AND off: nothing below can be masked.
+    _check(mask.inherit_for(0, [_FakePart(False, True)], fm) is None,
+           "opted-out instance must yield no context", fails)
 
-    # A child that already has its own mask keeps it (single-stage rule).
-    mp3 = _FakeMesh()
-    sentinel = object()
-    mp3.mask = sentinel
-    mask.attach_inherited(mp3, fm, _FakePart(True, False), inst_rank=2)
-    _check(mp3.mask is sentinel, "child's own mask must not be overwritten", fails)
+    # -- composition rules on the sub-animation's own parts ----------------
+    # AND: a child that opts out is not masked even under a masked caller.
+    _check(_child_mask(ctx, _FakePart(False, False)) is None,
+           "AND: opted-out child under a masked caller is not masked", fails)
 
-    print("### inheritance (attach_inherited)", "PASS" if not fails else
-          f"FAIL ({len(fails)})")
+    # AND: a child that opts in under a masked caller IS masked, at the
+    # instance part's rank (not the child's own part index / rank).
+    ma = _child_mask(ctx, _FakePart(True, False))
+    _check(ma is not None and ma.rank == 2 and ma.frame_mask is fm,
+           "AND: opted-in child under a masked caller is masked at inst rank",
+           fails)
+
+    # OR: the child's own visible_inside_mask raises polarity even when the
+    # caller draws outside. (The pre-fix code judged the whole sub-animation by
+    # the instance part alone, so this came out False.)
+    mb = _child_mask(ctx, _FakePart(True, True))
+    _check(mb is not None and mb.visible_inside is True,
+           "OR: child's visible_inside_mask must raise polarity", fails)
+
+    # OR: and the caller's raises it for a child that does not set it.
+    ctx_in = mask.inherit_for(0, [_FakePart(True, True)], fm)
+    mc = _child_mask(ctx_in, _FakePart(True, False))
+    _check(mc is not None and mc.visible_inside is True,
+           "OR: caller's visible_inside_mask must reach a child without it",
+           fails)
+
+    # -- nesting: both rules chain, and the rank stays the outermost one ---
+    nested = mask.inherit_for(0, [_FakePart(True, False)], None, ctx_in)
+    _check(nested is not None and nested.rank == 2 and
+           nested.visible_inside is True,
+           "nesting: OR stays latched on and rank stays the outermost", fails)
+    _check(mask.inherit_for(0, [_FakePart(False, False)], None, ctx_in) is None,
+           "nesting: an inner opt-out latches the AND off", fails)
+
+    # -- scope: an out-of-scope caller masks nothing, but an inside-target
+    # still discards (it is only visible where a mask covers it).
+    ctx_out = mask.inherit_for(1, [_FakePart(True, False),
+                                   _FakePart(True, False)], fm)   # rank 7 > 5
+    _check(_child_mask(ctx_out, _FakePart(True, False)) is None,
+           "scope: out-of-scope outside-target child is not masked", fails)
+    md = _child_mask(ctx_out, _FakePart(True, True))
+    _check(md is not None and md.visible_inside is True,
+           "scope: out-of-scope inside-target child is still evaluated", fails)
+
+    print("### composition (inherit_for / attach_target)",
+          "PASS" if not fails else f"FAIL ({len(fails)})")
     return not fails
 
 
@@ -289,7 +371,7 @@ def main(argv) -> int:
         allok &= check_pack(lib, path, anim)
         print()
     allok &= check_replay()
-    allok &= check_inheritance()
+    allok &= check_composition()
     print("\n== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1
 

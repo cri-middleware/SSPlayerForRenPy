@@ -38,6 +38,13 @@ from ss_renpy import framedata
 # in the GPU path), so the hard cap is 24 (SDK doc: 40_components/40_mask.md).
 MAX_WRITERS = 24
 
+# Identity element of the instance-hierarchy composition (SDK doc:
+# 40_components/40_mask.md §2-6). A top-level animation is reached with
+# "influence still allowed / draw outside", so every part evaluates exactly its
+# own settings; ``visible_inside`` accumulates by OR and ``influence`` chains by
+# AND from here down.
+ROOT_CONTEXT = (True, False)          # (influence, visible_inside)
+
 # Two triangles for a 4-corner quad (LT, RT, LB, RB) — matches the non-fan
 # layout in framedata._mesh_part_from so winding is consistent with the
 # drawable path.
@@ -87,6 +94,42 @@ class MaskApply:
     frame_mask: "FrameMask"
     rank: int
     visible_inside: bool
+
+
+@dataclass
+class MaskInherit:
+    """The effective mask context an Instance part hands to its sub-animation
+    (SDK doc: 40_components/40_mask.md §2-6).
+
+    ``influence`` / ``visible_inside`` are the values *already composed* down to
+    (and including) the Instance part — each part of the sub-animation composes
+    its own settings on top via :func:`compose`. ``rank`` stays the **outermost**
+    Instance part's rank in the root's ``draw_order``, because that is where the
+    whole sub-animation sits in the parent's draw order — nesting deeper does not
+    move it. ``frame_mask`` is likewise always the root's coverage: a child never
+    builds its own.
+    """
+    frame_mask: "FrameMask"
+    rank: int
+    influence: bool
+    visible_inside: bool
+
+
+def compose(parent, pinfo):
+    """One hierarchy step of the mask-setting composition (SDK doc:
+    40_components/40_mask.md §2-6).
+
+    ``parent`` is the caller's effective ``(influence, visible_inside)`` —
+    :data:`ROOT_CONTEXT` at the top level. Returns the part's own effective pair:
+    ``mask_influence`` chains by **AND** (once a caller opts its subtree out it
+    can never come back), ``visible_inside_mask`` accumulates by **OR** (any
+    level asking for "inside" wins below it). ``mask_write`` deliberately does
+    not take part: writing a mask is a local fact about that one part, not
+    something descendants inherit.
+    """
+    p_influence, p_visible = parent
+    return (bool(p_influence) and bool(pinfo.mask_influence),
+            bool(p_visible) or bool(pinfo.visible_inside_mask))
 
 
 @dataclass
@@ -294,45 +337,75 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
     return fm
 
 
-def attach_target(mp, frame_mask: FrameMask, part_infos) -> None:
+def attach_target(mp, frame_mask: Optional[FrameMask], part_infos,
+                  inherited: Optional[MaskInherit] = None) -> None:
     """Stamp ``mp.mask`` if the drawable Normal/Mesh part is a masked target.
 
-    A drawing part is masked only when its static ``mask_influence == 1`` (the
-    opt-out) **and** it is in some writer's scope (or it is a ``visible_inside``
-    target, which is always evaluated — it shows only where a mask covers it).
+    Handles both the root animation (``frame_mask``, ``inherited=None``) and a
+    part inside an Instance sub-animation (``inherited`` carries the composed
+    context; ``frame_mask`` is unused then — a child never owns coverage).
+
+    A drawing part is masked only when its **effective** ``mask_influence`` is 1
+    after the hierarchy composition (:func:`compose`) — the opt-out — and it is
+    in some writer's scope, or it is an effective ``visible_inside`` target,
+    which is always evaluated because it shows only where a mask covers it.
     Mutates ``mp`` in place; leaves ``mp.mask = None`` for non-targets.
     """
     p = mp.part_index
     pinfo = part_infos[p] if 0 <= p < len(part_infos) else None
-    if pinfo is None or not pinfo.mask_influence:
+    if pinfo is None:
         return
-    rank = frame_mask.rank_of.get(p)
+    if inherited is None:
+        if frame_mask is None:
+            return
+        fm, rank, parent = frame_mask, frame_mask.rank_of.get(p), ROOT_CONTEXT
+    else:
+        # Scope is judged at the Instance part's slot in the *root's* draw order
+        # (SDK doc §3-2-2) — the child's own rank means nothing to the parent's
+        # coverage, and part indices are a per-pack namespace anyway.
+        fm, rank = inherited.frame_mask, inherited.rank
+        parent = (inherited.influence, inherited.visible_inside)
     if rank is None:
         return
-    vis_inside = bool(pinfo.visible_inside_mask)
-    if frame_mask.in_scope(rank) or vis_inside:
-        mp.mask = MaskApply(frame_mask, rank, vis_inside)
-
-
-def attach_inherited(mp, frame_mask: FrameMask, inst_info, inst_rank: int) -> None:
-    """Stamp inherited masking onto an instance child's drawable (SDK doc:
-    40_components/40_mask.md).
-
-    The whole sub-animation is judged as ONE target by the **instance part's**
-    ``rank`` + ``visible_inside_mask`` — never the child part's own. The child
-    geometry has already been composed into the parent's world space by
-    :func:`framedata.transform_mesh_part`, so its coverage UV maps into the
-    parent's bbox directly (no separate ``M_parent · slot_xf`` needed — that
-    composition is implicit in transforming the child into parent space).
-    Single-stage: only applied when the instance part itself is a masked target.
-    """
-    if mp.mask is not None:
-        return                                   # child's own mask wins (rare)
-    if inst_info is None or not inst_info.mask_influence:
+    influence, vis_inside = compose(parent, pinfo)
+    if not influence:
         return
-    vis_inside = bool(inst_info.visible_inside_mask)
-    if frame_mask.in_scope(inst_rank) or vis_inside:
-        mp.mask = MaskApply(frame_mask, inst_rank, vis_inside)
+    if fm.in_scope(rank) or vis_inside:
+        mp.mask = MaskApply(fm, rank, vis_inside)
+
+
+def inherit_for(part_index: int, part_infos, frame_mask: Optional[FrameMask],
+                inherited: Optional[MaskInherit] = None) -> Optional[MaskInherit]:
+    """Context to hand down into an Instance part's sub-animation, or ``None``.
+
+    Composes the Instance part's own settings onto the caller's context (SDK doc:
+    40_components/40_mask.md §2-6) so the sub-animation's parts can compose their
+    own on top. ``None`` means "nothing below can be masked": either there is no
+    coverage this frame, or the AND chain of ``mask_influence`` has latched off,
+    which no descendant can undo.
+
+    Deliberately *not* gated on scope: ``visible_inside`` only accumulates going
+    down, so a descendant may be an inside-target even where the Instance part
+    itself is out of every writer's reach — and an inside-target out of scope
+    must discard, not draw. :func:`attach_target` makes that call per part.
+    """
+    pinfo = part_infos[part_index] if 0 <= part_index < len(part_infos) else None
+    if pinfo is None:
+        return None
+    if inherited is None:
+        if frame_mask is None:
+            return None
+        rank = frame_mask.rank_of.get(part_index)
+        if rank is None:
+            return None
+        fm, parent = frame_mask, ROOT_CONTEXT
+    else:
+        fm, rank = inherited.frame_mask, inherited.rank
+        parent = (inherited.influence, inherited.visible_inside)
+    influence, vis_inside = compose(parent, pinfo)
+    if not influence:
+        return None
+    return MaskInherit(fm, rank, influence, vis_inside)
 
 
 def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
@@ -344,6 +417,17 @@ def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
     reports whether ``bit`` is set in the coverage at that UV (the headless
     rasterizer / test supplies this; the GPU samples the bitmap). Returns True to
     draw, False to ``discard``. This is the authority the GLSL must reproduce.
+
+    The two writer OPs get **separate accumulators** (SDK doc §3-1-4). ``Invert``
+    and ``Increment`` are each self-inverse but do not commute, so replaying both
+    into one accumulator makes the coverage depend on writer order — ``incr ->
+    invert`` covers where ``invert -> incr`` does not. Splitting them keeps
+    ``mask_influence == 1`` writers on parity (odd overlap covers) and
+    ``mask_influence == 0`` writers on a counter (any overlap covers); the result
+    is their **union**, which is what SS7.5 does when the two kinds overlap.
+    Unlike the GPU-stencil ports there is no bit budget here — these are plain
+    variables — so the counter has no overlap ceiling beyond
+    :data:`MAX_WRITERS`.
     """
     if frame_mask is None or frame_mask.count == 0:
         return True
@@ -352,7 +436,8 @@ def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
         # bbox-outside == "no writer covers it" (CLAMP-avoidance):
         # visible_inside targets discard, outside targets draw.
         return not visible_inside
-    stencil = 0
+    parity = 0          # Invert writers  (mask_influence == 1): odd overlap
+    count = 0           # Increment writers (mask_influence == 0): any overlap
     for (w_rank, bit, op_invert, is_clipping) in frame_mask.meta:
         active = (rank > w_rank) if is_clipping else (rank < w_rank)   # scope rule
         if not active:
@@ -360,8 +445,8 @@ def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
         if not sample_bit(bit):
             continue
         if op_invert:                       # writer OP: invert vs increment
-            stencil = (~stencil) & 0xFF
+            parity ^= 1
         else:
-            stencil = (stencil + 1) & 0xFF
-    masked = stencil != 0
+            count += 1
+    masked = parity != 0 or count != 0       # union of the two planes
     return masked == visible_inside         # inside/outside polarity

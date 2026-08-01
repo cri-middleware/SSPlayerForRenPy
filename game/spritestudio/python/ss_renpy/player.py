@@ -479,21 +479,24 @@ class SSInternalPlayer:
         except Exception:
             return None
 
-    def render_at(self, frame_no, looped, dt_s, sub_frame=None):
+    def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
         """Pose to an externally-stepped ``frame_no`` (no head advance) and return
         this player's z-ordered, world-space draw items.
 
         Used when this player is an Instance child: the parent's instance slot
         already computed ``frame_no``; we evaluate that frame and recurse into
-        this child's own Instance/Effect parts. Never raises: a draw-plan failure
-        returns Normal/Mesh-only, and a native/parse failure returns an empty
-        list rather than propagating into the parent's frame build."""
+        this child's own Instance/Effect parts. ``inherited`` is the composed
+        mask context from the calling Instance part (SDK doc:
+        40_components/40_mask.md §2-6) — our parts compose their own settings on
+        top of it and sample the *root's* coverage. Never raises: a draw-plan
+        failure returns Normal/Mesh-only, and a native/parse failure returns an
+        empty list rather than propagating into the parent's frame build."""
         try:
-            return self._render_at(frame_no, looped, dt_s, sub_frame)
+            return self._render_at(frame_no, looped, dt_s, sub_frame, inherited)
         except Exception:
             return []
 
-    def _render_at(self, frame_no, looped, dt_s, sub_frame=None):
+    def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
         rt = self._rt
         sf = self.sub_frame if sub_frame is None else sub_frame
         disp = frame_no if sf else math.floor(frame_no)
@@ -503,7 +506,9 @@ class SSInternalPlayer:
         fd = framedata.parse(fb)
         try:
             return collect_ordered(rt, fd, self._instances, self._effects,
-                                   frame_no, dt_s, looped, sf)
+                                   frame_no, dt_s, looped, sf,
+                                   part_infos=self._part_infos,
+                                   inherited=inherited)
         except Exception:
             fb2 = rt.get_frame_data_view(disp)
             return ([("mesh", mp)
