@@ -84,6 +84,14 @@ try {
     if (Test-Path $targetDir) { Remove-Item -Recurse -Force $targetDir }
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     Move-Item -Path "$tmpDir/libs/*" -Destination $targetDir -Force
+    # The SDK names its Windows directories the way Windows does (x64 / arm64).
+    # Ren'Py calls the same architecture x86_64 everywhere — its own runtime ships
+    # as lib/py3-windows-x86_64 — so translate it here, matching download-sdk.sh.
+    # Only x64 needs a name: arm64 is spelled the same on both sides.
+    $winX64 = Join-Path $targetDir "windows/x64"
+    if (Test-Path $winX64) {
+        Move-Item -Path $winX64 -Destination (Join-Path $targetDir "windows/x86_64") -Force
+    }
     Copy-Item -Path "$tmpDir/LICENSE.md" -Destination $targetDir -Force -ErrorAction SilentlyContinue
     Copy-Item -Path "$tmpDir/THIRD-PARTY-LICENSES.*.md" -Destination $targetDir -Force -ErrorAction SilentlyContinue
 

@@ -84,6 +84,16 @@ unzip -q -o "$DYNAMIC_ZIP" -d "$TMP_DIR"
 rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 mv "$TMP_DIR"/libs/* "$TARGET_DIR"/
+# The SDK names its Windows directories the way Windows does (x64 / arm64).
+# Ren'Py calls the same architecture x86_64 everywhere — its own runtime ships
+# as lib/py3-windows-x86_64 — so translate it here, which is where the Unity and
+# Godot download scripts absorb the same difference. Only x64 needs a name:
+# arm64 is spelled the same on both sides. Keeping the translation in this one
+# place is what lets the loader, the build.classify globs and the deploy scripts
+# all stay on a single vocabulary.
+if [ -d "$TARGET_DIR/windows/x64" ]; then
+  mv "$TARGET_DIR/windows/x64" "$TARGET_DIR/windows/x86_64"
+fi
 cp "$TMP_DIR"/LICENSE.md "$TARGET_DIR"/ 2>/dev/null || true
 cp "$TMP_DIR"/THIRD-PARTY-LICENSES.*.md "$TARGET_DIR"/ 2>/dev/null || true
 
