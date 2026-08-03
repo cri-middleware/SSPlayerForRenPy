@@ -1,4 +1,4 @@
-# Exporting your Game
+# 📦 Exporting your Game
 
 How to export a game that uses the SpriteStudio Player for Ren'Py. This covers
 only what is **SSPlayer-specific**; for the generic build mechanics it links to

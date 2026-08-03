@@ -1,4 +1,4 @@
-# Build & Customization Guide
+# 🛠️ Build & Customization Guide
 
 This is a guide for developers who wish to modify and customize the code in this repository.
 

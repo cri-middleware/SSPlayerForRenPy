@@ -1,4 +1,4 @@
-# SpriteStudio Player for Ren'Py
+# 🎭 SpriteStudio Player for Ren'Py
 
 A plugin (player) to play animations created in [OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. The playback process is powered by `libssruntime` provided by the [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK).
 

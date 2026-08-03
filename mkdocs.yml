@@ -5,6 +5,8 @@ site_url: "https://cri-middleware.github.io/SSPlayerForRenPy/"
 repo_name: "cri-middleware/SSPlayerForRenPy"
 repo_url: "https://github.com/cri-middleware/SSPlayerForRenPy"
 edit_uri: "edit/develop/docs/"
+# Rendered in the site footer. Deliberately year-less so it never goes stale.
+copyright: "Copyright &copy; CRI Middleware Co., Ltd."
 
 theme:
   name: material
@@ -43,15 +45,34 @@ plugins:
         - locale: ja
           name: 日本語
           build: true
+          extra:
+            # Footer icon labels (title / aria-label). Mirrors the `extra.social` list below.
+            social:
+              - icon: fontawesome/brands/github
+                link: https://github.com/cri-middleware
+                name: GitHub の cri-middleware
+              - icon: material/web
+                link: https://www.webtech.co.jp/spritestudio/
+                name: OPTPiX SpriteStudio
+          # Japanese nav labels. Keys must match the `nav:` titles below *exactly*,
+          # emoji included - a mismatched key silently leaves the English label.
+          nav_translations:
+            🏠 Home: 🏠 ホーム
+            🚀 Setup Guide: 🚀 導入ガイド
+            ▶️ Usage Guide: ▶️ 再生と制御
+            🗂️ Asset Import: 🗂️ アセットのコンバート
+            📦 Exporting your Game: 📦 ゲームのエクスポート
+            🛠️ Build Guide (Dev): 🛠️ ビルドガイド（開発者向け）
+            ⚠️ Limitations: ⚠️ 仕様と制約事項
 
 nav:
-  - Home: index.md
-  - Setup Guide: setup.md
-  - Usage Guide: usage.md
-  - Asset Import: import.md
-  - Exporting your Game: export.md
-  - Build Guide (Dev): build.md
-  - Limitations: limitations.md
+  - 🏠 Home: index.md
+  - 🚀 Setup Guide: setup.md
+  - ▶️ Usage Guide: usage.md
+  - 🗂️ Asset Import: import.md
+  - 📦 Exporting your Game: export.md
+  - 🛠️ Build Guide (Dev): build.md
+  - ⚠️ Limitations: limitations.md
 
 markdown_extensions:
   - admonition
@@ -69,6 +90,14 @@ markdown_extensions:
   - pymdownx.snippets
 
 extra:
+  # Footer icons. Keep to destinations that outlive any single release.
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cri-middleware
+      name: cri-middleware on GitHub
+    - icon: material/web
+      link: https://www.webtech.co.jp/spritestudio/
+      name: OPTPiX SpriteStudio
   alternate:
     - name: English
       link: ./
