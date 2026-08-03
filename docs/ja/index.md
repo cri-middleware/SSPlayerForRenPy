@@ -1,4 +1,4 @@
-# SpriteStudio Player for Ren'Py
+# 🎭 SpriteStudio Player for Ren'Py
 
 [OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) で作成したアニメーションを [Ren'Py](https://www.renpy.org/) 上で再生するためのプラグイン（プレイヤー）です。再生処理は [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) が提供する `libssruntime` を介して行います。
 

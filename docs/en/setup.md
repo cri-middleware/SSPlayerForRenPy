@@ -1,4 +1,4 @@
-# Setup Guide
+# 🚀 Setup Guide
 
 This document provides instructions for **Users**. It explains how to integrate the package directly into your game project.
 If you want to customize the player, please refer to the [Build Guide](build.md).

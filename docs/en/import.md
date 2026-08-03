@@ -1,4 +1,4 @@
-# Asset Import
+# 🗂️ Asset Import
 
 The `.sspj` file is converted to `.ssab` **only once during development**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation. You do not need to include the original `.sspj` workspace files in your final distributed game.
 

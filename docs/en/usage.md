@@ -1,4 +1,4 @@
-# Usage Guide
+# ▶️ Usage Guide
 
 In SpriteStudio Player for Ren'Py, you have very flexible control over SpriteStudio animations within Ren'Py. This guide explains how to use the player depending on your goals, ranging from simple rendering to integrating character standing images, and handling event callbacks.
 

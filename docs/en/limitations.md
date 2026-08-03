@@ -1,4 +1,4 @@
-# Limitations & Scope
+# ⚠️ Limitations & Scope
 
 Restrictions and unimplemented features of the current SpriteStudio Player for Ren'Py. (For the list of what *is* supported, see the usage docs.)
 
