@@ -2,6 +2,11 @@
 
 A plugin (player) to play animations created in [OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. The playback process is powered by `libssruntime` provided by the [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK).
 
+!!! tip "Try it in your browser"
+    A playable Ren'Py Web build of the sample project is published alongside this documentation
+    at `https://cri-middleware.github.io/SSPlayerForRenPy/demo/` — nothing to install.
+    _Coming soon_: the demo ships with the first release, so the address 404s until then.
+
 ## Table of Contents
 
 This documentation is structured by user purpose.
