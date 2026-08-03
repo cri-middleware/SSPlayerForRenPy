@@ -31,5 +31,6 @@
 
 ## 関連リポジトリ
 
+- [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/) — SDK と公式 Player のドキュメントポータル
 - [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — `libssruntime` / `libssconverter` を提供する SDK 本体
 - [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — 手動でのアセット変換に便利な専用GUIアプリ
