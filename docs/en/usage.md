@@ -209,7 +209,21 @@ It returns `None` until the first frame has been rendered, and for a part that i
 
 `anchor` doubles as the rotation / scale pivot, and the child's unrotated size is measured every frame, so a child that changes size keeps its anchor. A hand part carries the wrist angle, so a held item usually needs an `angle` offset to lie along the fingers rather than standing straight up.
 
-Because `xscale` / `yscale` are magnitudes, a **mirrored (negative-scale) part is not mirrored on the child** — under `drive_scale` a flipped part scales the child by the absolute amount instead of flipping it.
+### Mirrored Parts
+
+A part's pose can be a **reflection**, not merely a rotation and a scale. That happens whenever the part or one of its ancestors carries a negative scale in SpriteStudio, and it is common in real artwork — building the right-hand parts by mirroring the left-hand ones is ordinary practice.
+
+**The position is always exact, and so is the direction the part faces** — `rotation` is the angle of the part's own +X axis whether or not the part is mirrored. What a child cannot receive is the reflection itself: `xscale` / `yscale` are magnitudes, so the sign that carries the mirror is dropped and **a child is never mirrored**, with or without `drive_scale`.
+
+One consequence is worth knowing, because it does not look like a scale problem. A reflection is described as a rotation plus a flip of the Y axis, so a part that is *purely* mirrored left-to-right, with no rotation of its own, is reported as **rotated 180°**. Take the Y flip away and a half-turn is what remains: the child is drawn **upside-down rather than mirrored**. In terms of the values you actually get back, a part that is only flipped horizontally reports `rotation` as `±180` rather than `0`, with `xscale` and `yscale` both still positive — **exactly what a part genuinely rotated by half a turn reports**, so these three values cannot tell the two apart.
+
+This follows from describing a pose as a rotation and a scale at all, so it is something to design around rather than a defect to wait on:
+
+- A **symmetric** child is unaffected. It looks the same mirrored, and its position and angle are exact.
+- For an **asymmetric** child on a mirrored part, supply the mirrored artwork yourself, or pin it to a part that is not mirrored.
+- The player does not report whether a pose is a reflection, so when it matters, check the part **and its parents** in the source project. Note that two mirrors cancel: a mirrored part under a mirrored parent is not mirrored.
+
+> **Mirroring the whole sprite mirrors its children with it.** `at Transform(xzoom=-1.0)` applies to the player's finished output, and attachments are composited inside that output, so a child flips along with the artwork. For a character turning around, that is usually what you want; when it is not — a name plate or a gauge that has to stay readable — mirror the player and place that element outside it rather than attaching it.
 
 ### Notes
 

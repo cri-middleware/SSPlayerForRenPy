@@ -18,7 +18,7 @@ This page covers what is specific to **this** player. The constraints that come 
 > - **Whole-part color tint on Mesh / Instance parts** — `parts_color` is applied per-vertex on Normal / Shape parts; a whole-part tint on Mesh parts is currently approximated (alpha only).
 > - **Masks on Effect particles** — mask / clipping applies to Normal, Mesh, and Shape parts; particles emitted by Effect parts are drawn unclipped even where the editor clips them.
 > - **Part overrides inside Instance parts** — a color / cell / visibility override reaches the parts of the animation you call it on, not the parts inside an Instance part (that nested child animation runs as a separate player). Force-hiding the Instance part itself does stop its contents from being drawn.
-> - **Part tracking (following a part)** — a child pinned to a part always draws **in front of** the whole sprite and cannot be inserted between parts. A mirrored (negative-scale) part is not mirrored on the child either, because a part's scale is reported as a magnitude. Only the parts of the pack the player itself is playing can be targeted, not the parts inside an Instance part.
+> - **Part tracking (following a part)** — a child pinned to a part always draws **in front of** the whole sprite and cannot be inserted between parts. A mirrored (negative-scale) part is not mirrored on the child either, because a part's scale is reported as a magnitude — the position and the angle stay exact, but a purely horizontal mirror reaches the child as a 180° rotation ([details](usage.md#mirrored-parts)). Only the parts of the pack the player itself is playing can be targeted, not the parts inside an Instance part.
 
 ## Audio Playback
 

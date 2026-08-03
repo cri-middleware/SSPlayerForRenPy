@@ -63,15 +63,29 @@ animation clock.
   so the dispatch site already exists in `render()`.
 - *Reference*: `SSPlayerForGodot`'s `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
 
-### 🕒 Flip (`flip_h` / `flip_v`) — *low priority*
+### 🕒 Flip and offset — *low priority*
 
-Mirror playback horizontally / vertically.
+Mirror playback horizontally / vertically, and shift the drawn animation, without moving the
+host object.
 
-- *Current state*: not available as a player knob. Ren'Py hosts mirror the whole displayable
-  instead — `at Transform(xzoom=-1.0)` — which covers the common case, so this is recorded
-  for parity rather than for a gap in what creators can do.
-- *Reference*: available on `SSPlayerForGodot` (`set_flip_h` / `set_flip_v`);
-  `SSPlayerForWeb` lists it at the same low priority.
+- *Current state*: not available as a player knob. Ren'Py hosts mirror and shift the whole
+  displayable instead — `at Transform(xzoom=-1.0)`, `at Transform(xoffset=…)` — which covers
+  the common case, so this is recorded for parity rather than for a gap in what creators can
+  do. What the sibling ports gain that a wrapping `Transform` does not is the ability to
+  mirror the artwork while leaving objects pinned to parts un-mirrored; here, attachments are
+  composited inside the player's own output, so a wrapping `Transform` flips them too.
+- *Motivating problem does not apply*: on the other ports the feature exists because negating
+  the host node's scale drags its children, colliders and particle systems along. `SSPlayer`
+  is a plain displayable with none of those, so mirroring it disturbs nothing.
+- *Reference*: `SSPlayerForGodot` (`flip_h` / `flip_v` / `offset`, folded into the root
+  `CanvasItem` transform); `SSPlayerForUnity` (`FlipX` / `FlipY` / `Offset`, folded into the
+  vertex positions); `SSPlayerForWeb` lists it at the same low priority.
+- *If it is ever implemented*: the root transform must reach `part_transform()` as well as the
+  geometry, or every attachment detaches the moment the player is flipped — this is the one
+  mistake both sibling ports call out. Keep the sign convention they converged on (the mirror
+  is carried on the **Y** axis), which is also what this player's `part_transform()` already
+  produces; see *Mirrored parts* in the usage guide, and `30_core/30_render_loop.md` in the
+  SDK docs for why the choice of axis is a convention rather than a detail.
 
 ---
 
