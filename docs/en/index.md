@@ -32,5 +32,5 @@ This player is designed to bring the full expressive power of SpriteStudio to th
 ## Related Repositories
 
 - [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/) — the documentation portal for the SDK and its official players.
-- [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — The core SDK providing `libssruntime` and `libssconverter`.
-- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — A standalone GUI application for easy asset conversion.
+- [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — the SDK itself, providing `libssruntime` / `libssconverter`.
+- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — a standalone desktop GUI for converting `.sspj` without a player.
