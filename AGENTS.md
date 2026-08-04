@@ -77,6 +77,14 @@ static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config p
 don't cite dev scripts. `limitations.md` is the canonical supported/unsupported list;
 keep `en/`/`ja/` in sync (`ja/` asset paths need one extra `../`).
 
+Three things in `mkdocs.yml` do **not** follow that sync rule — check before duplicating:
+
+*   **`overrides/main.html`** (`theme.custom_dir`) emits the Open Graph / Twitter Card tags Material omits. **One template serves both locales**: the i18n plugin substitutes `languages.ja.site_description` before rendering, so Japanese cards need no second copy. Localize by adding a per-locale config override, never by branching in the template. Keep it in sync with the copies in SpriteStudio-Docs and the sibling player repos.
+*   **Footer social icons are defined twice** — `extra.social` and the `ja` block's `extra` override, which *replaces* the whole `social` list rather than merging into it. Add or reorder an icon in both, or Japanese readers lose it. Keep `twitter:site` in `overrides/main.html` in sync with the X link.
+*   **There is deliberately no `edit_uri`**, so no "edit this page" button renders. It is a branch name nothing validates, and it had drifted wrong in three of the five player repos. Do not reintroduce it.
+
+`mkdocs.yml` sets `strict: true`, so a plain `build` (and `serve`) fails on a broken link or nav mismatch. Nothing builds the docs on a pull request — `pages.yml` runs on `release: published` and dispatch — so the local build is the only gate: `.venv/bin/mkdocs build --strict`.
+
 ## 5. Verification
 Each engine-independent layer has a headless `tools/` test (plain CPython); **GL2
 rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) needs a GUI run — sign off via
