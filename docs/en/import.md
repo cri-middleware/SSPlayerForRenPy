@@ -64,9 +64,9 @@ If a file update is detected during the startup initialization phase, the conver
 > **See it in action — live iteration with an external tool.** Edit the animation in SpriteStudio, save it, then press **`Shift + R`** in the running Ren'Py. The Auto Importer re-detects the change by modification time, re-converts only the updated project, and refreshes the asset index so the result is reflected immediately (developer mode only).
 >
 > <video autoplay loop muted playsinline width="100%">
->   <source src="../assets/1-auto_import_live.webm" type="video/webm">
+>   <source src="assets/1-auto_import_live.webm" type="video/webm">
 > </video>
-> <img src="../assets/1-auto_import_live.webp" width="100%" style="display: none;">
+> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;">
 
 > [!TIP]
 > **Customizing Output Paths**

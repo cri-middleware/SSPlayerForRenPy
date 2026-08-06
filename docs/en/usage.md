@@ -379,9 +379,9 @@ Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in
 > [!TIP]
 >
 > <video autoplay loop muted playsinline width="100%">
->   <source src="../assets/2-asset_browser.webm" type="video/webm">
+>   <source src="assets/2-asset_browser.webm" type="video/webm">
 > </video>
-> <img src="../assets/2-asset_browser.webp" width="100%" style="display: none;">
+> <img src="assets/2-asset_browser.webp" width="100%" style="display: none;">
 
 The window has three panes:
 
@@ -400,6 +400,6 @@ You do not have to relaunch to pick up a brand-new pack. Drop a new project into
 > [!TIP]
 >
 > <video autoplay loop muted playsinline width="100%">
->   <source src="../assets/3-asset_browser_autoimport.webm" type="video/webm">
+>   <source src="assets/3-asset_browser_autoimport.webm" type="video/webm">
 > </video>
-> <img src="../assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">
+> <img src="assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;">

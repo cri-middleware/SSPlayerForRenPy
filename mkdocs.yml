@@ -1,125 +1,27 @@
-site_name: SpriteStudio Player for Ren'Py
-site_description: "A Ren'Py integration for SpriteStudio 7"
-site_author: "CRI Middleware Co., Ltd."
-site_url: "https://cri-middleware.github.io/SSPlayerForRenPy/"
-repo_name: "cri-middleware/SSPlayerForRenPy"
-repo_url: "https://github.com/cri-middleware/SSPlayerForRenPy"
-# No `edit_uri`, so Material renders no "edit this page" button. This repo's value was
-# correct (`edit/develop/docs/`, matching its default branch), but it is a branch name nothing
-# validates -- `--strict` does not look at it -- and it had already drifted wrong in three of
-# the five player repos. Dropped everywhere rather than kept correct in some and stale in
-# others; the footer repo link and CONTRIBUTING.md already route corrections.
-# Rendered in the site footer. Deliberately year-less so it never goes stale.
-copyright: "Copyright &copy; CRI Middleware Co., Ltd."
+# English site -- the default locale, so it builds to the site root and keeps the plain
+# `mkdocs.yml` name that the tooling looks for when no `-f` is given.
+#
+# Everything not listed here comes from mkdocs.base.yml. Before adding anything, read the
+# note there about sequences: `nav` and `extra.social` are defined in this file and in
+# mkdocs.ja.yml, and must never also appear in the base.
+INHERIT: ./mkdocs.base.yml
 
-# Nothing builds the docs on a pull request - pages.yml runs on `release: published` and
-# dispatch - so the local build is the only gate, and a plain `build`/`serve` should fail on
-# a broken link too rather than depend on remembering `--strict`.
-strict: true
+docs_dir: docs/en
+site_dir: site
+site_url: "https://cri-middleware.github.io/SSPlayerForRenPy/"
+site_description: "A Ren'Py integration for SpriteStudio 7"
 
 theme:
-  name: material
+  # Drives the UI string translations and the `html lang` attribute.
   language: en
-  # Only overrides/main.html lives here: it appends the Open Graph / Twitter Card metadata
-  # that Material does not emit on its own.
-  custom_dir: overrides
-  # Matches this player's card on the SpriteStudio-Docs landing page. A bundled Material
-  # icon, so it needs no image file; there is no SpriteStudio artwork for a favicon yet.
-  icon:
-    logo: material/drama-masks
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: blue grey
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: blue grey
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-  features:
-    - navigation.tabs
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
-    - navigation.tracking
-    # Previous / next links in the footer, so the guides can be read in order.
-    - navigation.footer
-    - toc.follow
-    - search.suggest
-    - search.highlight
-    - content.code.copy
-
-plugins:
-  - search
-  - callouts
-  - i18n:
-      docs_structure: folder
-      languages:
-        - locale: en
-          name: English
-          default: true
-          build: true
-        - locale: ja
-          name: 日本語
-          build: true
-          # Feeds <meta name="description"> and the Open Graph tags on every ja page;
-          # without it they inherit the top-level English site_description.
-          site_description: "SpriteStudio 7 のアニメーションを Ren'Py で再生するプラグイン"
-          extra:
-            # Footer icon labels (title / aria-label). Mirrors the `extra.social` list below.
-            social:
-              - icon: fontawesome/brands/github
-                link: https://github.com/cri-middleware
-                name: GitHub の cri-middleware
-              - icon: material/web
-                link: https://www.webtech.co.jp/spritestudio/
-                name: OPTPiX SpriteStudio
-              - icon: fontawesome/brands/x-twitter
-                link: https://x.com/spritestudio
-                name: X の SpriteStudio
-          # Japanese nav labels. Keys must match the `nav:` titles below *exactly*,
-          # emoji included - a mismatched key silently leaves the English label.
-          nav_translations:
-            🏠 Home: 🏠 ホーム
-            🚀 Setup Guide: 🚀 導入ガイド
-            ▶️ Usage Guide: ▶️ 再生と制御
-            🗂️ Asset Import: 🗂️ アセットのコンバート
-            📦 Exporting your Game: 📦 ゲームのエクスポート
-            🛠️ Build Guide (Dev): 🛠️ ビルドガイド（開発者向け）
-            ⚠️ Limitations: ⚠️ 仕様と制約事項
-
-nav:
-  - 🏠 Home: index.md
-  - 🚀 Setup Guide: setup.md
-  - ▶️ Usage Guide: usage.md
-  - 🗂️ Asset Import: import.md
-  - 📦 Exporting your Game: export.md
-  - 🛠️ Build Guide (Dev): build.md
-  - ⚠️ Limitations: limitations.md
-
-markdown_extensions:
-  - admonition
-  - pymdownx.details
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
 
 extra:
-  # Footer icons. Keep to destinations that outlive any single release.
+  # English builds to the site root, so the root of the whole multi-locale site is right
+  # here. The language selector prepends this to its target; see
+  # overrides/partials/alternate.html.
+  site_root_prefix: ""
+  # Footer icons. Keep to destinations that outlive any single release. Mirrored, with
+  # translated labels, in mkdocs.ja.yml - add or reorder an icon in both files.
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/cri-middleware
@@ -131,10 +33,14 @@ extra:
     - icon: fontawesome/brands/x-twitter
       link: https://x.com/spritestudio
       name: SpriteStudio on X
-  alternate:
-    - name: English
-      link: ./
-      lang: en
-    - name: 日本語
-      link: ./ja/
-      lang: ja
+
+# Paths are locale-relative and identical to the ones in mkdocs.ja.yml; only the labels
+# differ. When you add, move, or rename a page, edit both files.
+nav:
+  - 🏠 Home: index.md
+  - 🚀 Setup Guide: setup.md
+  - ▶️ Usage Guide: usage.md
+  - 🗂️ Asset Import: import.md
+  - 📦 Exporting your Game: export.md
+  - 🛠️ Build Guide (Dev): build.md
+  - ⚠️ Limitations: limitations.md
