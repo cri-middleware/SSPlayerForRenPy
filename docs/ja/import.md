@@ -64,9 +64,9 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > **動作イメージ — 外部ツール連携によるライブイテレーション。** SpriteStudio でアニメーションを編集して保存し、起動中の Ren'Py で **`Shift + R`** を押します。Auto Importer が更新を更新日時で再検知し、変更のあったプロジェクトだけを再コンバート、アセット索引を再構築するため、結果がその場で反映されます（開発者モード限定）。
 >
 > <video autoplay loop muted playsinline width="100%">
->   <source src="../../assets/1-auto_import_live.webm" type="video/webm">
+>   <source src="assets/1-auto_import_live.webm" type="video/webm">
 > </video>
-> <img src="../assets/1-auto_import_live.webp" width="100%" style="display: none;">
+> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;">
 
 > [!TIP]
 > **出力パスのカスタマイズ**

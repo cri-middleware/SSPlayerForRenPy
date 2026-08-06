@@ -102,8 +102,8 @@ Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html)
 
 After a `web_build` export:
 
-1. **Edit `index.html`** — add this **before** the `<script src="renpy-pre.js">`
-   tag so the WASM bindings load before the game starts:
+1. **Edit `index.html`** — add this **before** the `<script>` tag that loads
+   `renpy-pre.js`, so the WASM bindings load before the game starts:
    ```html
    <script type="module">
      import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';

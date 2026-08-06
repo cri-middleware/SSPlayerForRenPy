@@ -102,7 +102,7 @@ Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.htm
 `web_build` エクスポート後に:
 
 1. **`index.html` を編集** — ゲーム起動前に WASM バインディングを読み込むため、
-   `<script src="renpy-pre.js">` タグの**直前**に以下を追加:
+   `renpy-pre.js` を読み込む `<script>` タグの**直前**に以下を追加:
    ```html
    <script type="module">
      import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
