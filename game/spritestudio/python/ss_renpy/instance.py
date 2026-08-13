@@ -28,9 +28,6 @@ import math
 from ss_renpy import framedata, mask
 from ss_renpy.effectplan import transform_effect_batch
 
-# Hard cap on instance nesting (defends against pathological / cyclic refs).
-MAX_DEPTH = 8
-
 
 def display_frame(frame_no: float, sub_frame: bool):
     """Frame to *render*: raw float when sub-frame is on, else floored.
@@ -146,7 +143,7 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     return out
 
 
-def build_subplayer(owner, part, depth):
+def build_subplayer(owner, part):
     """Resolve one Instance ``part``'s pack + animation, then have ``owner`` build
     a parent-driven child player for it.
 
@@ -158,8 +155,6 @@ def build_subplayer(owner, part, depth):
     details out of this module. Returns ``None`` (caller skips the slot)
     when the pack/animation can't resolve.
     """
-    if depth > MAX_DEPTH:
-        return None
     ref_pack = part.ref_anime_pack
     ref_anim = part.ref_anime_name
     if not ref_anim:
@@ -172,7 +167,7 @@ def build_subplayer(owner, part, depth):
     if not child_data:
         return None
 
-    child = owner.make_child(child_data, depth)
+    child = owner.make_child(child_data)
     if child is None:
         return None
     if not child.set_animation(ref_anim):
@@ -193,19 +188,17 @@ class _Child:
 class InstanceRig:
     """One InstanceSlot + a parent-driven child :class:`SSInternalPlayer` per
     Instance part of ``owner`` (the owning player). Recurses via the children's
-    own rigs, so nesting is fully recursive (capped at ``MAX_DEPTH``)."""
+    own rigs, so nesting is fully recursive."""
 
-    def __init__(self, owner, depth=0):
+    def __init__(self, owner):
         self._rt = owner._rt
         self._children = {}   # part_index -> _Child
         # part indices whose slot most recently stepped as independent. Fed from
         # each step's result (no extra FFI, and the flag only changes on an
         # EventInstance edge), so the per-frame redraw gate reads it for free.
         self._independent = set()
-        if depth > MAX_DEPTH:
-            return
         for p in owner._meta.instance_parts():
-            sub = build_subplayer(owner, p, depth + 1)
+            sub = build_subplayer(owner, p)
             if sub is None:
                 continue
             slot = self._rt.instance_slot_create()

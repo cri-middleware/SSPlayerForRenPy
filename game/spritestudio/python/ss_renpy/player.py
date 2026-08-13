@@ -124,8 +124,7 @@ class SSInternalPlayer:
                  enable_events: bool = True,
                  coordinate_system: int = ssruntime.COORD_Y_DOWN,
                  origin: int = ssruntime.ORIGIN_CENTER,
-                 loader=None, texmap=None, parent_driven: bool = False,
-                 depth: int = 0):
+                 loader=None, texmap=None, parent_driven: bool = False):
         self._data = ssab_data
         self._lib = lib
         # ``base_dir`` is the host-relative dir used only to build texture
@@ -176,9 +175,8 @@ class SSInternalPlayer:
         # acquires via the shared rm). The root builds one; children share it so
         # an external pack is read + registered once for the whole tree.
         self._loader = loader if loader is not None else self._make_loader()
-        # Instance nesting depth (capped in InstanceRig) and parent-driven flag:
-        # a child's own per-tick update() is a no-op — the parent seeks it.
-        self._depth = depth
+        # Parent-driven flag: a child's own per-tick update() is a no-op — the
+        # parent seeks it.
         self._parent_driven = bool(parent_driven)
 
         self._rt = ssruntime.SSRuntime(lib)
@@ -281,7 +279,7 @@ class SSInternalPlayer:
         try:
             # Children are parent-driven SSInternalPlayers, built by the rig
             # from this owner (it shares lib / rm / loader / texmap / base_dir).
-            self._instances = InstanceRig(self, self._depth)
+            self._instances = InstanceRig(self)
         except Exception:
             self._instances = None
         try:
@@ -459,7 +457,7 @@ class SSInternalPlayer:
         """Re-arm this player's Instance/Effect slots (parent calls on replay)."""
         self._reset_slots()
 
-    def make_child(self, child_data: bytes, depth: int):
+    def make_child(self, child_data: bytes):
         """Build a parent-driven child player that shares this player's resources.
 
         The Instance rig (``ss_renpy.instance``) resolves *which* pack/animation a
@@ -475,7 +473,7 @@ class SSInternalPlayer:
                 child_data, lib=self._lib, base_dir=self.base_dir,
                 resource_manager=self._rm, sub_frame=self.sub_frame,
                 enable_events=False, parent_driven=True,
-                loader=self._loader, texmap=self._texmap, depth=depth)
+                loader=self._loader, texmap=self._texmap)
         except Exception:
             return None
 
