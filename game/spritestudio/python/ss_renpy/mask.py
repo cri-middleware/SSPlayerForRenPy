@@ -28,6 +28,7 @@ Field provenance is split across two tables:
 
 from __future__ import annotations
 
+from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -171,12 +172,32 @@ class FrameMask:
         return False
 
 
-def _quad_writer_geom(rt, fd, p, thash):
+# Every SoA buffer the three writer-geometry builders below can need. Each field
+# is one FFI call returning a pointer that is fixed for the frame, so they are
+# fetched ONCE per build_frame_mask instead of per writer (a quad writer needs
+# four of them, a mesh writer six).
+_WriterSoA = namedtuple(
+    "_WriterSoA", "world local_verts local_uvs cell shape mesh")
+
+
+def _writer_soa(rt) -> _WriterSoA:
+    """Snapshot the transient SoA pointers for one frame's writer geometry."""
+    return _WriterSoA(
+        world=rt.world_matrices(),
+        local_verts=rt.local_vertices(),
+        local_uvs=rt.local_uvs(),
+        cell=rt.cell_meta(),
+        shape=(rt.shape_vertices(), rt.shape_vertex_box_coords(),
+               rt.shape_vertex_counts()),
+        mesh=(rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
+              rt.mesh_indices(), rt.mesh_vertex_offsets(),
+              rt.mesh_index_offsets()))
+
+
+def _quad_writer_geom(soa, fd, p, thash):
     """Coverage geometry for a Normal/Mask-kind writer part (a textured quad)."""
-    wm, _ = rt.world_matrices()
-    lv, _ = rt.local_vertices()
-    uv, _ = rt.local_uvs()
-    cm, _ = rt.cell_meta()
+    (wm, _), (lv, _) = soa.world, soa.local_verts
+    (uv, _), (cm, _) = soa.local_uvs, soa.cell
     if not wm or not lv:
         return None
     ps = fd.Parts(p)
@@ -188,7 +209,7 @@ def _quad_writer_geom(rt, fd, p, thash):
                 has_texture=has_texture)
 
 
-def _shape_writer_geom(rt, fd, p):
+def _shape_writer_geom(soa, fd, p):
     """Coverage geometry for a cell-less writer (Shape / draw_as_mask part).
 
     Prefer the runtime's **real Shape geometry** (the ``shape_vertices`` SoA — a
@@ -199,16 +220,14 @@ def _shape_writer_geom(rt, fd, p):
     whole geometry is the mask (SDK doc: 40_components/40_mask.md). Returns None
     for a zero-size / empty part.
     """
-    wm, wn = rt.world_matrices()
+    wm, wn = soa.world
     if not wm:
         return None
     ps = fd.Parts(p)
     if ps is None:
         return None
     # Real shape polygon (exact silhouette) when the runtime provides it.
-    shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
-                 rt.shape_vertex_counts())
-    sp = framedata._read_shape_part(shape_soa, wm, wn, fd, ps, p, 0, False)
+    sp = framedata._read_shape_part(soa.shape, wm, wn, fd, ps, p, 0, False)
     if sp is not None and len(sp.positions) >= 3:
         return dict(positions=list(sp.positions),
                     uvs=[(0.0, 0.0)] * len(sp.positions),
@@ -228,13 +247,10 @@ def _shape_writer_geom(rt, fd, p):
                 triangles=list(_QUAD_TRIS), texture_hash=0, has_texture=False)
 
 
-def _mesh_writer_geom(rt, fd, p, thash):
+def _mesh_writer_geom(soa, fd, p, thash):
     """Coverage geometry for a Mesh(deform) clipping writer part."""
-    mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
-                rt.mesh_indices(), rt.mesh_vertex_offsets(),
-                rt.mesh_index_offsets())
     ps = fd.Parts(p)
-    mp = framedata._read_mesh_part(mesh_soa, ps, p, 0, thash, False)
+    mp = framedata._read_mesh_part(soa.mesh, ps, p, 0, thash, False)
     if mp is None:
         return None
     return dict(positions=list(mp.positions), uvs=list(mp.uvs),
@@ -242,7 +258,7 @@ def _mesh_writer_geom(rt, fd, p, thash):
                 has_texture=bool(thash))
 
 
-def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
+def build_frame_mask(rt, fd, part_infos, parts=None) -> Optional[FrameMask]:
     """Build the :class:`FrameMask` for ``fd``, or ``None`` if no live writer.
 
     Walks ``fd``'s draw batches in draw order (the same order the renderable
@@ -254,21 +270,27 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
     pointers are transient.
 
     ``part_infos`` is a list indexed by part index (``SsabMeta.parts()``).
+    ``parts`` is an optional pre-decoded :func:`framedata.bulk_part_states` array
+    (the caller already needs one for the renderable walk).
     """
-    parts = framedata.bulk_part_states(fd)
+    if parts is None:
+        parts = framedata.bulk_part_states(fd)
+    # This loop visits EVERY part in the pack, not just the writers, because rank
+    # is the draw_order slot index — so it walks the batch/draw-order vectors with
+    # the same bulk struct decodes the renderable walk uses rather than the
+    # per-element FlatBuffers accessor chain.
+    batches = framedata._draw_batch_list(fd)
+    do = framedata._draw_order_array(fd)
+    soa = _writer_soa(rt)
     writers: List[MaskWriter] = []
     seen_writers: set = set()
     rank_of: dict = {}
     bx0 = by0 = float("inf")
     bx1 = by1 = float("-inf")
     capped = False
-    for b in range(fd.DrawBatchesLength()):
-        batch = fd.DrawBatches(b)
-        kind = batch.Kind()
-        thash = batch.TextureHash()
-        start, count = batch.StartRank(), batch.Count()
+    for (start, count, thash, _vc, _ic, _bl, kind, _fl) in batches:
         for k in range(count):
-            p = fd.DrawOrder(start + k)
+            p = do[start + k]
             # Rank is the draw_order *slot* index, not a per-batch counter: one
             # part can be emitted as several batches sharing a slot (e.g. a
             # draw_as_mask Shape appears as both a Mask and a Shape batch at the
@@ -287,7 +309,7 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
             if not mask_val:                       # mask == 0 → no write
                 continue
             if kind == framedata.KIND_MESH:
-                geom = _mesh_writer_geom(rt, fd, p, thash)
+                geom = _mesh_writer_geom(soa, fd, p, thash)
             else:
                 # Cell-less writers (Shape / draw_as_mask) have no quad in the
                 # Normal local_vertices SoA — it collapses to a point — so their
@@ -297,9 +319,9 @@ def build_frame_mask(rt, fd, part_infos) -> Optional[FrameMask]:
                 psf = fd.Parts(p)
                 cell = psf.Cell() if psf is not None else -1
                 if cell is not None and cell >= 0:
-                    geom = _quad_writer_geom(rt, fd, p, thash)   # textured quad
+                    geom = _quad_writer_geom(soa, fd, p, thash)  # textured quad
                 else:
-                    geom = _shape_writer_geom(rt, fd, p)         # size-based quad
+                    geom = _shape_writer_geom(soa, fd, p)        # size-based quad
             if geom is None or not geom["positions"]:
                 continue
             w = MaskWriter(

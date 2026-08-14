@@ -1180,22 +1180,40 @@ init -10 python:
         triple. Triangles are rebased by the running vertex count, so ``parts`` may
         be a single part (masked / user-shader draw) or a whole same-texture run
         (batched draw). Returns ``(geometry, attributes, indices, nverts)``.
+
+        The hottest loop in the render layer (every vertex of every part, every
+        frame), so the per-vertex work is kept to arithmetic on locals: the UV
+        divisor and the PartColor coefficients are loop-invariant and resolved
+        once per run / per part, and each vertex extends the flat arrays once.
         """
         geometry = []
         attributes = []
         indices = []
         base = 0
+        inv_tw = (1.0 / tw) if tw > 0 else 1.0
+        inv_th = (1.0 / th) if th > 0 else 1.0
+        g_ext = geometry.extend
+        a_ext = attributes.extend
+        i_ext = indices.extend
         for mp in parts:
-            nuv = framedata.normalize_uvs(mp.uvs, tw, th)
-            for idx in range(len(mp.positions)):
-                x, y = mp.positions[idx]
-                geometry += [ox + x, oy + y]
-                u, v = nuv[idx]
-                c = mp.colors[idx]
-                vx, vy, vz = framedata.partcolor_varg(mp.color_blend, mp.rates[idx])
-                attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
+            cx, cy, cz = framedata.partcolor_coef(mp.color_blend)
+            if mp.has_partcolor:
+                for (x, y), (u, v), c, rate in zip(mp.positions, mp.uvs,
+                                                   mp.colors, mp.rates):
+                    g_ext((ox + x, oy + y))
+                    a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
+                           1.0 + cx * rate, cy * rate, cz))
+            else:
+                # No PartColor on this part, i.e. every rate is 0, which collapses
+                # varg to the constant (1, 0, cz) for EVERY mode — the texel
+                # pass-through. Hoisting it drops the rate read and two multiplies
+                # per vertex on what is the common case for most packs.
+                for (x, y), (u, v), c in zip(mp.positions, mp.uvs, mp.colors):
+                    g_ext((ox + x, oy + y))
+                    a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
+                           1.0, 0.0, cz))
             for (i, j, k) in mp.triangles:
-                indices += [base + i, base + j, base + k]
+                i_ext((base + i, base + j, base + k))
             base += len(mp.positions)
         return geometry, attributes, indices, base
 
@@ -2250,7 +2268,8 @@ init -10 python:
 
             Builds a ``renpy.gl2.gl2mesh2.Mesh2`` from the part's world-space
             corners (``mp.positions``) and its texture-pixel UVs normalized by the
-            atlas size (``framedata.normalize_uvs``), textures it with the FULL
+            atlas size (``uv / texsize``, as :func:`framedata.normalize_uvs`
+            documents), textures it with the FULL
             atlas, and sets ``gl_texture_wrap = REPEAT`` so UVs the runtime baked
             past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
             clamping. This is the only backend that is shear / free-deform exact
@@ -2272,21 +2291,29 @@ init -10 python:
                     return False
 
                 pts = mp.positions            # 4 corners, or 5 with centre fan
-                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
                 tris = mp.triangles
 
                 mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, len(pts), len(tris))
                 geometry = []
-                for (x, y) in pts:
-                    geometry += [ox + x, oy + y]          # SS world -> screen px
-                mesh.set_geometry_data(geometry)
                 attributes = []
-                for (u, v) in nuv:
-                    attributes += [u, v]                  # a_tex_coord (may be >1)
-                mesh.set_attribute_data(attributes)
                 indices = []
+                inv_tw = (1.0 / tw) if tw > 0 else 1.0
+                inv_th = (1.0 / th) if th > 0 else 1.0
+                g_app = geometry.append
+                a_app = attributes.append
+                i_app = indices.append
+                for (x, y) in pts:
+                    g_app(ox + x)
+                    g_app(oy + y)
+                for (u, v) in mp.uvs:
+                    a_app(u * inv_tw)
+                    a_app(v * inv_th)
                 for tri in tris:
-                    indices += [tri[0], tri[1], tri[2]]
+                    i_app(tri[0])
+                    i_app(tri[1])
+                    i_app(tri[2])
+                mesh.set_geometry_data(geometry)
+                mesh.set_attribute_data(attributes)
                 mesh.set_triangle_data(indices)
 
                 rv = renpy.Render(width, height)
@@ -2331,11 +2358,16 @@ init -10 python:
         def _build_coverages(self, cov_by_id, items, ox, oy, st, at,
                              width, height):
             """Rasterize the coverage bitmap for every distinct ``FrameMask`` in
-            ``items`` into ``cov_by_id`` (keyed by ``id(frame_mask)``).
+            ``items`` into ``cov_by_id`` (keyed by ``id(frame_mask)``, value
+            ``(coverage_render, cov_w, cov_h, mask_meta)``).
 
             One coverage is shared by all targets of a mask (including instance
             children that inherit it). A build failure is warned once and that
-            coverage is simply skipped (its targets then draw unmasked)."""
+            coverage is simply skipped (its targets then draw unmasked).
+
+            The replay ``mask_meta`` is per *mask*, not per target, so it is built
+            here alongside the coverage — ``cov_by_id`` is rebuilt every frame, so
+            this cache cannot outlive the ``FrameMask`` whose id keys it."""
             if _SS_Mesh2 is None:
                 return
             seen = set()
@@ -2349,6 +2381,8 @@ init -10 python:
                 seen.add(key)
                 try:
                     cov = self._build_coverage(fm, ox, oy, st, at, width, height)
+                    if cov is not None:
+                        cov = cov + (self._mask_meta_uniform(fm),)
                 except Exception as e:
                     self._warn_once("mask-coverage",
                                     "coverage build failed (%r); masks off this "
@@ -2398,25 +2432,35 @@ init -10 python:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return
-                nuv = framedata.normalize_uvs(w.uvs, tw, th)
+                inv_tw = (1.0 / tw) if tw > 0 else 1.0
+                inv_th = (1.0 / th) if th > 0 else 1.0
                 threshold = (255.0 - w.mask_value) / 255.0
             else:
                 cr = self._white_render(st, at)   # texture-less: whole geometry
-                nuv = [(0.0, 0.0)] * npts
                 threshold = -1.0
 
             mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, npts, ntri)
             geom = []
-            for (x, y) in pts:
-                geom += [(x - bx) * sx, (y - by) * sy]   # world -> coverage px
-            mesh.set_geometry_data(geom)
-            attrs = []
-            for (u, v) in nuv:
-                attrs += [u, v]
-            mesh.set_attribute_data(attrs)
             idx = []
+            g_app = geom.append
+            i_app = idx.append
+            for (x, y) in pts:
+                g_app((x - bx) * sx)
+                g_app((y - by) * sy)
+            if tex:
+                attrs = []
+                a_app = attrs.append
+                for (u, v) in w.uvs:
+                    a_app(u * inv_tw)
+                    a_app(v * inv_th)
+            else:
+                attrs = [0.0] * (npts * 2)   # texture-less: the UVs go unsampled
             for tri in w.triangles:
-                idx += [tri[0], tri[1], tri[2]]
+                i_app(tri[0])
+                i_app(tri[1])
+                i_app(tri[2])
+            mesh.set_geometry_data(geom)
+            mesh.set_attribute_data(attrs)
             mesh.set_triangle_data(idx)
 
             wr = renpy.Render(cw, ch)
@@ -2442,13 +2486,20 @@ init -10 python:
             """Flat ``vec4[MAX_WRITERS]`` of (rank, op_invert, is_clipping, 0).
 
             The writer's bit is its index, so it is not stored. Padded to the
-            full array length the shader declares."""
+            full array length the shader declares. Depends only on the mask, so
+            :meth:`_build_coverages` builds it once per mask per frame rather
+            than once per target."""
             vals = []
+            v_app = vals.append
             for (rank, _bit, op, clip) in fm.meta:
-                vals += [float(rank), float(op), float(clip), 0.0]
+                v_app(float(rank))
+                v_app(float(op))
+                v_app(float(clip))
+                v_app(0.0)
             need = mask.MAX_WRITERS * 4
-            if len(vals) < need:
-                vals += [0.0] * (need - len(vals))
+            diff = need - len(vals)
+            if diff > 0:
+                vals.extend([0.0] * diff)
             return vals
 
         def _draw_mesh_masked(self, r, mp, ap, cov, ox, oy, st, at, width, height):
@@ -2464,7 +2515,7 @@ init -10 python:
             if _SS_Mesh2 is None or _SS_PC_LAYOUT is None:
                 return False
             try:
-                cov_render, cw, ch = cov
+                cov_render, cw, ch, mask_meta = cov
                 cr = self._tex0_render(mp.texture_hash, st, at, width, height)
                 if cr is None:
                     return False
@@ -2495,7 +2546,7 @@ init -10 python:
                 rv.add_uniform("u_mask_count", len(fm.meta))
                 rv.add_uniform("u_mask_rank", float(ap.rank))
                 rv.add_uniform("u_mask_inside", 1.0 if ap.visible_inside else 0.0)
-                rv.add_uniform("u_mask_meta", self._mask_meta_uniform(fm))
+                rv.add_uniform("u_mask_meta", mask_meta)
                 self._apply_blend(rv, mp)
                 r.blit(rv, (0, 0))
                 return True
@@ -2638,14 +2689,28 @@ init -10 python:
                 geometry = []
                 attributes = []
                 indices = []
-                for idx in range(len(eb.positions)):
-                    x, y = eb.positions[idx]
-                    geometry += [ox + x, oy + y]
-                    u, v = eb.uvs[idx]
-                    c = eb.colors[idx]
-                    attributes += [u, v, c[0], c[1], c[2], c[3]]
+                g_app = geometry.append
+                a_app = attributes.append
+                i_app = indices.append
+                positions = eb.positions
+                uvs = eb.uvs
+                colors = eb.colors
+                for idx in range(len(positions)):
+                    x, y = positions[idx]
+                    g_app(ox + x)
+                    g_app(oy + y)
+                    u, v = uvs[idx]
+                    c = colors[idx]
+                    a_app(u)
+                    a_app(v)
+                    a_app(c[0])
+                    a_app(c[1])
+                    a_app(c[2])
+                    a_app(c[3])
                 for (i, j, k) in eb.triangles:
-                    indices += [i, j, k]
+                    i_app(i)
+                    i_app(j)
+                    i_app(k)
                 mesh = _SS_Mesh2(_SS_FX_LAYOUT, len(eb.positions),
                                  len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2671,23 +2736,33 @@ init -10 python:
                                   blend_prop):
             """Fallback: one uniform-colour quad per particle (proven layout)."""
             tris = eb.triangles
-            for q in range(len(eb.positions) // 4):
+            positions = eb.positions
+            uvs = eb.uvs
+            colors = eb.colors
+            for q in range(len(positions) // 4):
                 base = q * 4
                 quad_tris = tris[2 * q:2 * q + 2]
                 if len(quad_tris) < 2:
                     break
-                col = eb.colors[base]
+                col = colors[base]
                 indices = []
+                i_app = indices.append
                 for (i, j, k) in quad_tris:
-                    indices += [i - base, j - base, k - base]
+                    i_app(i - base)
+                    i_app(j - base)
+                    i_app(k - base)
                 mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, 4, 2)
                 geometry = []
-                for (x, y) in eb.positions[base:base + 4]:
-                    geometry += [ox + x, oy + y]
+                g_app = geometry.append
+                for (x, y) in positions[base:base + 4]:
+                    g_app(ox + x)
+                    g_app(oy + y)
                 mesh.set_geometry_data(geometry)
                 attributes = []
-                for (u, v) in eb.uvs[base:base + 4]:
-                    attributes += [u, v]
+                a_app = attributes.append
+                for (u, v) in uvs[base:base + 4]:
+                    a_app(u)
+                    a_app(v)
                 mesh.set_attribute_data(attributes)
                 mesh.set_triangle_data(indices)
                 rv = renpy.Render(width, height)

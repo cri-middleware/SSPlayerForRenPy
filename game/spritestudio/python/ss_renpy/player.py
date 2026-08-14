@@ -158,6 +158,11 @@ class SSInternalPlayer:
             # index). Cached once: the mask layer reads the static mask flags
             # from it every frame, and it is also the name->index source.
             self._part_infos = self._meta.parts()
+            # Pack-static: build_frame_mask can only ever produce writers from
+            # these parts, so a pack with none skips the whole per-frame coverage
+            # walk (mask.py: the classification is by PartInfo).
+            self._has_mask_writers = any(p.is_mask_writer
+                                         for p in self._part_infos)
             # Second corruption gate: a zeroed/garbage buffer can PARSE as a
             # vacuous empty pack (the FlatBuffers walk only raises on
             # out-of-bounds access). A real pack always has parts.
@@ -656,24 +661,31 @@ class SSInternalPlayer:
         disp = frame_no if self.sub_frame else math.floor(frame_no)
         fb = rt.get_frame_data_view(disp)
         wm, wn = rt.world_matrices()
-        self._last_world = list(wm[0:wn]) if (wm and wn) else []
+        self._last_world = wm[0:wn] if (wm and wn) else []
         items: list = []
         hidden: Optional[set] = None
         frame_mask = None
         if fb:
             fd = framedata.parse(fb)
-            hidden = framedata.hidden_parts(fd)
+            # ONE bulk PartState decode for the whole frame: the hidden-part
+            # snapshot, the mask walk and the renderable walk all read the same
+            # values, and each used to decode the vector again.
+            bulk_parts = framedata.bulk_part_states(fd)
+            hidden = framedata.hidden_parts(fd, bulk_parts)
             # Build the coverage *before* collect_ordered steps any slot — both
             # read the transient SoA, which an instance/effect step invalidates.
-            try:
-                frame_mask = mask.build_frame_mask(rt, fd, self._part_infos)
-            except Exception:
-                frame_mask = None
+            if self._has_mask_writers:
+                try:
+                    frame_mask = mask.build_frame_mask(rt, fd, self._part_infos,
+                                                       bulk_parts)
+                except Exception:
+                    frame_mask = None
             try:
                 items = collect_ordered(rt, fd, self._instances, self._effects,
                                         frame_no, dt_s, looped, self.sub_frame,
                                         part_infos=self._part_infos,
-                                        frame_mask=frame_mask)
+                                        frame_mask=frame_mask,
+                                        parts=bulk_parts)
             except Exception:
                 # collect_ordered may have stepped slots and invalidated the
                 # zero-copy view; re-evaluate for a clean Normal/Mesh-only frame.

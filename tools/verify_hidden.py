@@ -224,7 +224,8 @@ def check_leftover_isolation() -> bool:
     instances = _StubRig([1, 2, 3], boom=2)
     effects = _StubRig([10, 11])
     orig = framedata.iter_draw_plan
-    framedata.iter_draw_plan = lambda rt, fd: []      # empty plan: leftovers only
+    # *a/**kw: collect_ordered may forward its pre-decoded PartState array.
+    framedata.iter_draw_plan = lambda rt, fd, *a, **kw: []   # empty: leftovers only
     try:
         out = collect_ordered(None, None, instances, effects,
                               0.0, 0.016, False, True)

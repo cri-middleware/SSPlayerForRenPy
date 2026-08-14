@@ -182,7 +182,7 @@ def bulk_part_states(fd: FrameData):
     return lite
 
 
-def hidden_parts(fd: FrameData) -> set:
+def hidden_parts(fd: FrameData, parts=None) -> set:
     """Owned set of part indices hidden on ``fd`` (for the part-query API).
 
     A tiny snapshot so callers can answer "is part N hidden?" *after* the
@@ -190,8 +190,12 @@ def hidden_parts(fd: FrameData) -> set:
     Must run while ``fd``'s buffer is still valid (right after :func:`parse`,
     before any slot step), since a zero-copy ``get_frame_data_view`` buffer is
     invalidated by the instance/effect steps that follow.
+
+    ``parts`` is an optional pre-decoded :func:`bulk_part_states` array — pass the
+    frame's if you already have one, since the decode is per-frame work.
     """
-    parts = bulk_part_states(fd)
+    if parts is None:
+        parts = bulk_part_states(fd)
     if parts is not None:
         return {i for i, ps in enumerate(parts) if ps.Hide()}
     hidden = set()
@@ -207,10 +211,21 @@ def clamp_pc_blend(blend_type: int) -> int:
     return blend_type if 0 <= blend_type <= 3 else PC_BLEND_MIX
 
 
+def partcolor_coef(blend_idx: int) -> tuple:
+    """The ``(cx, cy, cz)`` coefficient row for one PartColor mode.
+
+    The rate-independent half of :func:`partcolor_varg`, so a renderer that packs
+    ``varg`` per *vertex* can resolve the mode once per *part* without
+    reimplementing the clamp — the mode table and its clamp stay owned here
+    (SDK doc: 40_components/50_parts_color.md).
+    """
+    return _PC_COEF[clamp_pc_blend(blend_idx)]
+
+
 def partcolor_varg(blend_idx: int, rate: float) -> tuple:
     """Build the ``varg`` coefficient triple for one vertex (SDK doc:
     40_components/50_parts_color.md)."""
-    cx, cy, cz = _PC_COEF[clamp_pc_blend(blend_idx)]
+    cx, cy, cz = partcolor_coef(blend_idx)
     return (1.0 + cx * rate, cy * rate, cz)
 
 
@@ -261,8 +276,10 @@ def _transform(m, vx, vy):
 def normalize_uvs(uvs, tex_w, tex_h) -> list:
     """Convert texture-*pixel* UVs to texture-*normalized* UVs (``uv / texsize``).
 
-    Pure math, engine-independent — the equivalent of the reference players'
-    ``uv * inv_tex_size`` UV normalize. Results may
+    The reference form of the rule, kept for ports and headless tools: the render
+    hot path multiplies by a hoisted ``1 / texsize`` per run instead of calling
+    this per part. Pure math, engine-independent — the equivalent of the reference
+    players' ``uv * inv_tex_size`` UV normalize. Results may
     fall outside ``[0, 1]`` for UV-scaled / -translated / -rotated parts; the
     consumer must sample with **REPEAT** wrap (not clamp) to reproduce them — the
     runtime has already baked ``UvScale``/``UvTranslation``/``UvRotation`` into
@@ -584,12 +601,21 @@ class VertexColor:
     rate: float
 
 
+_WHITE_OPAQUE = VertexColor((1.0, 1.0, 1.0, 1.0), 0.0)
+
+
 # Default for a part with no ``parts_color`` entry (SDK doc:
 # 40_components/50_parts_color.md): white, hierarchical alpha, rate 0 → the
 # generic formula returns the raw texel, so the renderer needs no separate
 # "has part colour?" branch.
 def _default_vertex_color(alpha: float) -> VertexColor:
-    return VertexColor((1.0, 1.0, 1.0, max(0.0, min(1.0, alpha))), 0.0)
+    # Opaque is by far the common case, so it returns a shared instance (callers
+    # only ever read a VertexColor) and skips the clamp. Spelled ``not <`` rather
+    # than ``>=`` so a NaN alpha still lands here, exactly as the
+    # ``max(0, min(1, alpha))`` clamp below it used to.
+    if not (alpha < 1.0):
+        return _WHITE_OPAQUE
+    return VertexColor((1.0, 1.0, 1.0, max(0.0, alpha)), 0.0)
 
 
 def _read_corner(kv) -> VertexColor:
@@ -727,7 +753,10 @@ class MeshPart:
     uvs: list                # [(u, v)] texture px
     colors: list             # [(r, g, b, a)] 0..1
     rates: list              # [float]
-    triangles: list          # [(i, j, k)] into the vertex arrays
+    # [(i, j, k)] into the vertex arrays. A fixed-topology part (the quad / centre
+    # fan of a Normal part) shares one of the module-level tuples, so treat this
+    # as read-only — copy before mutating (as transform_mesh_part / mask do).
+    triangles: tuple | list
     src_rect: tuple          # (left, top, w, h) atlas px
     mask_influence: bool
     use_center: bool         # 5-vertex fan (free deform / per-vertex colour)
@@ -773,6 +802,75 @@ def read_shader(fd: FrameData, ps) -> tuple:
     return (0, ())
 
 
+_TRIS_QUAD = ((LT, RT, LB), (RT, RB, LB))
+_TRIS_FAN = ((CENTER, LT, RT), (CENTER, RT, RB),
+             (CENTER, RB, LB), (CENTER, LB, LT))
+
+
+def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
+                           blend: int, thash: int, mask: bool, pcs=None) -> MeshPart:
+    """Build a MeshPart directly from the SoA buffers, bypassing intermediate _NormalPart."""
+    cblend, corners = part_colors(fd, ps, pcs)
+    shader_id, shader_params = read_shader(fd, ps)
+
+    mo = p * MATRIX_STRIDE
+    vo = p * VERT_STRIDE
+    uo = p * UV_STRIDE
+    co = p * CELL_STRIDE
+    mat = wm[mo:mo + MATRIX_STRIDE]
+    m0, m1, m4, m5, tx, ty = mat[0], mat[1], mat[4], mat[5], mat[12], mat[13]
+
+    use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
+    colors = [c.rgba for c in corners]
+    rates = [c.rate for c in corners]
+    has_pc = any(r > 0.0 for r in rates)
+
+    if use_center:
+        positions = [
+            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
+            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
+            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
+            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
+            (m0 * lv[vo + 8] + m4 * lv[vo + 9] + tx, m1 * lv[vo + 8] + m5 * lv[vo + 9] + ty),
+        ]
+        uvs = [
+            (uv[uo], uv[uo + 1]),
+            (uv[uo + 2], uv[uo + 3]),
+            (uv[uo + 4], uv[uo + 5]),
+            (uv[uo + 6], uv[uo + 7]),
+            (uv[uo + 8], uv[uo + 9]),
+        ]
+        c0, c1, c2, c3 = colors
+        colors.append(((c0[0] + c1[0] + c2[0] + c3[0]) * 0.25,
+                       (c0[1] + c1[1] + c2[1] + c3[1]) * 0.25,
+                       (c0[2] + c1[2] + c2[2] + c3[2]) * 0.25,
+                       (c0[3] + c1[3] + c2[3] + c3[3]) * 0.25))
+        r0, r1, r2, r3 = rates
+        rates.append((r0 + r1 + r2 + r3) * 0.25)
+        tris = _TRIS_FAN
+    else:
+        positions = [
+            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
+            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
+            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
+            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
+        ]
+        uvs = [
+            (uv[uo], uv[uo + 1]),
+            (uv[uo + 2], uv[uo + 3]),
+            (uv[uo + 4], uv[uo + 5]),
+            (uv[uo + 6], uv[uo + 7]),
+        ]
+        tris = _TRIS_QUAD
+
+    src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
+    return MeshPart(
+        part_index=p, texture_hash=thash, blend_type=blend, color_blend=cblend,
+        positions=positions, uvs=uvs, colors=colors, rates=rates, triangles=tris,
+        src_rect=src_rect, mask_influence=mask, use_center=use_center,
+        has_partcolor=has_pc, shader_id_hash=shader_id, shader_params=shader_params)
+
+
 def _mesh_part_from(fd: FrameData, part: _NormalPart, pcs=None) -> MeshPart:
     """Project one resolved :class:`_NormalPart` to a coloured triangulated mesh.
 
@@ -807,10 +905,9 @@ def _mesh_part_from(fd: FrameData, part: _NormalPart, pcs=None) -> MeshPart:
         r0, r1, r2, r3 = rates
         rates.append((r0 + r1 + r2 + r3) * 0.25)
         # Centre = 4; corners CCW LT(0) RT(1) RB(3) LB(2).
-        tris = [(CENTER, LT, RT), (CENTER, RT, RB),
-                (CENTER, RB, LB), (CENTER, LB, LT)]
+        tris = _TRIS_FAN
     else:
-        tris = [(LT, RT, LB), (RT, RB, LB)]
+        tris = _TRIS_QUAD
 
     return MeshPart(
         part_index=part.part_index, texture_hash=part.texture_hash,
@@ -915,7 +1012,7 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
             for part in _iter_visible_normal_parts(rt, fd)]
 
 
-def iter_draw_plan(rt, fd: FrameData):
+def iter_draw_plan(rt, fd: FrameData, parts=None):
     """Walk the draw plan in z-order, yielding tagged, SoA-resolved items.
 
     Yields, in draw order, one of:
@@ -935,6 +1032,9 @@ def iter_draw_plan(rt, fd: FrameData):
     Instance/Effect items are yielded even when ``hidden`` so their slots can
     still be stepped (independent playback must keep advancing while
     off-screen); the consumer suppresses *drawing* on ``hidden``.
+
+    ``parts`` is an optional pre-decoded :func:`bulk_part_states` array (see
+    :func:`hidden_parts`).
     """
     wm, wn = rt.world_matrices()
     lv, _ = rt.local_vertices()
@@ -951,7 +1051,8 @@ def iter_draw_plan(rt, fd: FrameData):
     # are then all zero / skipped).
     shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
                  rt.shape_vertex_counts())
-    parts = bulk_part_states(fd)
+    if parts is None:
+        parts = bulk_part_states(fd)
     pcs = bulk_part_colors(fd)   # pre-decoded per-corner colours (hot path)
     do = _draw_order_array(fd)
     # Parts emitted as a Mask batch write coverage only — no colour output. A pure
@@ -962,24 +1063,25 @@ def iter_draw_plan(rt, fd: FrameData):
     # writers (``mask_write``) emit no Mask batch, so they are absent here and
     # draw normally.
     batches = _draw_batch_list(fd)
-    mask_only_parts = set()
+    mask_only_parts = None
     for (s, c, _th, _vc, _ic, _bl, kind, _fl) in batches:
         if kind == KIND_MASK:
+            if mask_only_parts is None:
+                mask_only_parts = set()
             for k in range(c):
                 mask_only_parts.add(do[s + k])
     for (start, count, thash, _vc, _ic, blend, kind, flags) in batches:
         mask = bool(flags & MASK_INFLUENCE)
         for k in range(count):
             p = do[start + k]
-            if kind != KIND_MASK and p in mask_only_parts:
+            if mask_only_parts is not None and kind != KIND_MASK and p in mask_only_parts:
                 continue   # draw_as_mask: contributes coverage, not colour
             ps = parts[p] if parts is not None else fd.Parts(p)
             hidden = ps is None or ps.Hide()
             if kind == KIND_NORMAL:
                 if not have_soa or hidden:
                     continue
-                part = _read_normal_part(wm, lv, uv, cm, ps, p, blend, thash, mask)
-                yield ("mesh", _mesh_part_from(fd, part, pcs))
+                yield ("mesh", _read_normal_mesh_part(wm, lv, uv, cm, fd, ps, p, blend, thash, mask, pcs))
             elif kind == KIND_MESH:
                 if hidden:
                     continue

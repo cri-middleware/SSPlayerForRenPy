@@ -40,7 +40,7 @@ def display_frame(frame_no: float, sub_frame: bool):
 
 def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                     parent_looped, sub_frame, part_infos=None, frame_mask=None,
-                    inherited=None):
+                    inherited=None, parts=None):
     """Z-ordered renderables for ``rt`` at the current frame.
 
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
@@ -61,10 +61,13 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     patching the child's output afterwards) is what makes nesting chain for
     free. Children never build coverage: ``frame_mask`` stays ``None`` for them
     and they sample the root's, exactly as the spec / Godot port require.
+
+    ``parts`` is an optional pre-decoded :func:`framedata.bulk_part_states` array
+    the caller already holds for this frame.
     """
     # Materialize first: this fully drains the transient SoA buffers into copied
     # MeshParts / matrices, so the child/effect Brain calls below are safe.
-    plan = list(framedata.iter_draw_plan(rt, fd))
+    plan = list(framedata.iter_draw_plan(rt, fd, parts))
     do_mask = part_infos is not None and (frame_mask is not None
                                           or inherited is not None)
     out = []
