@@ -125,7 +125,7 @@ def verify_pack(lib, path: str) -> dict:
 
     res = {"name": name, "errors": [], "frames": 0, "parts": 0,
            "partcolor": 0, "free_deform": 0, "center_fan": 0, "uv_oob": 0,
-           "blends": set(), "color_blends": set()}
+           "crosschecked": 0, "blends": set(), "color_blends": set()}
     if not anims:
         res["errors"].append("no animations")
         return res
@@ -159,6 +159,15 @@ def verify_pack(lib, path: str) -> dict:
             # M1 corners for cross-check (same buffers, this frame only).
             m1 = {q.part_index: q.positions
                   for q in framedata.build_normal_quads(rt, fd)}
+            # A Normal part reaches a MeshPart by TWO routes: the z-ordered draw
+            # walk projects it straight off the SoA, while build_mesh_parts (the
+            # fallback the player uses when the walk raises) goes through the
+            # _NormalPart / _mesh_part_from pair. Same projection written twice,
+            # so hold them to being identical.
+            zplan = {}
+            for item in framedata.iter_draw_plan(rt, fd):
+                if item[0] == "mesh":
+                    zplan[item[1].part_index] = item[1]
 
             for mp in mesh:
                 res["parts"] += 1
@@ -209,6 +218,21 @@ def verify_pack(lib, path: str) -> dict:
                         if abs(mc[0] - qc[0]) > 1e-3 or abs(mc[1] - qc[1]) > 1e-3:
                             err(f"f{fr} p{mp.part_index}: M1/M2 corner mismatch")
                             break
+                # draw-plan builder <-> build_mesh_parts builder agreement
+                zp = zplan.get(mp.part_index)
+                if zp is not None:
+                    res["crosschecked"] += 1
+                    if (mp.positions != zp.positions or mp.uvs != zp.uvs
+                            or mp.colors != zp.colors or mp.rates != zp.rates
+                            or tuple(mp.triangles) != tuple(zp.triangles)
+                            or mp.color_blend != zp.color_blend
+                            or mp.has_partcolor != zp.has_partcolor
+                            or mp.use_center != zp.use_center
+                            or mp.src_rect != zp.src_rect
+                            or mp.shader_id_hash != zp.shader_id_hash
+                            or mp.shader_params != zp.shader_params):
+                        err(f"f{fr} p{mp.part_index}: draw-plan and "
+                            f"build_mesh_parts MeshParts differ")
 
             # alpha-not-double-applied: a part-colour-less part's vertex alpha
             # equals PartState.alpha exactly (no second multiply).
@@ -260,7 +284,8 @@ def main(argv) -> int:
                       for b in sorted(r["color_blends"]))
         print(f"[{status}] {r['name']:<24} frames={r['frames']:<4} "
               f"parts={r['parts']:<5} partcolor={r['partcolor']} "
-              f"free_deform={r['free_deform']} center_fan={r['center_fan']}")
+              f"free_deform={r['free_deform']} center_fan={r['center_fan']} "
+              f"xcheck={r['crosschecked']}")
         warn = f"  uv_oob_warn={r['uv_oob']}" if r["uv_oob"] else ""
         print(f"        fb_blend={{{bl}}}  partcolor_blend={{{cb}}}{warn}")
         for e in r["errors"]:
