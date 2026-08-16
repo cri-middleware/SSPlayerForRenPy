@@ -3,8 +3,8 @@
 [OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) で作成したアニメーションを [Ren'Py](https://www.renpy.org/) 上で再生するためのプラグイン（プレイヤー）です。再生処理は [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) が提供する `libssruntime` を介して行います。
 
 !!! tip "ブラウザで試す"
-    サンプルプロジェクトを Ren'Py Web でビルドしたデモを、本ドキュメントと同じサイトの
-    `https://cri-middleware.github.io/SSPlayerForRenPy/demo/` で公開します。インストールは不要です。
+    [▶️ サンプルプロジェクトを再生する](../demo/) — 本ドキュメントと同じサイトで公開している
+    Ren'Py Web ビルドです。インストールは不要です。
     _準備中_: デモは最初のリリースと同時に公開されるため、それまでは 404 になります。
 
 ## 目次
