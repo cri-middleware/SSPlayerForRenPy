@@ -45,8 +45,16 @@ init -20 python:
     # (`*.md` / `*.txt` match root-level files only — `*` does not cross `/` — so
     # bundled licences under game/…/libs/ are kept.) These are demo/repo-specific
     # paths, which is exactly why they live here and not in the reusable library.
+    #
+    # `site/**` is the built documentation (scripts/build-docs.*, and everything
+    # scripts/build-pages.* puts beside it). Excluding `docs/**` is not enough:
+    # the build COPIES the screencasts into site/*/assets/, and Ren'Py's own
+    # rules classify `**.webm` into every package — so a working tree that has
+    # ever built the docs was shipping ~20 MB of documentation video in the
+    # demo, web export included.
     for _dev_pat in ('renpy-sdk/**', 'SpriteStudio-SDK/**', 'SpriteStudio_Source/**',
-                     'web_out/**', 'web_out.zip', 'dist/**', 'docs/**', 'mkdocs.yml',
+                     'web_out/**', 'web_out.zip', 'dist/**', 'site/**',
+                     'docs/**', 'mkdocs*.yml', 'overrides/**',
                      '*.md', '*.txt', '.git/**', 'tools/**', 'scripts/**'):
         build.classify(_dev_pat, None)
 

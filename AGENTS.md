@@ -99,6 +99,7 @@ migration — check before duplicating:
 *   **`overrides/partials/alternate.html`** rebuilds the header language selector so switching language keeps you on the same page. `mkdocs-static-i18n` used to rewrite those links per page; nothing does once the locales are separate builds, and the stock partial would send every reader to the other locale's home page. Driven by `extra.alternate[].link` (a locale subpath, not a URL) plus `extra.site_root_prefix` in each locale config. Known gap: the `<link rel="alternate" hreflang>` tags in `<head>` still point at each locale root — they sit inside the theme's `site_meta` block, and overriding that would mean copying thirty lines Zensical may change.
 *   **`site_url` is per locale** and the ja one keeps its `ja/` suffix — `page.canonical_url`, and therefore `og:url`, is built from it.
 *   **Asset paths are source-relative** (`assets/…` from these top-level pages), including inside raw `<video>` / `<img>` HTML. Zensical resolves raw HTML `src` the same way it resolves Markdown links; MkDocs passed it through untouched. That difference is the one place where a MkDocs fallback build produces wrong output.
+*   **The demo link on `index.md` is the one path that is not identical in both locales** — `demo/` in English, `../demo/` in Japanese, because the English pages sit at the site root and the Japanese ones one level down in `ja/`. It is written site-relative on purpose: `site/demo/` is not a page of this site (`build-pages.*` / `pages.yml` drop it in beside the built docs), and a `https://cri-middleware.github.io/…` URL would be wrong in a local `build-pages.sh serve=yes` preview and on any fork's Pages. `--strict` passes because neither href resolves to a documentation page, and Zensical emits both verbatim. The READMEs keep the absolute URL — GitHub has no site for a relative one to resolve against.
 *   **Footer social icons are defined twice** — in `mkdocs.yml` and `mkdocs.ja.yml` (translated labels, same icons and links). Add or reorder an icon in both, or the two footers diverge. Keep `twitter:site` in `overrides/main.html` in sync with the X link.
 *   **There is deliberately no `edit_uri`**, so no "edit this page" button renders. It is a branch name nothing validates, and it had drifted wrong in three of the five player repos. Do not reintroduce it.
 
@@ -109,9 +110,36 @@ scripts/prepare-docs.sh          # once: .venv + the pins in docs/requirements.t
 scripts/build-docs.sh            # the gate: English then Japanese, both --strict
 ```
 
-`scripts/*.ps1` are the PowerShell twins, and both take `key=value` options and `--help` like the other scripts here (`build-docs.sh locale=ja`, `prepare-docs.sh force=yes`). `build-docs.sh` is what `pages.yml` runs too, so CI and the local gate cannot drift; it wraps nothing more than `pip install -r docs/requirements.txt` and the two `zensical build` runs, in the order that works — `zensical` straight out of `.venv` still does the same thing. Every repository in the family spells this pair the same way, and the `-docs` suffix keeps it apart from the scripts that build the code.
+`scripts/*.ps1` are the PowerShell twins, and both take `key=value` options and `--help` like the other scripts here (`build-docs.sh locale=ja`, `prepare-docs.sh force=yes`). `build-docs.sh` is what `pages.yml` runs too — through `build-pages.sh`, below — so CI and the local gate cannot drift; it wraps nothing more than `pip install -r docs/requirements.txt` and the two `zensical build` runs, in the order that works — `zensical` straight out of `.venv` still does the same thing. Every repository in the family spells this pair the same way, and the `-docs` suffix keeps it apart from the scripts that build the code.
 
 Building only English is the easy mistake: it leaves a stale `site/ja` behind, so a Japanese page you just broke still looks fine.
+
+`scripts/build-pages.sh` is the whole published site: both locale builds, then the
+playable Web demo unpacked into `site/demo/`, then — with `serve=yes` — the tree over
+HTTP, which is the only way to check the demo, the language selector and the links the
+way a reader meets them. `pages.yml`'s build job **is** this script (`prepare=no
+docs=yes demo=download tag=…`, every option spelled out so a publish cannot change
+because a default did), so running it locally runs what a deploy will publish. Only the
+deploy job has no local equivalent.
+
+```bash
+scripts/build-pages.sh serve=yes              # docs + released demo -> http://localhost:8000/
+scripts/build-pages.sh demo=build sdk=build   # ... with both built from this tree instead
+```
+
+The demo is a release **asset** — `release.yml` exports it and attaches
+`SSPlayerForRenPy-web-demo.zip`; `pages.yml` only downloads it. So `demo=download` (the
+default) is what a deploy actually publishes and needs `gh` plus a release carrying that
+asset, `zip=<path>` feeds it one by hand, and `demo=build` runs the `release.yml` export
+steps here instead — the only option until that first release exists. `sdk=` picks
+`download-sdk` or `build-runtime` and is consulted for `demo=build` only, since a
+downloaded demo brings its own runtime. An existing `renpy-sdk/` is never re-fetched
+(`fetch-renpy-sdk` replaces the whole directory, Web support included).
+
+Note that the documentation output is a Ren'Py packaging hazard, which is why
+`game/options.rpy` excludes `site/**`: the docs build copies the screencasts to
+`site/*/assets/`, and Ren'Py classifies `**.webm` into every package — so any export
+taken from a tree that had built the docs used to carry ~20 MB of documentation video.
 
 Two things to know about callouts, which Zensical parses natively now that `mkdocs-callouts` is gone: a list inside a `> [!NOTE]` block needs a blank `>` line before it or it renders as literal text, and `[!IMPORTANT]` is not a built-in admonition type — `docs/*/stylesheets/extra.css` styles it to keep the appearance it had. Also **avoid `src="…"` / `href="…"` inside an inline code span**: Zensical rewrites paths there as if they were real links, corrupting the example. Use a fenced block, which it leaves alone.
 
