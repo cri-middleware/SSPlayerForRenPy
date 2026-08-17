@@ -17,14 +17,10 @@ on:
   workflow_dispatch:
     inputs:
       upload_release:
-        description: 'Upload to GitHub Release (only effective on a v* tag ref)'
+        description: 'Create a draft GitHub Release (publish by hand afterwards). Requires dispatching from a v* tag.'
         required: false
         default: false
         type: boolean
-      prerelease:
-        description: 'Mark the GitHub Release as a pre-release (excludes it from releases/latest, breaking the stable download URL). Keep false so the latest/download link resolves.'
-        type: boolean
-        default: false
 
 # Needed to create the release and upload assets.
 permissions:
@@ -77,6 +73,8 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # softprops/action-gh-release creates the GitHub Release
     steps:
       - uses: actions/checkout@v7
         with:
@@ -84,163 +82,69 @@ jobs:
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
 
-      - name: Resolve release metadata from ss_renpy __version__
-        id: meta
+      # A release is a tag that was pushed first and dispatched from second, so
+      # asking to upload from anything else is an operator error, not a mode.
+      # Fails before the heavy build rather than after it. (build-release.sh
+      # separately refuses a tag that disagrees with ss_renpy.__version__.)
+      - name: Refuse to release from a non-tag ref
+        if: inputs.upload_release && !startsWith(github.ref, 'refs/tags/v')
         run: |
-          VERSION=$(sed -n 's/^__version__ *= *"\([^"]*\)".*/\1/p' game/spritestudio/python/ss_renpy/__init__.py)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "::error::upload_release=true needs a v* tag. Push the tag first, then dispatch this workflow from it (Use workflow from → the tag)."
+          exit 1
 
-      # Fail fast before the heavy build: uploading is only allowed from the
-      # v* tag whose name matches ss_renpy.__version__ (the single source of
-      # truth for the release version).
-      - name: Verify tag matches package version
-        if: ${{ inputs.upload_release }}
-        run: |
-          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
-            echo "::error::upload_release=true requires running on a v* tag ref (got $GITHUB_REF)"
-            exit 1
-          fi
-          if [[ "$GITHUB_REF_NAME" != "${{ steps.meta.outputs.tag }}" ]]; then
-            echo "::error::tag $GITHUB_REF_NAME != v\$__version__ (${{ steps.meta.outputs.tag }}) — bump ss_renpy.__version__ or retag"
-            exit 1
-          fi
+      # scripts/build-release.sh IS the release: the SDK libs, the drop-in
+      # spritestudio/ zip, the Web export and its zip, the stable version-less
+      # aliases the README / docs / pages.yml fetch through, and SHA256SUMS over
+      # all four. Every option is spelled out so a release cannot change because
+      # a default did, and so this is the command a human runs locally to
+      # produce the same files.
+      #
+      # It checks two things nothing else can: that the tag matches the
+      # __version__ shipped inside the folder, and that the macOS
+      # libssruntime.framework is still a bundle rather than a flattened copy
+      # (zip follows symlinks unless told not to, which silently invalidates its
+      # code signature — and consumers get that framework only through this zip).
+      #
+      # demo=build is what makes a QA dispatch (upload_release=false) worth
+      # running: the Web export is the part most likely to break.
+      - name: Build the release
+        run: ./scripts/build-release.sh sdk=download demo=build out=release-dist verify=yes clean=yes
 
-      # Fetches the pre-built SpriteStudio SDK libs into game/spritestudio/libs/.
-      - name: Download SpriteStudio SDK libs
-        run: bash scripts/download-sdk.sh
-
-      # Sanity-check that the libs actually landed before packaging.
-      - name: Verify SDK libs present
-        run: |
-          test -f game/spritestudio/libs/VERSION
-          ls -R game/spritestudio/libs
-
-      # Zip game/spritestudio/ as a top-level `spritestudio/` folder so consumers
-      # can drop it straight into their Ren'Py project's game/ directory.
-      - name: Package game/spritestudio
-        id: pkg
-        run: |
-          # Ship the license documents inside the drop-in folder so they travel
-          # with every copy (the vendored FlatBuffers runtime is Apache-2.0,
-          # which requires the license text to accompany redistribution).
-          cp LICENSE.md THIRD_PARTY_NOTICES.md game/spritestudio/
-          ARTIFACT="SSPlayerForRenPy-${{ steps.meta.outputs.version }}.zip"
-          cd game
-          # -y stores symlinks AS symlinks. libs/macos/libssruntime.framework is a
-          # versioned macOS bundle (Versions/Current + the bundle-root aliases are
-          # symlinks) and zip otherwise FOLLOWS them, flattening the bundle into
-          # plain copies — which invalidates its code signature (`codesign --verify`
-          # → "bundle format is ambiguous"), so a game bundling the extracted
-          # framework can no longer be signed / notarised. The SDK's own release
-          # zip stores them the same way (`zip -ry`).
-          zip -r -X -y "../$ARTIFACT" spritestudio \
-            -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
-          cd ..
-          # Version-less alias so README/docs can point at a stable
-          # releases/latest/download/SSPlayerForRenPy.zip URL that never goes
-          # stale (mirrors the SSPlayerForUnity release convention).
-          ALIAS="SSPlayerForRenPy.zip"
-          cp "$ARTIFACT" "$ALIAS"
-          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
-          echo "alias=$ALIAS" >> "$GITHUB_OUTPUT"
-          unzip -l "$ARTIFACT" | tail -n 5
-
-      # Regression guard for the -y above: consumers get the macOS framework only
-      # through this zip, so a flattened bundle would ship unnoticed (the repo's
-      # own working tree always has the real symlinks).
-      - name: Verify macOS framework symlinks survived packaging
-        run: |
-          unzip -q "${{ steps.pkg.outputs.artifact }}" -d zipcheck
-          FW="zipcheck/spritestudio/libs/macos/libssruntime.framework"
-          for link in "$FW/Versions/Current" "$FW/libssruntime"; do
-            if [ ! -L "$link" ]; then
-              echo "::error::$link is not a symlink — the macOS framework was flattened (zip needs -y)"
-              exit 1
-            fi
-          done
-          rm -rf zipcheck
-
-      # --- Web export (playable demo, hosted on GitHub Pages) -------------
-      # The heavy Ren'Py Web build lives here in the release pipeline; the Pages
-      # workflow (pages.yml) only downloads the produced asset on release publish.
-      # Needs the Ren'Py SDK + Web support on top of the SS web runtime libs the
-      # Download SpriteStudio SDK libs step fetched above. Built on every run —
-      # a QA dispatch (upload_release=false) is exactly what verifies the Web
-      # export still builds.
-      - name: Fetch Ren'Py SDK
-        run: bash scripts/fetch-renpy-sdk.sh
-
-      - name: Fetch Ren'Py Web support
-        run: bash scripts/fetch-renpy-web.sh
-
-      # Convert the SDK test projects into playback data under game/ss_assets/ so
-      # the animations get bundled into the Web export's game.zip. Must run before
-      # deploy-web.sh (the exporter packs game/ as-is).
-      - name: Generate example animation data
-        run: bash scripts/deploy-examples.sh
-
-      - name: Build Web export
-        run: bash scripts/deploy-web.sh web_out
-
-      - name: Package Web demo
-        id: webpkg
-        run: |
-          DEMO="SSPlayerForRenPy-web-demo-${{ steps.meta.outputs.version }}.zip"
-          ( cd web_out && zip -r -X "../$DEMO" . -x '*/.DS_Store' )
-          # Version-less alias so pages.yml (and README/docs) can point at a
-          # stable releases/latest/download/<alias> URL that never goes stale.
-          DEMO_ALIAS="SSPlayerForRenPy-web-demo.zip"
-          cp "$DEMO" "$DEMO_ALIAS"
-          echo "demo=$DEMO" >> "$GITHUB_OUTPUT"
-          echo "demo_alias=$DEMO_ALIAS" >> "$GITHUB_OUTPUT"
-
-      # Canonical checksum manifest so a consumer can verify a downloaded zip's
-      # integrity (`sha256sum -c SHA256SUMS --ignore-missing`). Covers the
-      # aliases too — they are byte-identical copies but download separately.
-      - name: Generate SHA256SUMS
-        run: |
-          sha256sum \
-            "${{ steps.pkg.outputs.artifact }}" \
-            "${{ steps.pkg.outputs.alias }}" \
-            "${{ steps.webpkg.outputs.demo }}" \
-            "${{ steps.webpkg.outputs.demo_alias }}" \
-            > SHA256SUMS
-          cat SHA256SUMS
-
-      # Always keep the outputs as a workflow artifact so a QA run
-      # (upload_release=false) is inspectable even without a Release. The
-      # version-less aliases are byte-identical copies, so only the pinned
-      # zips are kept here (SHA256SUMS still lists the aliases; verify with
-      # --ignore-missing).
+      # Always keep the outputs as a workflow artifact so a QA run is
+      # inspectable without a Release. The version-less aliases are
+      # byte-identical copies of their zips, so only the pinned ones are kept
+      # here; SHA256SUMS still lists all four (verify with --ignore-missing).
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: SSPlayerForRenPy-release-${{ steps.meta.outputs.version }}
+          name: SSPlayerForRenPy-release-dist
           path: |
-            ${{ steps.pkg.outputs.artifact }}
-            ${{ steps.webpkg.outputs.demo }}
-            SHA256SUMS
+            release-dist/SSPlayerForRenPy-*.zip
+            release-dist/SHA256SUMS
           if-no-files-found: error
+          # A week, not the 90-day default. What is meant to last is attached to
+          # the GitHub Release, which never expires; this is a copy for a run
+          # that uploaded nothing. Artifact storage is an org-wide quota, and a
+          # full one does not degrade — `upload-artifact` fails, so the release
+          # build fails, in a step that has nothing to do with the release.
+          retention-days: 7
 
       # The Release is created as a draft: publishing is what triggers pages.yml
       # (docs + Web demo deploy), so the generated notes get a final review
-      # before going live. Publish it from the GitHub Releases page.
+      # before going live. Publish it from the GitHub Releases page, choosing
+      # "Set as a pre-release" / "Set as the latest release" there — the same
+      # decision, made once, where the release is actually published, which is
+      # why there is no prerelease input.
       - name: Upload package to release
-        if: ${{ inputs.upload_release }}
+        if: inputs.upload_release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: SSPlayer for Ren'Py ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ github.ref_name }}
+          name: SSPlayer for Ren'Py ${{ github.ref_name }}
           generate_release_notes: true
           draft: true
-          prerelease: ${{ inputs.prerelease }}
-          # Ship the version-pinned zip, the stable alias, the Web demo
-          # (version-pinned + stable alias) consumed by pages.yml, and the
-          # checksum manifest.
+          # The version-pinned zips, their stable aliases (the Web demo one is
+          # what pages.yml downloads), and the checksum manifest.
           files: |
-            ${{ steps.pkg.outputs.artifact }}
-            ${{ steps.pkg.outputs.alias }}
-            ${{ steps.webpkg.outputs.demo }}
-            ${{ steps.webpkg.outputs.demo_alias }}
-            SHA256SUMS
+            release-dist/*.zip
+            release-dist/SHA256SUMS
