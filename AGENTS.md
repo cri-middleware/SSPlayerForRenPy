@@ -69,7 +69,25 @@ static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config p
 - **Coordinates:** use `ss_context_set_coordinate_system`; don't add a second Y-flip.
 - **Scripts** (`scripts/`, `*.sh`/`*.ps1`): `build-runtime`/`download-sdk`,
   `download-flatbuffers`+`generate-runtime-code`, `deploy-examples`, `run-demo`,
-  `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`.
+  `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`,
+  and the release: `build-release` (both assets, checked) + `release-version`.
+
+## 3b. Releases
+
+A release is a tag, pushed first and built second: push `v$__version__`, then dispatch **Release** from that tag with `upload_release=true`. The tag names the Release; `upload_release=true` from anything else fails the run rather than silently producing none, and `build-release.sh` separately **refuses a tag that disagrees with `ss_renpy.__version__`** — a Release called `v1.2.3` carrying `SSPlayerForRenPy-1.2.4.zip` is worse than no release. The default dispatch (`upload_release=false`) is a QA build and creates no Release. Drafts are always drafts: a human reviews the assets and the generated notes and publishes from the UI, choosing pre-release / latest there.
+
+`scripts/build-release.sh` is the release — `release.yml`'s job **is** this script (`sdk=download demo=build out=release-dist verify=yes clean=yes`, every option spelled out so a release cannot change because a default did), so CI and a local run cannot drift.
+
+```bash
+scripts/build-release.sh              # both assets
+scripts/build-release.sh demo=skip    # the plugin zip only, much faster
+```
+
+`.ps1` twins as everywhere else, verified to produce a byte-identical archive on the same inputs. Both need `zip` on PATH: `Compress-Archive` cannot store symlinks at all, which is the one thing the macOS framework depends on.
+
+Both assets ship, so both are built here. The Web demo is not a side product: `pages.yml` publishes the playable demo by **downloading it off the Release**, so a release without it leaves the site on the previous one. It is also the expensive half (it fetches the Ren'Py SDK and runs a full Web export), which is what `demo=skip` is for while iterating on the plugin zip — never for a release. `sdk=<download|build|skip>` is the same pair `build-pages.sh` uses.
+
+Two checks earn their place. The tag/`__version__` one above, and: **the macOS framework must still be a bundle.** `libs/macos/libssruntime.framework` is versioned — `Versions/Current` and the bundle-root aliases are symlinks — and `zip` follows symlinks unless given `-y`, flattening it into plain copies. That invalidates its code signature (`codesign --verify` → "bundle format is ambiguous"), so a game bundling the extracted framework can no longer be signed or notarised. Consumers get that framework only through this zip, and the working tree here always has the real symlinks, so a flattened bundle would ship unnoticed. The script unpacks the finished archive and asserts the symlinks survived.
 
 ## 4. Docs
 `docs/` = [Zensical](https://zensical.org) bilingual, ordered `setup → import → usage →

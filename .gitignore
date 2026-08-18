@@ -872,3 +872,8 @@ __marimo__/
 web_out/
 web_out.zip
 progressive_download.txt
+
+# Release packaging: scripts/build-release.sh writes the plugin zip, the Web
+# demo zip, their stable aliases and SHA256SUMS here (it unpacks into the
+# already-ignored build/ to check them).
+/release-dist/
