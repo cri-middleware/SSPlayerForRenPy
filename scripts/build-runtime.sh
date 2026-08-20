@@ -75,8 +75,8 @@ echo "Building for $PLATFORM ($ARCH) in $BUILD_MODE mode (host build: $IS_HOST_B
 CARGO_FLAGS=""; [ "$BUILD_MODE" = "release" ] && CARGO_FLAGS="--release"
 
 # build the feature-enabled ssruntime and ssconverter cdylib
-build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime --features libc_alloc,panic-handler ); }
-build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter ); }
+build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime-ffi --features libc_alloc,panic-handler ); }
+build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter-ffi ); }
 place() { mkdir -p "$LIB_ROOT/$1"; cp "$2" "$LIB_ROOT/$1/${3:-$(basename "$2")}"; echo "   -> game/spritestudio/libs/$1/${3:-$(basename "$2")}"; }
 
 # copy license notices alongside the libraries
