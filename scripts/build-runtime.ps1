@@ -73,9 +73,9 @@ try {
     if ($IS_HOST_BUILD) {
         # NB: the feature list must be quoted — a bare libc_alloc,panic-handler
         # is a PowerShell array and reaches cargo as two separate arguments.
-        cargo build $CargoFlags -p ssruntime --features "libc_alloc,panic-handler"
+        cargo build $CargoFlags -p ssruntime-ffi --features "libc_alloc,panic-handler"
         Assert-BuildOk "cargo build (ssruntime)"
-        cargo build $CargoFlags -p ssconverter
+        cargo build $CargoFlags -p ssconverter-ffi
         Assert-BuildOk "cargo build (ssconverter)"
         $SrcDir = "target/$BUILD_MODE"
     } else {
