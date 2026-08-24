@@ -421,13 +421,10 @@ class SSInternalPlayer:
             self._rt.set_animation_speed(self.speed)
         if not self._skip_frames:
             self._rt.set_skip_frames(False)
-        # NOT carried: the playback direction / ping-pong style, and the section.
-        # Both reset with the rest of the per-transition state, as they do in
-        # every other Player — call set_playback_direction() again if the new
-        # clip should also run backwards. (A section is a range of frame numbers
-        # and means nothing against a different clip in any case.) The host layer
-        # re-applies the modes where a switch is not a switch: a rollback restore
-        # and a sequence advance are one playback continuing.
+        # NOT carried: the section, and only the section. It is a range of frame
+        # numbers and means nothing against a different clip. The playback
+        # direction and ping-pong style are host policy and survive setup on
+        # their own (SDK #375), so nothing here has to put them back.
         # Timeline events are per-animation; rebuild the resolver.
         if self._enable_events:
             try:
