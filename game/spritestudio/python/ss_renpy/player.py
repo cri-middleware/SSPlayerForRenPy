@@ -440,7 +440,9 @@ class SSInternalPlayer:
         return True
 
     def play(self, start_frame: float = -1.0) -> None:
-        """Start playback. ``start_frame >= 0`` begins there; else resumes."""
+        """Start playback. ``start_frame >= 0`` begins there; otherwise heads
+        out from the section start -- this is not a resume, which is
+        :meth:`resume`."""
         if self.animation is None:
             self.set_animation(None)
         self._reset_slots()
@@ -544,12 +546,16 @@ class SSInternalPlayer:
                     pass
 
     def pause(self) -> None:
-        if self._rt and not self._rt.is_pausing:
+        # The Brain's pause is one-way and idempotent, and ignores a request
+        # made while nothing is playing, so this needs no guard of its own.
+        if self._rt:
             self._rt.pause()
 
     def resume(self) -> None:
-        if self._rt and self._rt.is_pausing:
-            self._rt.pause()
+        # Lifting the hold is `resume`, not a second `pause`: the Brain stopped
+        # toggling. `play` would head out and lose the playhead.
+        if self._rt:
+            self._rt.resume()
 
     def stop(self) -> None:
         # A *commanded* stop is not a natural end: the Brain's is_finished stays

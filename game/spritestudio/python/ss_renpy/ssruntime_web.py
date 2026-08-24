@@ -175,6 +175,9 @@ class _WebRuntime:
     def pause(self):
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].pause();")
 
+    def resume(self):
+        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].resume();")
+
     def stop(self):
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].stop();")
 
