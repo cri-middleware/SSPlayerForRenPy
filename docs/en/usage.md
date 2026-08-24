@@ -351,7 +351,7 @@ image boss = SSPlayer(
 - `on_started`: Called when animation playback starts
 
 > [!NOTE]
-> Callbacks are invoked from the drawing thread in the form `cb(player, ...)` (start/finish/loop forms are `cb(player)`). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
+> Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
 
 *Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `script.rpy` of the demo project.*
 
