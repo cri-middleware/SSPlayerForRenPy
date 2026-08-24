@@ -2890,15 +2890,16 @@ init -10 python:
                 # the stopped frame still has to reach the screen, so re-arm in
                 # case the loop had gone quiescent.
                 renpy.redraw(self, 0)
-            # Stopping the player also silences the audio it triggered (the sound
-            # is on independent channels, so it would otherwise keep playing).
-            self._stop_audio()
+            # The sound it started is deliberately left alone: what has begun
+            # sounding outlives the playback that triggered it, and SpriteStudio
+            # has no infinite loop, so it ends on its own. `ss_stop_audio()` is
+            # there for when you do want silence.
 
         def ss_stop_audio(self, fadeout=0.0):
             """Stop SS audio this player is currently sounding (SDK doc:
             40_components/90_audio.md). Called automatically on hide / scene
-            change and ss_stop(); call it directly to cut the sound early or
-            with a `fadeout` (seconds)."""
+            change; `ss_stop()` deliberately does not, so call this directly to
+            cut the sound early or with a `fadeout` (seconds)."""
             self._stop_audio(fadeout=fadeout)
 
         def ss_is_playing(self):
