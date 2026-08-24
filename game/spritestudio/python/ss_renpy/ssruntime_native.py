@@ -346,6 +346,8 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_play_with_start_frame.restype = None
     f.ss_runtime_pause.argtypes = [P]
     f.ss_runtime_pause.restype = None
+    f.ss_runtime_resume.argtypes = [P]
+    f.ss_runtime_resume.restype = None
     f.ss_runtime_stop.argtypes = [P]
     f.ss_runtime_stop.restype = None
     f.ss_runtime_set_frame_no.argtypes = [P, C.c_float]
@@ -671,7 +673,15 @@ class _NativeRuntime:
         return self
 
     def pause(self):
+        """Hold playback on the current frame. Idempotent, and ignored while
+        nothing is playing."""
         self._lib.ss_runtime_pause(self._ctx)
+
+    def resume(self):
+        """Lift a :meth:`pause`, carrying on from the same frame. Idempotent,
+        and a no-op on a stopped animation -- ``play`` heads out, so it cannot
+        serve as a resume."""
+        self._lib.ss_runtime_resume(self._ctx)
 
     def stop(self):
         self._lib.ss_runtime_stop(self._ctx)
