@@ -558,6 +558,8 @@ class SSInternalPlayer:
             self._rt.resume()
 
     def stop(self) -> None:
+        # Nothing rewinds: the playhead stays where it stands, so the host keeps
+        # drawing the frame it stopped on. `play` is what heads out again.
         # A *commanded* stop is not a natural end: the Brain's is_finished stays
         # false for it (only a self-exhausted loop count trips it), so the host
         # never mistakes a commanded stop() for a completion.

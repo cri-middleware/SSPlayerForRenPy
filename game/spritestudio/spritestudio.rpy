@@ -2886,8 +2886,9 @@ init -10 python:
         def ss_stop(self):
             if self._core:
                 self._core.stop()
-                # stop() may jump the head (e.g. back to the start frame); re-arm
-                # so the change is shown even if the loop had gone quiescent.
+                # stop() does not rewind -- the head stays where it stands -- but
+                # the stopped frame still has to reach the screen, so re-arm in
+                # case the loop had gone quiescent.
                 renpy.redraw(self, 0)
             # Stopping the player also silences the audio it triggered (the sound
             # is on independent channels, so it would otherwise keep playing).
