@@ -1532,14 +1532,9 @@ init -10 python:
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
 
-            # Re-apply the playback modes onto the fresh core BEFORE any
-            # set_animation below: the core tracks them itself from here on and
-            # re-applies them after each setup_animation. A save written before
-            # these existed restores a __dict__ without them, hence getattr.
-            _dir = getattr(self, "_playback_direction", 0)
-            _sty = getattr(self, "_playback_style", 0)
-            if _dir or _sty:
-                self._core.set_playback_direction(_dir, _sty)
+            # Frame skipping survives setup_animation, so it can go on now. The
+            # playback modes cannot: set_animation resets them, so they are
+            # applied after the restore below instead (_apply_playback_modes).
             if not getattr(self, "_frame_skip", True):
                 self._core.set_skip_frames(False)
 
@@ -1592,6 +1587,10 @@ init -10 python:
             else:
                 self._start_initial()
 
+            # Ren'Py drops the native core on pickling and rebuilds it with the
+            # runtime defaults, so a reverse / ping-pong sprite needs its modes
+            # put back. AFTER the set_animation above, which resets them.
+            self._apply_playback_modes()
             # Restore the per-part overrides the game had set before this core
             # was dropped (save/load, rollback, re-show). Runs AFTER
             # _start_initial / the saved-state restore: setup_animation clears the
@@ -1888,6 +1887,8 @@ init -10 python:
                 cand = self._anim_queue.pop(0)
                 core.set_loop(1 if self._anim_queue else self._initial_loop)
                 if core.set_animation(cand):
+                    # One playback continuing across clips, so the modes carry.
+                    self._apply_playback_modes()
                     core.play()
                     # As in ss_set_animation: the Brain dropped visibility +
                     # non-Permanent overrides, so drop them from the record too.
@@ -2945,6 +2946,24 @@ init -10 python:
             if self._core:
                 self._core.set_section(start, end)
                 renpy.redraw(self, 0)
+
+        def _apply_playback_modes(self):
+            """Push the recorded direction / ping-pong style onto the core.
+
+            Only for the two cases where an animation switch is not the game
+            switching animation: a rollback restore, and a sequence advance. A
+            plain ss_set_animation() deliberately does not carry them -- setup
+            resets the modes in every Player, and one caller's "play backwards"
+            leaking into an unrelated animation is the surprise that buys.
+            A save written before these existed restores a __dict__ without
+            them, hence getattr.
+            """
+            if not self._core:
+                return
+            _dir = getattr(self, "_playback_direction", 0)
+            _sty = getattr(self, "_playback_style", 0)
+            if _dir or _sty:
+                self._core.set_playback_direction(_dir, _sty)
 
         def ss_set_playback_direction(self, direction, style=0):
             """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
