@@ -412,21 +412,22 @@ class SSInternalPlayer:
         if not self._rt.setup_animation(name):
             return False
         self.animation = name
-        # setup_animation resets loop/speed to defaults — re-apply ours.
+        # The loop count is per-transition, so re-apply ours. Speed and frame
+        # skipping survive setup_animation on their own (SDK #369 / #370); they
+        # are pushed anyway, because this is the one place a value set before the
+        # first setup is guaranteed to reach the Brain.
         self._rt.set_loop(self.loop)
         if self.speed != 1.0:
             self._rt.set_animation_speed(self.speed)
-        # ...and playback direction / ping-pong (also reset by setup_animation):
-        # re-apply when non-default so a reverse / ping-pong mode survives an
-        # animation switch — including host sequence chaining, which calls
-        # set_animation for each queued clip — mirroring how loop/speed persist.
-        # (Section is intentionally NOT carried: it is a per-animation frame
-        # range, meaningless against a different clip.)
-        if self._direction or self._style:
-            self._rt.set_playback_direction(self._direction, self._style)
-        # ...and frame skipping, which setup_animation turns back on.
         if not self._skip_frames:
             self._rt.set_skip_frames(False)
+        # NOT carried: the playback direction / ping-pong style, and the section.
+        # Both reset with the rest of the per-transition state, as they do in
+        # every other Player — call set_playback_direction() again if the new
+        # clip should also run backwards. (A section is a range of frame numbers
+        # and means nothing against a different clip in any case.) The host layer
+        # re-applies the modes where a switch is not a switch: a rollback restore
+        # and a sequence advance are one playback continuing.
         # Timeline events are per-animation; rebuild the resolver.
         if self._enable_events:
             try:
