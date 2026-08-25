@@ -1297,6 +1297,7 @@ init -10 python:
             # head, a second SS animation linked to a bone). Stored as a list of
             # plain records
             #   {"part": name, "child": displayable,
+            #    "drive_position": bool, "drive_rotation": bool,
             #    "drive_scale": bool, "on_hide": "follow"|"hide"}
             # so several children can ride one part and the whole list pickles
             # with the displayable (child displayables are picklable). The
@@ -2020,11 +2021,15 @@ init -10 python:
                         # Part rotation plus the child's fixed rest offset; both
                         # the Transform wrap and the anchor math below use this
                         # total, so the anchor rides the offset child too.
-                        _ang = _t["rotation"] + _rec["angle"]
+                        # Each axis is opt-out: a disabled one contributes its
+                        # identity, so the child keeps its own value for it.
+                        _ang = (_t["rotation"] if _rec["drive_rotation"] else 0.0) \
+                            + _rec["angle"]
                         _sx, _sy = (_t["xscale"], _t["yscale"]) \
                             if _rec["drive_scale"] else (1.0, 1.0)
                         _ax, _ay = _rec["anchor"]
-                        _tx, _ty = ox + _t["x"], oy + _t["y"]
+                        _tx, _ty = (ox + _t["x"], oy + _t["y"]) \
+                            if _rec["drive_position"] else (ox, oy)
                         if abs(_ang) < 1e-3 and abs(_sx - 1.0) < 1e-3 \
                                 and abs(_sy - 1.0) < 1e-3:
                             # Pure translation: pin the anchor point directly.
@@ -3126,6 +3131,8 @@ init -10 python:
                 if isinstance(val, dict):          # a record (from _duplicate)
                     out.append({"part": val["part"],
                                 "child": renpy.displayable(val["child"]),
+                                "drive_position": bool(val.get("drive_position", True)),
+                                "drive_rotation": bool(val.get("drive_rotation", True)),
                                 "drive_scale": bool(val.get("drive_scale", False)),
                                 "on_hide": val.get("on_hide", "follow"),
                                 "anchor": val.get("anchor", (0.5, 0.5)),
@@ -3133,6 +3140,7 @@ init -10 python:
                 else:                              # {part_name: child}
                     out.append({"part": part,
                                 "child": renpy.displayable(val),
+                                "drive_position": True, "drive_rotation": True,
                                 "drive_scale": False, "on_hide": "follow",
                                 "anchor": (0.5, 0.5), "angle": 0.0})
             return out
@@ -3163,12 +3171,19 @@ init -10 python:
             renpy.redraw(self, 0)
 
         def ss_attach(self, part, child, drive_scale=False, on_hide="follow",
-                      anchor=(0.5, 0.5), angle=0.0):
+                      anchor=(0.5, 0.5), angle=0.0,
+                      drive_position=True, drive_rotation=True):
             """Pin ``child`` to ``part``; returns the normalised child.
 
             ``part`` is a part name (need not exist yet — a child rides it once
             the part appears). ``child`` is any displayable (image name,
-            "file.png", Transform(...), another SSPlayer). ``drive_scale`` also
+            "file.png", Transform(...), another SSPlayer).
+
+            ``drive_position`` and ``drive_rotation`` are on by default and
+            ``drive_scale`` is off, matching the sibling players: a follower is
+            placed *at* the part rather than *sized by* it. A disabled axis
+            contributes its identity, so the child keeps its own value for it.
+            ``drive_scale`` also
             matches the part's scale (position + rotation always apply).
             ``on_hide``: "follow" keeps drawing while the part is hidden, "hide"
             drops the child that frame. ``anchor=(ax, ay)`` is the child point
@@ -3182,6 +3197,8 @@ init -10 python:
             child = renpy.displayable(child)
             anchor = (float(anchor[0]), float(anchor[1]))
             self._attach_list().append({"part": part, "child": child,
+                                        "drive_position": bool(drive_position),
+                                        "drive_rotation": bool(drive_rotation),
                                         "drive_scale": bool(drive_scale),
                                         "on_hide": on_hide, "anchor": anchor,
                                         "angle": float(angle)})
