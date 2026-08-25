@@ -8,7 +8,6 @@
 
 > [!WARNING]
 > - **Text / NineSlice パーツ** — 描画されません（空表示になります）。
-> - **アニメーションのブレンド / ミキシング** — アニメーション間のクロスフェードや重み付き合成。
 > - **Instance / Effect パーツ内の入れ子タイムラインイベント** — ルートアニメーションの UserData / Signal / Audio のみ対応。
 
 ## 部分的にサポート (Partially Supported)
