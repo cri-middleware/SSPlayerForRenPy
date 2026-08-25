@@ -223,6 +223,11 @@ class _WebRuntime:
         return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_frame_no().toString()"))
 
     @property
+    def animation_speed(self) -> float:
+        """See :attr:`ss_renpy.ssruntime_native.SSRuntime.animation_speed`."""
+        return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_animation_speed().toString()"))
+
+    @property
     def is_playing(self) -> bool:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_playing() ? 1 : 0") == 1
 
