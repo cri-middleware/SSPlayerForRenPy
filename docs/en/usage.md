@@ -160,7 +160,9 @@ image ringo = SSPlayer(
 | **child** | The displayable to make follow |
 | **anchor** | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot |
 | **angle** | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part's local axis |
-| **drive_scale** | When ON, the part's scale is also reflected. OFF (default) is position and rotation only |
+| **drive_position** | Reflect the part's position. On by default |
+| **drive_rotation** | Reflect the part's rotation. On by default |
+| **drive_scale** | Reflect the part's scale as well. **Off by default** — a follower is placed *at* the part, not sized by it |
 | **on_hide** | Behavior on frames where the part is hidden. `"follow"` (keep drawing; default) / `"hide"` (drop the child for those frames) |
 
 ### Registering from a Script
@@ -182,7 +184,7 @@ $ ringo.ss_clear_attachments()
 
 | Method | Description |
 |---|---|
-| `ss_attach(part, child, drive_scale, on_hide, anchor, angle)` | Adds an attachment and returns the normalized child (pass it back to `ss_detach`) |
+| `ss_attach(part, child, drive_scale, on_hide, anchor, angle, drive_position, drive_rotation)` | Adds an attachment and returns the normalized child (pass it back to `ss_detach`) |
 | `ss_detach(child=None, part=None)` | Removes every attachment matching that child and / or part, and returns the number removed. With neither given it removes nothing |
 | `ss_clear_attachments()` | Removes every attachment and returns the number removed |
 | `ss_attachments()` | The current attachments as `(part_name, child)` pairs |

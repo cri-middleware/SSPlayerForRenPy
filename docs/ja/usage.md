@@ -160,7 +160,9 @@ image ringo = SSPlayer(
 | **child** | 追従させる表示物 |
 | **anchor** | 子のどの点をパーツに合わせるか。子のサイズに対する 0〜1 の割合で指定します。`(0.5, 0.5)` で中心（既定）、`(0.5, 1.0)` なら下端がパーツ位置に来ます（持ち物の握り）。回転・拡縮の基準点も兼ねます |
 | **angle** | パーツ自身の回転に加算する固定の回転オフセット（度、時計回りが正）。子の基準の向きをパーツのローカル軸に合わせるために使います |
-| **drive_scale** | ON でパーツの拡縮も反映。OFF（既定）は位置と回転のみです |
+| **drive_position** | パーツの位置を反映するか。既定 ON |
+| **drive_rotation** | パーツの回転を反映するか。既定 ON |
+| **drive_scale** | パーツの拡縮も反映するか。**既定 OFF** — 追従対象はパーツの位置に置くもので、パーツに大きさを決めさせるものではありません |
 | **on_hide** | パーツが hide のフレームでの挙動。`"follow"`（描画を継続。既定）/ `"hide"`（そのフレームは子を消す） |
 
 ### スクリプトからの登録
@@ -182,7 +184,7 @@ $ ringo.ss_clear_attachments()
 
 | メソッド | 説明 |
 |---|---|
-| `ss_attach(part, child, drive_scale, on_hide, anchor, angle)` | 追従を追加し、正規化された子を返す（`ss_detach` にそのまま渡せます） |
+| `ss_attach(part, child, drive_scale, on_hide, anchor, angle, drive_position, drive_rotation)` | 追従を追加し、正規化された子を返す（`ss_detach` にそのまま渡せます） |
 | `ss_detach(child=None, part=None)` | その子 / そのパーツに一致する追従をすべて削除し、削除件数を返す。両方を省略した場合は何も削除しません |
 | `ss_clear_attachments()` | すべての追従を削除し、削除件数を返す |
 | `ss_attachments()` | 現在の追従を `(パーツ名, 子)` の組で取得 |
