@@ -3038,8 +3038,13 @@ init -10 python:
             return self._core.part_transform(name) if self._core else None
 
         def ss_is_part_hidden(self, name):
-            """Whether ``name`` is hidden on the last rendered frame."""
-            return self._core.is_part_hidden(name) if self._core else True
+            """Whether ``name`` is hidden on the last rendered frame.
+
+            False for an unknown part, and False before anything has been
+            rendered — "not hidden", as the sibling Players answer it. Ask
+            `ss_part_index()` (-1) whether the part exists at all.
+            """
+            return self._core.is_part_hidden(name) if self._core else False
 
         # -- part attachments ----------------------------------------------
         # Pin a displayable to a part's live transform: every frame it is drawn

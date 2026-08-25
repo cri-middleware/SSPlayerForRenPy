@@ -747,9 +747,18 @@ class SSInternalPlayer:
         }
 
     def is_part_hidden(self, name: str) -> bool:
+        """Whether ``name`` was hidden on the last rendered frame.
+
+        ``False`` for a part this pack does not have, and ``False`` before the
+        first :meth:`update` has produced a frame — "not hidden", the same
+        answer the sibling Players give (ForFlutter's ``isPartHidden``,
+        ForGodot's ``is_part_hidden``). Answering ``True`` there reads as "this
+        part is hidden" and sends a caller down the branch for a part that does
+        not exist; use :meth:`part_index` (``-1``) to ask whether it does.
+        """
         i = self.part_index(name)
         if i < 0 or self._last_hidden is None:
-            return True
+            return False
         return i in self._last_hidden
 
     # -- part overrides -------------------------------------------------
