@@ -127,7 +127,7 @@ def render(path, anim, frame, out, use_mask=True, bg="808080"):
                           base_dir=os.path.relpath(base, _GAME).replace("\\", "/"))
     a0 = anim or meta.animation_names()[0]
     pl.set_animation(a0)
-    pl.set_loop(-1)
+    pl.set_loop_count(-1)
     pl.play()
     plan = None
     fps = pl.fps or 30

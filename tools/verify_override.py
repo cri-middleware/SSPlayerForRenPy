@@ -130,9 +130,9 @@ def check_visibility() -> bool:
     try:
         p.set_animation("wait1")
         p.play()
-        i_parent = p.part_index(_PARENT)
-        i_normal = p.part_index(_NORMAL)
-        i_child = p.part_index(_CHILD)
+        i_parent = p.find_part_index(_PARENT)
+        i_normal = p.find_part_index(_NORMAL)
+        i_child = p.find_part_index(_CHILD)
 
         # Baseline: the chain draws.
         base = _step(p, 2)
@@ -191,7 +191,7 @@ def check_color() -> bool:
     try:
         p.set_animation("wait1")
         p.play()
-        idx = p.part_index(_NORMAL)
+        idx = p.find_part_index(_NORMAL)
         base = _step(p, 2)
         if _mesh(base, idx) is None:
             print(f"    SKIP: {_NORMAL!r} does not draw in 'wait1'"); return True
@@ -247,7 +247,7 @@ def check_color() -> bool:
 
         # A Mesh part is not Normal: SS6 restricts PartsColorChange to NORMAL,
         # so the call succeeds and the Brain simply does not apply it.
-        i_mesh = p.part_index(_MESH)
+        i_mesh = p.find_part_index(_MESH)
         before = _mesh(_step(p, 2), i_mesh)
         if not p.set_part_color_override(_MESH, (255, 0, 0),
                                          blend_op=ssruntime.BLEND_MUL):
@@ -273,7 +273,7 @@ def check_cell() -> bool:
     try:
         p.set_animation("wait1")
         p.play()
-        idx = p.part_index(_NORMAL)
+        idx = p.find_part_index(_NORMAL)
 
         maps = p.cellmap_names()
         if not maps:
@@ -333,7 +333,7 @@ def check_priority_lifecycle() -> bool:
         print("    SKIP (Ringo not found)"); return True
     ok = True
     try:
-        idx = p.part_index(_NORMAL)
+        idx = p.find_part_index(_NORMAL)
 
         def tinted_after_switch(priority):
             """Set a red Mul override, switch animation, report if it survived."""

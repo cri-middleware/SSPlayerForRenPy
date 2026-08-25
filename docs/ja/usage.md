@@ -131,8 +131,9 @@ $ player.ss_play("run")
 
 - **切り替えと再生の分離**: `ss_set_animation("run")` はアニメーションを切り替えてポーズ（頭出し）するだけで、再生は開始しません。`ss_play()` で再生を開始します。
 - **切り替えは軽い処理です**: テクスチャなど `.ssab` に必要なリソースは初回表示時にまとめて読み込まれるので、`ss_set_animation()` は毎フレーム呼んでも問題ない軽さです（アニメーション単位の読み込みは発生しません）。
-- **再生制御**: `ss_pause()` / `ss_resume()` / `ss_stop()`（再生ヘッドは **その場に留まり**、`ss_stop()` では巻き戻りません。先頭に戻すのは `ss_play()` です）、フレーム操作 `ss_set_frame()` / `ss_get_frame()`、速度 `ss_set_speed()`、ループ `ss_set_loop()` などが利用できます。
-- **再生方向**: `ss_set_playback_direction(direction, style)` で逆再生（`direction=1`）や往復再生（`style=1`）に切り替えられます。現在の設定は `ss_get_playback_direction()` / `ss_get_playback_style()` で取得できます（往復再生の戻り区間でも、返るのは「設定値」であって進行方向ではありません）。
+- **再生制御**: `ss_pause()` / `ss_resume()` / `ss_stop()`（再生ヘッドは **その場に留まり**、`ss_stop()` では巻き戻りません。先頭に戻すのは `ss_play()` です）、フレーム操作 `ss_set_frame()` / `ss_get_frame()`、速度 `ss_set_speed_scale()`、ループ `ss_set_loop_count()` などが利用できます。
+- **再生方向**: `ss_set_playback_direction(direction, style)` で逆再生（`direction=1`）や往復再生（`style=1`）に切り替えられます。現在の設定は `ss_get_playback_direction()` / `ss_get_playback_style()` で取得できます（往復再生の戻り区間でも、返るのは「設定値」であって進行方向ではありません）。実際の進行方向は `ss_is_playing_forward()` です — **音声はこれでゲートしてください**。逆再生音声は無いため、後ろ向きの脚で跨いだサウンドキーは鳴らすべきものではなく、これはこのプレイヤー自身が掛けている判定と同じものです。
+- **ループ跨ぎ**: `ss_just_looped()` は直近の update でループ境界を跨いだかどうかを返します。**パルス**であって状態ではないため、跨いだ tick の内側でのみ `True` です（だから `ss_is_looped` ではありません。1 tick 遅れて読むと `False` になります）。
 - **フレームスキップ**: 既定は**オン**で、処理が詰まった直後は先のフレームへ追いついて時間どおりに再生します（2秒のアニメは常に2秒）。`ss_set_frame_skip_enabled(False)` にすると1描画につき1フレームずつ進み、フレームを飛ばさない代わりに引き伸ばされます。1コマも飛ばしたくない短いエフェクトなどで使ってください。コンストラクタの `frame_skip=False` でも指定できます。
 - **パーツ照会**: `ss_part_transform("part名")` で直近フレームのパーツのローカル変換（x/y/回転/スケール）を取得できます。パーツ照会 API の全体と、表示物をパーツに追従させる方法は下の **パーツトラッキング**（§5）を参照。
 
@@ -185,7 +186,7 @@ $ ringo.ss_clear_attachments()
 | `ss_detach(child=None, part=None)` | その子 / そのパーツに一致する追従をすべて削除し、削除件数を返す。両方を省略した場合は何も削除しません |
 | `ss_clear_attachments()` | すべての追従を削除し、削除件数を返す |
 | `ss_attachments()` | 現在の追従を `(パーツ名, 子)` の組で取得 |
-| `ss_part_names()` / `ss_part_index(part_name)` | パックのパーツ名一覧 / パーツインデックス（アセットに無ければ `-1`） |
+| `ss_part_names()` / `ss_find_part_index(part_name)` | パックのパーツ名一覧 / パーツインデックス（アセットに無ければ `-1`） |
 | `ss_is_part_hidden(part_name)` | そのパーツが直近の描画フレームで hide かを取得 |
 | `ss_part_transform(part_name)` | そのパーツの直近の描画フレームの変換を取得（無ければ `None`） |
 
@@ -261,7 +262,7 @@ $ ringo.ss_clear_all_part_overrides()
 
 | メソッド | 説明 |
 |---|---|
-| `ss_part_index(part_name)` | パーツインデックス。アセットに無ければ `-1` |
+| `ss_find_part_index(part_name)` | パーツインデックス。アセットに無ければ `-1` |
 | `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | パーツカラーオーバーライド（単色） |
 | `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | 四隅指定版（左上・右上・左下・右下） |
 | `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | 別のセルで描画する |
@@ -281,7 +282,7 @@ $ print(ringo.ss_cellmap_names())       # → ["Ringo", ...]
 $ print(ringo.ss_cell_names("Ringo"))   # → ["effect3", ...]
 ```
 
-> **パーツインデックスの使い方について**: パーツインデックスは同一アセット（同じ `.ssab`）内では安定しているので、頻繁にオーバーライドするなら `ss_part_index()` で一度パーツ名をパーツインデックスに解決して、そのインデックスを使い回すことを推奨します。
+> **パーツインデックスの使い方について**: パーツインデックスは同一アセット（同じ `.ssab`）内では安定しているので、頻繁にオーバーライドするなら `ss_find_part_index()` で一度パーツ名をパーツインデックスに解決して、そのインデックスを使い回すことを推奨します。
 
 ### 合成モード（blend_op）
 
