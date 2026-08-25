@@ -1740,17 +1740,16 @@ init -10 python:
             """Play one SS Audio timeline event (SDK doc:
             40_components/90_audio.md). Never raises.
 
-            Forward-only: skip when the effective direction is backward — the
-            runtime's is_playing_forward (direction + ping-pong leg) XOR a
-            negative speed (most decoders can't play audio in reverse; SDK doc:
-            10_introduction/20_limitations.md).
+            Forward-only: skip when the head is walking backward (the runtime's
+            is_playing_forward, which already accounts for the direction and the
+            ping-pong leg), because most decoders cannot play audio in reverse
+            (SDK doc: 10_introduction/20_limitations.md). The *speed* has no say
+            in it: the Brain clamps a negative rate to a stop rather than to
+            reverse playback, so nothing advances and no event reaches here.
             ``loop_num`` is a *play count* (SS has no infinite loop), realised by
             queueing the file that many times on the channel."""
             try:
-                forward = self._core.is_playing_forward()
-                if self.speed < 0:
-                    forward = not forward
-                if not forward:
+                if not self._core.is_playing_forward():
                     return
                 path = self._audio_full_path(audio.file_path)
                 if not path:
@@ -2927,12 +2926,28 @@ init -10 python:
             return self._core.end_frame if self._core else 0
 
         def ss_set_speed(self, speed):
+            """Scale playback by ``speed``, a multiple of the frame rate.
+
+            `0` and negatives are a **stop**, not reverse playback — reverse is
+            `ss_set_playback_direction(1)`. `self.speed` keeps what was asked
+            for because Ren'Py drops the native core on pickling and it has to
+            be replayed onto the rebuilt one.
+            """
             self.speed = speed
             if self._core:
                 self._core.set_speed(speed)
 
         def ss_get_speed(self):
-            return self.speed
+            """The speed in effect — read from the core, not from the request.
+
+            The two part company the moment `0` or a negative is passed, since
+            the Brain clamps those to a stop: `ss_set_speed(-1)` then reads back
+            `0.0`, so a caller can tell that its negative became a stop rather
+            than the reverse playback it may have been hoping for. Falls back to
+            the requested value only before the core exists (or after a save
+            dropped it).
+            """
+            return self._core.animation_speed if self._core else self.speed
 
         def ss_set_loop(self, count):
             self.loop = count

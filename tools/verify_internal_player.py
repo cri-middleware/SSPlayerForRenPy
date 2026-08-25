@@ -262,6 +262,28 @@ def check_playback_modes(lib) -> bool:
     finally:
         p.close()
 
+    # animation_speed reports what the Brain STORED, which is not always what it
+    # was handed: a zero or negative rate clamps to a stop there (reverse is
+    # set_playback_direction's business), so a host can tell that its negative
+    # became a stop. `speed` keeps the request, for the host layer to replay.
+    print("### speed  the effective rate, not the requested one")
+    p = mk()
+    try:
+        p.set_animation(p.animation_names()[0])
+        for asked, effective in ((0.5, 0.5), (2.0, 2.0), (0.0, 0.0), (-1.0, 0.0)):
+            p.set_speed(asked)
+            if abs(p.animation_speed - effective) > 1e-6:
+                print(f"    FAIL: set_speed({asked}) reads back "
+                      f"{p.animation_speed}, want {effective}")
+                ok = False
+            if p.speed != asked:
+                print(f"    FAIL: speed lost the request {asked}: {p.speed}")
+                ok = False
+        print("    0.5/2.0 as asked; 0.0 and -1.0 both read back 0.0  -> "
+              + ("PASS" if ok else "FAIL"))
+    finally:
+        p.close()
+
     # One update long enough to cover the whole animation: Timed follows the
     # clock, Fixed advances a single frame.
     heads = {}

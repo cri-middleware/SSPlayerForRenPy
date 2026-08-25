@@ -368,6 +368,8 @@ def _declare(lib: C.CDLL) -> None:
     # state getters
     f.ss_runtime_get_frame_no.argtypes = [P]
     f.ss_runtime_get_frame_no.restype = C.c_float
+    f.ss_runtime_get_animation_speed.argtypes = [P]
+    f.ss_runtime_get_animation_speed.restype = C.c_float
     for name in ("ss_runtime_is_looped", "ss_runtime_is_playing",
                  "ss_runtime_is_pausing"):
         fn = getattr(f, name)
@@ -751,6 +753,17 @@ class _NativeRuntime:
     @property
     def frame_no(self) -> float:
         return self._lib.ss_runtime_get_frame_no(self._ctx)
+
+    @property
+    def animation_speed(self) -> float:
+        """The speed in effect, as a multiple of :attr:`fps`.
+
+        What ``set_animation_speed`` *stored*, not what it was handed: a zero or
+        negative rate clamps to ``0.0`` (a stop -- reverse playback is
+        ``set_playback_direction``'s business), so a host reading this back sees
+        the stop it actually got instead of assuming it got reverse playback.
+        """
+        return self._lib.ss_runtime_get_animation_speed(self._ctx)
 
     @property
     def is_playing(self) -> bool:

@@ -194,14 +194,15 @@ class SSInternalPlayer:
         self.animation: Optional[str] = None
         self.loop = -1
         self.speed = 1.0
-        # Playback direction / ping-pong persist across set_animation like
-        # loop/speed: setup_animation resets them to forward/normal, so we track
-        # them here and re-apply. 0 = forward, 1 = reverse;
-        # style 0 = normal, 1 = ping-pong.
+        # Playback direction / ping-pong (0 = forward, 1 = reverse; style
+        # 0 = normal, 1 = ping-pong) and frame skipping. The Brain keeps all
+        # three across setup_animation on its own (SDK #369 / #370 / #375) --
+        # they describe the playback, not the clip -- so nothing here re-applies
+        # them. They are mirrored only so the getters below can answer before a
+        # runtime exists, and so set_playback_direction works whether it is
+        # called before or after the first set_animation.
         self._direction = 0
         self._style = 0
-        # Frame skipping (on = the runtime's own default): also reset by
-        # setup_animation, so tracked and re-applied the same way.
         self._skip_frames = True
 
         # rigs (built at the end of construction) / events (per-animation, built
@@ -352,6 +353,19 @@ class SSInternalPlayer:
     def skip_frames(self) -> bool:
         """Whether frame skipping is on; see :meth:`set_skip_frames`."""
         return self._rt.skip_frames if self._rt else self._skip_frames
+
+    @property
+    def animation_speed(self) -> float:
+        """The speed in effect, as a multiple of :attr:`fps`.
+
+        Read from the Brain, not from :attr:`speed` (the value that was last
+        *requested*): a zero or negative rate is clamped to ``0.0`` there -- a
+        stop, since reverse playback is
+        :meth:`set_playback_direction`'s business -- so the request and the
+        effect part company the moment either is passed. The Player-facing
+        getter reports the effect (SDK doc: 30_core/20_playback_control.md).
+        """
+        return self._rt.animation_speed if self._rt else self.speed
 
     @property
     def frame_no(self) -> float:
@@ -570,6 +584,13 @@ class SSInternalPlayer:
             self._rt.set_loop(count)
 
     def set_speed(self, speed: float) -> None:
+        """Scale playback by ``speed``, a multiple of :attr:`fps`.
+
+        ``0.0`` and negatives are a **stop** in the Brain, not reverse playback
+        (that is :meth:`set_playback_direction`); read :attr:`animation_speed`
+        to see the value that took effect. :attr:`speed` keeps what was asked
+        for, because the host layer replays it onto a rebuilt core.
+        """
         self.speed = speed
         if self._rt:
             self._rt.set_animation_speed(speed)
