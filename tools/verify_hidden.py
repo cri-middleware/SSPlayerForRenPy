@@ -74,7 +74,7 @@ def check(lib, path: str) -> bool:
             print(f"    FAIL: expected instance part {nm!r} not in pack"); p.close(); return False
         watch[by_name[nm]] = nm
 
-    p.set_loop(0)   # infinite: keep the head playing across the hide window
+    p.set_loop_count(0)   # infinite: keep the head playing across the hide window
     p.play()
 
     # Instrument: record, per tick, which top-level instance slots got stepped.

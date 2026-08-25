@@ -131,8 +131,9 @@ $ player.ss_play("run")
 
 - **Separation of Switching and Playback**: `ss_set_animation("run")` only switches to the animation and cues it; it does not start playing. `ss_play()` starts the playback.
 - **Switching is cheap**: everything the `.ssab` needs — textures included — is loaded in one go when the sprite is first shown, so `ss_set_animation()` is light enough to call every frame (there is no per-animation loading).
-- **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()` (the playhead **stays where it stands** — `ss_stop()` does not rewind; `ss_play()` is what returns to the head), frame control `ss_set_frame()` / `ss_get_frame()`, speed `ss_set_speed()`, and looping `ss_set_loop()` are available.
-- **Playback Direction**: `ss_set_playback_direction(direction, style)` switches to reverse (`direction=1`) or ping-pong (`style=1`) playback. Read the current setting back with `ss_get_playback_direction()` / `ss_get_playback_style()` — these report the *setting*, not the instantaneous heading, so a ping-pong return leg still reads forward.
+- **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()` (the playhead **stays where it stands** — `ss_stop()` does not rewind; `ss_play()` is what returns to the head), frame control `ss_set_frame()` / `ss_get_frame()`, speed `ss_set_speed_scale()`, and looping `ss_set_loop_count()` are available.
+- **Playback Direction**: `ss_set_playback_direction(direction, style)` switches to reverse (`direction=1`) or ping-pong (`style=1`) playback. Read the current setting back with `ss_get_playback_direction()` / `ss_get_playback_style()` — these report the *setting*, not the instantaneous heading, so a ping-pong return leg still reads forward. `ss_is_playing_forward()` is the actual heading — **gate audio on it**: SpriteStudio has no reverse audio, so a sound key crossed on a backward leg is not meant to sound, and it is the test this player applies itself.
+- **Loop boundary**: `ss_just_looped()` reports whether the last update crossed one. A **pulse**, not a state — true only inside the tick that crossed, which is why it is not `ss_is_looped`, and why reading it a tick late reads false.
 - **Frame Skip**: on by default, so playback follows the clock — after a stall it catches up by skipping ahead, and a 2-second animation always takes 2 seconds. `ss_set_frame_skip_enabled(False)` advances exactly one frame per rendered frame instead: nothing is skipped, and a stall stretches the animation. Use it when every frame must be seen (a short effect, a frame-counted cutscene). Also available as the constructor argument `frame_skip=False`.
 - **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame. For the whole part-query set, and for making a displayable follow a part, see the **Part Tracking** section (§5) below.
 
@@ -185,7 +186,7 @@ $ ringo.ss_clear_attachments()
 | `ss_detach(child=None, part=None)` | Removes every attachment matching that child and / or part, and returns the number removed. With neither given it removes nothing |
 | `ss_clear_attachments()` | Removes every attachment and returns the number removed |
 | `ss_attachments()` | The current attachments as `(part_name, child)` pairs |
-| `ss_part_names()` / `ss_part_index(part_name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
+| `ss_part_names()` / `ss_find_part_index(part_name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
 | `ss_is_part_hidden(part_name)` | Whether the part is hidden on the last rendered frame |
 | `ss_part_transform(part_name)` | The part's transform for the last rendered frame, or `None` |
 
@@ -261,7 +262,7 @@ $ ringo.ss_clear_all_part_overrides()
 
 | Method | Description |
 |---|---|
-| `ss_part_index(part_name)` | Part index, or `-1` if the part is not in the asset |
+| `ss_find_part_index(part_name)` | Part index, or `-1` if the part is not in the asset |
 | `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | Part Color override (single color) |
 | `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | Four-corner form: left-top, right-top, left-bottom, right-bottom |
 | `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | Draw a different cell |
@@ -281,7 +282,7 @@ $ print(ringo.ss_cellmap_names())       # -> ["Ringo", ...]
 $ print(ringo.ss_cell_names("Ringo"))   # -> ["effect3", ...]
 ```
 
-> **On using part indices**: Part indices are stable within one asset (the same `.ssab`), so if you set overrides frequently, resolve the name once with `ss_part_index()` and reuse that index.
+> **On using part indices**: Part indices are stable within one asset (the same `.ssab`), so if you set overrides frequently, resolve the name once with `ss_find_part_index()` and reuse that index.
 
 ### Blend operation (`blend_op`)
 

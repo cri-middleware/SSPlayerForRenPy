@@ -172,7 +172,7 @@ def check_loop_counts(lib) -> bool:
                              resource_manager=RecordingResourceManager(),
                              pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
         try:
-            p.set_loop(loop)
+            p.set_loop_count(loop)
             p.set_animation("attack1")
             p.play()
             dt_ms = 1000.0 / (p.fps or 30)
@@ -206,7 +206,7 @@ def check_loop_counts(lib) -> bool:
                          resource_manager=RecordingResourceManager(),
                          pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
     try:
-        p.set_loop(3)
+        p.set_loop_count(3)
         p.set_animation("attack1")
         p.play()
         dt_ms = 1000.0 / (p.fps or 30)
@@ -245,17 +245,17 @@ def check_playback_modes(lib) -> bool:
     ok = True
     p = mk()
     try:
-        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        got = (p.playback_direction, p.playback_style, p.frame_skip_enabled)
         if got != (0, 0, True):
             print(f"    FAIL: defaults are {got}, want (0, 0, True)"); ok = False
         p.set_playback_direction(1, 1)
-        p.set_skip_frames(False)
-        got = (p.playback_direction, p.playback_style, p.skip_frames)
+        p.set_frame_skip_enabled(False)
+        got = (p.playback_direction, p.playback_style, p.frame_skip_enabled)
         if got != (1, 1, False):
             print(f"    FAIL: after set they read {got}, want (1, 1, False)")
             ok = False
         p.set_animation(p.animation_names()[0])      # resets them in the Brain
-        after = (p.playback_direction, p.playback_style, p.skip_frames)
+        after = (p.playback_direction, p.playback_style, p.frame_skip_enabled)
         if after != (1, 1, False):
             print(f"    FAIL: set_animation lost them: {after}, want (1, 1, False)")
             ok = False
@@ -271,10 +271,10 @@ def check_playback_modes(lib) -> bool:
     try:
         p.set_animation(p.animation_names()[0])
         for asked, effective in ((0.5, 0.5), (2.0, 2.0), (0.0, 0.0), (-1.0, 0.0)):
-            p.set_speed(asked)
-            if abs(p.animation_speed - effective) > 1e-6:
+            p.set_speed_scale(asked)
+            if abs(p.speed_scale - effective) > 1e-6:
                 print(f"    FAIL: set_speed({asked}) reads back "
-                      f"{p.animation_speed}, want {effective}")
+                      f"{p.speed_scale}, want {effective}")
                 ok = False
             if p.speed != asked:
                 print(f"    FAIL: speed lost the request {asked}: {p.speed}")
@@ -290,9 +290,9 @@ def check_playback_modes(lib) -> bool:
     for skip in (True, False):
         q = mk()
         try:
-            q.set_skip_frames(skip)
+            q.set_frame_skip_enabled(skip)
             q.set_animation(q.animation_names()[0])
-            q.set_loop(1)
+            q.set_loop_count(1)
             q.play()
             span = max(1, q.total_frames - 1)
             heads[skip] = q.update(1000.0 / (q.fps or 30) * span).frame_no
@@ -323,7 +323,7 @@ def check_finished_edge(lib) -> bool:
                          resource_manager=RecordingResourceManager(),
                          pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
     print("### finished-edge  play 'attack1' once -> host advances to 'wait1'")
-    p.set_loop(1)            # play once so it finishes
+    p.set_loop_count(1)            # play once so it finishes
     p.set_animation("attack1")
     p.play()
     fps = p.fps or 30
@@ -337,7 +337,7 @@ def check_finished_edge(lib) -> bool:
             if plan.finished:
                 finished_seen = True
                 # Host policy (what SSPlayer.render does on plan.finished):
-                p.set_loop(-1)
+                p.set_loop_count(-1)
                 p.set_animation("wait1")
                 p.play()
                 nxt = p.update(dt_ms)            # the frame after the switch
@@ -383,7 +383,7 @@ def check_restore_state(lib) -> bool:
     print("### restore-state  a finished / paused player restores as it was")
     ok = True
     p = _new()
-    p.set_loop(1)
+    p.set_loop_count(1)
     p.set_animation("attack1")
     p.play()
     dt_ms = 1000.0 / (p.fps or 30)
@@ -403,7 +403,7 @@ def check_restore_state(lib) -> bool:
               f"is_playing=False, got {finished_state}/{still_playing}"); ok = False
 
     q = _new()                       # "stopped": seek only, never play()
-    q.set_loop(1)
+    q.set_loop_count(1)
     q.set_animation("attack1")
     q.set_frame(saved)
     first = q.update(0.0)
@@ -420,7 +420,7 @@ def check_restore_state(lib) -> bool:
               f"(playing={q_playing}, next frame={second.frame_no})"); ok = False
 
     r = _new()                       # "paused": play -> seek -> pause
-    r.set_loop(1)
+    r.set_loop_count(1)
     r.set_animation("attack1")
     r.play()
     r.set_frame(5.0)

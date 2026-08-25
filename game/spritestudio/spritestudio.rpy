@@ -1538,19 +1538,19 @@ init -10 python:
             # restore, since set_animation would otherwise be the thing carrying
             # a value that is not there yet).
             if not getattr(self, "_frame_skip", True):
-                self._core.set_skip_frames(False)
+                self._core.set_frame_skip_enabled(False)
 
             # If restoring from a saved state (e.g. after rollback unpickled this
             # instance), restore the exact animation and frame.
             if getattr(self, "_saved_frame", -1.0) >= 0.0:
                 core = self._core
-                core.set_speed(self.speed)
+                core.set_speed_scale(self.speed)
                 # Loop count: use the value the core actually last ran with
                 # (snapshotted each frame in render()). This preserves a runtime
-                # ss_set_loop / ss_play(loop=...) across rollback — mirroring how
+                # ss_set_loop_count / ss_play(loop=...) across rollback — mirroring how
                 # speed is carried above — and already encodes the sequence rule
                 # (1 for a mid-chain clip, the request for the final one).
-                core.set_loop(getattr(self, "_saved_loop", self._initial_loop))
+                core.set_loop_count(getattr(self, "_saved_loop", self._initial_loop))
                 anim = getattr(self, "animation", None)
                 if not anim:
                     anim = self._initial_animation
@@ -1612,17 +1612,17 @@ init -10 python:
             render(). This mirrors the SSPlayerForGodot node owning chaining over
             its SsInternalPlayer (the core itself has no notion of a queue)."""
             core = self._core
-            core.set_speed(self.speed)
+            core.set_speed_scale(self.speed)
             anim = self._initial_animation
             if isinstance(anim, (list, tuple)) and anim:
                 seq = list(anim)
                 first = seq.pop(0)
                 self._anim_queue = seq
-                core.set_loop(1 if seq else self._initial_loop)
+                core.set_loop_count(1 if seq else self._initial_loop)
                 ok = core.set_animation(first)
             else:
                 self._anim_queue = []
-                core.set_loop(self._initial_loop)
+                core.set_loop_count(self._initial_loop)
                 ok = core.set_animation(anim)   # anim may be None -> first available
             if not ok:
                 raise Exception(
@@ -1886,7 +1886,7 @@ init -10 python:
             original request for the final one."""
             while self._anim_queue:
                 cand = self._anim_queue.pop(0)
-                core.set_loop(1 if self._anim_queue else self._initial_loop)
+                core.set_loop_count(1 if self._anim_queue else self._initial_loop)
                 if core.set_animation(cand):
                     core.play()
                     # As in ss_set_animation: the Brain dropped visibility +
@@ -2840,7 +2840,7 @@ init -10 python:
             # cap `name` at a single play.
             self._anim_queue = []
             self.loop = self._initial_loop
-            self._core.set_loop(self._initial_loop)
+            self._core.set_loop_count(self._initial_loop)
             # setup_animation dropped the Brain's visibility + non-Permanent
             # overrides; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
@@ -2865,7 +2865,7 @@ init -10 python:
                 self.ss_set_animation(animation)
             if loop is not None:
                 self.loop = loop
-                self._core.set_loop(loop)
+                self._core.set_loop_count(loop)
             if start_frame is not None and start_frame >= 0:
                 self._core.play(start_frame=start_frame)
             else:
@@ -2925,7 +2925,7 @@ init -10 python:
         def ss_end_frame(self):
             return self._core.end_frame if self._core else 0
 
-        def ss_set_speed(self, speed):
+        def ss_set_speed_scale(self, speed):
             """Scale playback by ``speed``, a multiple of the frame rate.
 
             `0` and negatives are a **stop**, not reverse playback — reverse is
@@ -2935,31 +2935,31 @@ init -10 python:
             """
             self.speed = speed
             if self._core:
-                self._core.set_speed(speed)
+                self._core.set_speed_scale(speed)
 
-        def ss_get_speed(self):
+        def ss_get_speed_scale(self):
             """The speed in effect — read from the core, not from the request.
 
             The two part company the moment `0` or a negative is passed, since
-            the Brain clamps those to a stop: `ss_set_speed(-1)` then reads back
+            the Brain clamps those to a stop: `ss_set_speed_scale(-1)` then reads back
             `0.0`, so a caller can tell that its negative became a stop rather
             than the reverse playback it may have been hoping for. Falls back to
             the requested value only before the core exists (or after a save
             dropped it).
             """
-            return self._core.animation_speed if self._core else self.speed
+            return self._core.speed_scale if self._core else self.speed
 
-        def ss_set_loop(self, count):
+        def ss_set_loop_count(self, count):
             self.loop = count
             if self._core:
-                self._core.set_loop(count)
+                self._core.set_loop_count(count)
 
-        def ss_get_loop(self):
+        def ss_get_loop_count(self):
             return self.loop
 
-        def ss_set_section(self, start, end):
+        def ss_set_animation_section(self, start, end):
             if self._core:
-                self._core.set_section(start, end)
+                self._core.set_animation_section(start, end)
                 renpy.redraw(self, 0)
 
         def _apply_playback_modes(self):
@@ -3015,10 +3015,10 @@ init -10 python:
             matters more (a sprite synced to dialogue or audio)."""
             self._frame_skip = bool(enabled)
             if self._core:
-                self._core.set_skip_frames(self._frame_skip)
+                self._core.set_frame_skip_enabled(self._frame_skip)
 
         def ss_is_frame_skip_enabled(self):
-            return (self._core.skip_frames if self._core
+            return (self._core.frame_skip_enabled if self._core
                     else getattr(self, "_frame_skip", True))
 
         def ss_set_frame_rate(self, fps):
@@ -3032,20 +3032,43 @@ init -10 python:
             """Toggle sub-frame interpolation (default on)."""
             self._sub_frame = bool(enabled)
             if self._core:
-                self._core.set_sub_frame(enabled)
+                self._core.set_sub_frame_enabled(enabled)
             renpy.redraw(self, 0)
 
         def ss_is_sub_frame_enabled(self):
             return self._sub_frame
 
         # -- part query ----------------------------------------------------
+        def ss_just_looped(self):
+            """Whether the last update crossed a loop boundary.
+
+            A **pulse**, not a state: the runtime clears it at the top of every
+            update, so it only reads True inside the tick that crossed — which
+            is why it is not ``ss_is_looped``, and why reading it a tick late
+            reads False.
+            """
+            self._ensure()
+            return self._core.just_looped()
+
+        def ss_is_playing_forward(self):
+            """Which way the playhead is *actually* travelling this frame.
+
+            Not ``ss_get_playback_direction``, which reports the heading that
+            was configured: on a ping-pong return leg that still reads forward
+            while this reads False. Gate audio on this one — SpriteStudio has no
+            reverse audio, so a sound key crossed on a backward leg is not meant
+            to sound, and it is the test this player applies itself.
+            """
+            self._ensure()
+            return self._core.is_playing_forward()
+
         def ss_part_names(self):
             self._ensure()
             return self._core.part_names()
 
-        def ss_part_index(self, name):
+        def ss_find_part_index(self, name):
             self._ensure()
-            return self._core.part_index(name)
+            return self._core.find_part_index(name)
 
         def ss_part_transform(self, name):
             """Player-local transform of a part on the last rendered frame, or
@@ -3057,7 +3080,7 @@ init -10 python:
 
             False for an unknown part, and False before anything has been
             rendered — "not hidden", as the sibling Players answer it. Ask
-            `ss_part_index()` (-1) whether the part exists at all.
+            `ss_find_part_index()` (-1) whether the part exists at all.
             """
             return self._core.is_part_hidden(name) if self._core else False
 
@@ -3210,7 +3233,7 @@ init -10 python:
         #     $ ringo.ss_set_part_visibility_override("apple", True, cascade=True)
         #     $ ringo.ss_clear_all_part_overrides()
         #
-        # `part` is a part NAME or its index (ss_part_index). Colours take any
+        # `part` is a part NAME or its index (ss_find_part_index). Colours take any
         # Ren'Py colour form ("#f00", (255, 0, 0), Color(...)); they are read in
         # the same 8-bit sRGB space as the authored PartColor and the Brain
         # pre-multiplies alpha, so pass the colour as authored. Each method
@@ -3340,7 +3363,7 @@ init -10 python:
             renpy.redraw(self, 0)
             return True
 
-        def ss_set_part_color_override(self, part, color, blend_op=0, priority=1):
+        def ss_set_part_color_override(self, part, color, blend_op=0, priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
             """Tint ``part`` with one colour (all four corners).
 
             ``blend_op``: 0=Mix, 1=Mul, 2=Add, 3=Sub. ``priority``:
@@ -3358,7 +3381,7 @@ init -10 python:
             return True
 
         def ss_set_part_color_override_corners(self, part, corners, blend_op=0,
-                                               priority=1):
+                                               priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
             """Like :meth:`ss_set_part_color_override` with four distinct corner
             colours, given in ``left-top, right-top, left-bottom, right-bottom``
             order."""
@@ -3385,7 +3408,7 @@ init -10 python:
             return True
 
         def ss_set_part_cell_override(self, part, cellmap_name, cell_name,
-                                      priority=1):
+                                      priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
             """Make ``part`` draw a different cell.
 
             ``cellmap_name`` is written WITHOUT the ``.ssce`` extension; list the

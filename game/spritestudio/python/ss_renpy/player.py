@@ -326,6 +326,15 @@ class SSInternalPlayer:
         playback state for rollback."""
         return bool(self._rt and self._rt.is_finished)
 
+    def just_looped(self) -> bool:
+        """Whether the last update crossed a loop boundary.
+
+        A **pulse**, not a state: the runtime clears it at the top of every
+        update, so it only reads true inside the tick that crossed — which is
+        why it is not called ``is_looped``. Reading it a tick late reads False.
+        """
+        return bool(self._rt.is_looped) if self._rt else False
+
     def is_playing_forward(self) -> bool:
         """Whether the head is advancing forward (direction + ping-pong leg;
         NOT the speed sign — see :attr:`ssruntime.SSRuntime.is_playing_forward`).
@@ -350,12 +359,12 @@ class SSInternalPlayer:
         return self._rt.playback_style if self._rt else self._style
 
     @property
-    def skip_frames(self) -> bool:
+    def frame_skip_enabled(self) -> bool:
         """Whether frame skipping is on; see :meth:`set_skip_frames`."""
         return self._rt.skip_frames if self._rt else self._skip_frames
 
     @property
-    def animation_speed(self) -> float:
+    def speed_scale(self) -> float:
         """The speed in effect, as a multiple of :attr:`fps`.
 
         Read from the Brain, not from :attr:`speed` (the value that was last
@@ -578,12 +587,12 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.stop()
 
-    def set_loop(self, count: int) -> None:
+    def set_loop_count(self, count: int) -> None:
         self.loop = count
         if self._rt:
             self._rt.set_loop(count)
 
-    def set_speed(self, speed: float) -> None:
+    def set_speed_scale(self, speed: float) -> None:
         """Scale playback by ``speed``, a multiple of :attr:`fps`.
 
         ``0.0`` and negatives are a **stop** in the Brain, not reverse playback
@@ -599,7 +608,7 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_frame_no(frame)
 
-    def set_section(self, start: int, end: int) -> None:
+    def set_animation_section(self, start: int, end: int) -> None:
         if self._rt:
             self._rt.set_animation_section(start, end)
 
@@ -611,7 +620,7 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_playback_direction(direction, style)
 
-    def set_skip_frames(self, skip: bool) -> None:
+    def set_frame_skip_enabled(self, enabled: bool) -> None:
         """Toggle frame skipping (on by default).
 
         On, ``update`` advances by the elapsed time and keeps real-time pace,
@@ -621,7 +630,7 @@ class SSInternalPlayer:
 
         Remembered like direction/style — ``setup_animation`` resets it to on —
         so it survives an animation switch, including host sequence chaining."""
-        self._skip_frames = bool(skip)
+        self._skip_frames = bool(enabled)
         if self._rt:
             self._rt.set_skip_frames(self._skip_frames)
 
@@ -629,7 +638,7 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_frame_rate(fps)
 
-    def set_sub_frame(self, enabled: bool) -> None:
+    def set_sub_frame_enabled(self, enabled: bool) -> None:
         self.sub_frame = bool(enabled)
 
     # -- per-frame advance ---------------------------------------------
@@ -749,13 +758,13 @@ class SSInternalPlayer:
     def part_names(self) -> List[str]:
         return list(self._part_index.keys())
 
-    def part_index(self, name: str) -> int:
+    def find_part_index(self, name: str) -> int:
         return self._part_index.get(name, -1)
 
     def part_transform(self, name: str):
         """Player-local transform of ``name`` on the last rendered frame, or
         ``None``: dict with x/y (px), rotation (deg), xscale/yscale."""
-        i = self.part_index(name)
+        i = self.find_part_index(name)
         base = i * 16
         if i < 0 or base + 16 > len(self._last_world):
             return None
@@ -777,7 +786,7 @@ class SSInternalPlayer:
         part is hidden" and sends a caller down the branch for a part that does
         not exist; use :meth:`part_index` (``-1``) to ask whether it does.
         """
-        i = self.part_index(name)
+        i = self.find_part_index(name)
         if i < 0 or self._last_hidden is None:
             return False
         return i in self._last_hidden
@@ -810,7 +819,7 @@ class SSInternalPlayer:
         """
         if self._rt is None:
             return -1
-        i = part if isinstance(part, int) else self.part_index(part)
+        i = part if isinstance(part, int) else self.find_part_index(part)
         return i if 0 <= i < len(self._part_infos) else -1
 
     def set_part_visibility_override(self, part, hide: bool = True,

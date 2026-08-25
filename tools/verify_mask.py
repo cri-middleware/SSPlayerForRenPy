@@ -90,7 +90,7 @@ def check_pack(lib, path: str, anim=None) -> bool:
     try:
         if not pl.set_animation(a0):
             return _check(False, f"set_animation({a0!r})", fails)
-        pl.set_loop(-1)
+        pl.set_loop_count(-1)
         pl.play()
         fps = pl.fps or 30
         dt = 1000.0 / fps
