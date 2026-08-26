@@ -1974,7 +1974,7 @@ init -10 python:
             # whenever the next clip is shorter. Read from the core rather than
             # `plan` so a degraded (exception) frame still records the true head.
             self._saved_frame = core.frame_no
-            self._saved_loop = core.loop
+            self._saved_loop = core.loop_count
             self._saved_state = self._playback_state(core)
 
             _draw = 0.0
@@ -3031,7 +3031,7 @@ init -10 python:
                 self._core.set_frame_rate(fps)
 
         def ss_get_frame_rate(self):
-            return self._core.fps if self._core else 0
+            return self._core.frame_rate if self._core else 0
 
         def ss_set_sub_frame_enabled(self, enabled):
             """Toggle sub-frame interpolation (default on)."""
