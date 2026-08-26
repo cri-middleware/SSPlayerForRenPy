@@ -123,7 +123,7 @@ $ player = SSPlayer("ss_assets/Ringo/Ringo.ssab")
 $ anim_names = player.ss_animation_names()
 
 # Get the currently playing animation name
-$ current_anim = player.ss_get_animation()
+$ current_anim = player.ss_get_current_animation()
 
 # Switch to an arbitrary animation (switch + cue -> play)
 $ player.ss_play("run")

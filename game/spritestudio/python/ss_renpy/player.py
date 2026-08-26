@@ -191,7 +191,7 @@ class SSInternalPlayer:
         # playback state
         self._sub_frame = bool(sub_frame)
         self._enable_events = bool(enable_events)
-        self.animation: Optional[str] = None
+        self._current_animation: Optional[str] = None
         self._loop = -1
         self._speed = 1.0
         # Playback direction / ping-pong (0 = forward, 1 = reverse; style
@@ -385,6 +385,13 @@ class SSInternalPlayer:
         return self._rt.total_frames if self._rt else 0
 
     @property
+    def current_animation(self) -> Optional[str]:
+        """The animation that is set up, or ``None`` before the first
+        :meth:`set_animation`. Not to be confused with :meth:`animation_names`,
+        which is the list to choose from."""
+        return self._current_animation
+
+    @property
     def frame_rate(self) -> int:
         """Frames per second in effect: the pack's authored rate unless
         :meth:`set_frame_rate` overrode it."""
@@ -450,7 +457,7 @@ class SSInternalPlayer:
             return False
         if not self._rt.setup_animation(name):
             return False
-        self.animation = name
+        self._current_animation = name
         # The loop count is per-transition, so re-apply ours. Speed and frame
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
@@ -480,7 +487,7 @@ class SSInternalPlayer:
         """Start playback. ``start_frame >= 0`` begins there; otherwise heads
         out from the section start -- this is not a resume, which is
         :meth:`resume`."""
-        if self.animation is None:
+        if self._current_animation is None:
             self.set_animation(None)
         self._reset_slots()
         if start_frame is not None and start_frame >= 0:
