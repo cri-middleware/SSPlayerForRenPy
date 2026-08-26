@@ -341,7 +341,7 @@ init python:
 image boss = SSPlayer(
     "ss_assets/Boss/Boss.ssab",
     on_signal=my_signal_handler,
-    on_finished=my_finish_handler
+    on_animation_finished=my_finish_handler
 )
 ```
 
@@ -349,9 +349,9 @@ image boss = SSPlayer(
 - `on_user_data`: ユーザーデータ到達時に呼ばれる
 - `on_signal`: シグナル到達時に呼ばれる
 - `on_audio`: 音声再生指定フレーム到達時に呼ばれる
-- `on_finished`: 指定した `loop` をすべて再生し終えたときに1回呼ばれる。無限ループでは発火せず、停止操作でも発火しない
-- `on_looped`: ループ完了ごと（1周回るごと）に呼ばれる。最終周はループせず `on_finished` になる
-- `on_started`: アニメーション再生開始時に呼ばれる
+- `on_animation_finished`: 指定した `loop` をすべて再生し終えたときに1回呼ばれる。無限ループでは発火せず、停止操作でも発火しない
+- `on_animation_looped`: ループ完了ごと（1周回るごと）に呼ばれる。最終周はループせず `on_animation_finished` になる
+- `on_animation_started`: アニメーション再生開始時に呼ばれる
 
 > [!NOTE]
 > コールバックは描画スレッドから、パーツ単位のイベントは `cb(player, frame_index, event)`、開始/終了/ループ系は `cb(player)` の形で呼ばれます。`frame_index` はキーが **置かれている** フレームであって、検出されたフレームとは限りません（1 回の更新で複数フレームをまたぐことがあり、その間のキーはすべてそこで発火します）。イベント自身は `part_index` と `part_name` を持ちます（パックにそのパーツの名前が無い場合は `None`）。ロールバック（rollback）時のピクル化のため、ラムダやローカル関数ではなくモジュールレベルの関数を渡してください。

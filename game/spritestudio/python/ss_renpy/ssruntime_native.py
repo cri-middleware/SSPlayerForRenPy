@@ -783,7 +783,7 @@ class _NativeRuntime:
 
         Reports False when the loaded runtime does not export the query (a
         drop-in whose ``libs/`` predate it): completion then never fires, so a
-        one-shot's on_finished / sequence chaining stops working — bump
+        one-shot's on_animation_finished / sequence chaining stops working — bump
         ``libs/`` to ``scripts/SDK_VERSION.txt`` — but the player still runs."""
         fn = getattr(self._lib, "ss_runtime_is_finished", None)
         if fn is None:

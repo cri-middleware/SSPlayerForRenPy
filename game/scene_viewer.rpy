@@ -53,8 +53,8 @@ init python:
         # entry is (dir, pack); we just join them into the .ssab path. The
         # event-log overlay consumes events via ss_poll_events() (see
         # ss_drain_events), so we don't pass callbacks here — but the constructor
-        # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
-        # on_started if you prefer push delivery.
+        # accepts on_user_data / on_signal / on_audio / on_animation_finished / on_animation_looped /
+        # on_animation_started if you prefer push delivery.
         subdir, pack = entry
         return SSPlayer(subdir + "/" + pack, animation=animation)
 
