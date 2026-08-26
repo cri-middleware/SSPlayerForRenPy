@@ -50,6 +50,11 @@ screen demo():
 ```
 *For details, see the [Setup Guide](docs/en/setup.md) and [Usage & Control](docs/en/usage.md).*
 
+**Your own animation gets in the same way.** Drop the SpriteStudio project into `SpriteStudio_Source/`
+and the Auto Importer converts it on the next reload (**Shift+R**) — there is no manual export step.
+[Asset Import](docs/en/import.md) also covers the two routes that do not need Ren'Py running:
+`SSConverterGUI` on the desktop, and `ssconverter-cli` in CI.
+
 ### Verifying It Works
 
 Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
