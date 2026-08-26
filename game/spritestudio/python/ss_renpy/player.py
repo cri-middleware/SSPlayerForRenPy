@@ -189,11 +189,11 @@ class SSInternalPlayer:
         self._rt.load_ssab_bytes(ssab_data)
 
         # playback state
-        self.sub_frame = bool(sub_frame)
+        self._sub_frame = bool(sub_frame)
         self._enable_events = bool(enable_events)
         self.animation: Optional[str] = None
-        self.loop = -1
-        self.speed = 1.0
+        self._loop = -1
+        self._speed = 1.0
         # Playback direction / ping-pong (0 = forward, 1 = reverse; style
         # 0 = normal, 1 = ping-pong) and frame skipping. The Brain keeps all
         # three across setup_animation on its own (SDK #369 / #370 / #375) --
@@ -365,16 +365,16 @@ class SSInternalPlayer:
 
     @property
     def speed_scale(self) -> float:
-        """The speed in effect, as a multiple of :attr:`fps`.
+        """The speed in effect, as a multiple of :attr:`frame_rate`.
 
-        Read from the Brain, not from :attr:`speed` (the value that was last
-        *requested*): a zero or negative rate is clamped to ``0.0`` there -- a
+        Read from the Brain, not from the value that was last *requested*:
+        a zero or negative rate is clamped to ``0.0`` there -- a
         stop, since reverse playback is
         :meth:`set_playback_direction`'s business -- so the request and the
         effect part company the moment either is passed. The Player-facing
         getter reports the effect (SDK doc: 30_core/20_playback_control.md).
         """
-        return self._rt.animation_speed if self._rt else self.speed
+        return self._rt.animation_speed if self._rt else self._speed
 
     @property
     def frame_no(self) -> float:
@@ -385,8 +385,24 @@ class SSInternalPlayer:
         return self._rt.total_frames if self._rt else 0
 
     @property
-    def fps(self) -> int:
+    def frame_rate(self) -> int:
+        """Frames per second in effect: the pack's authored rate unless
+        :meth:`set_frame_rate` overrode it."""
+        # `_rt` is the thin binding over the C ABI, whose name is
+        # `ss_runtime_get_fps`; the Player-facing stem is `frameRate`.
         return self._rt.fps if self._rt else 0
+
+    @property
+    def loop_count(self) -> int:
+        """Cycles to play; ``-1`` is infinite. Read back rather than kept by the
+        caller, since :meth:`set_animation` resets the Brain's counter and this
+        Player re-applies its own value afterwards."""
+        return self._loop
+
+    @property
+    def sub_frame_enabled(self) -> bool:
+        """Whether what is drawn may sit between two authored frames."""
+        return self._sub_frame
 
     @property
     def start_frame(self) -> int:
@@ -439,9 +455,9 @@ class SSInternalPlayer:
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
         # first setup is guaranteed to reach the Brain.
-        self._rt.set_loop(self.loop)
-        if self.speed != 1.0:
-            self._rt.set_animation_speed(self.speed)
+        self._rt.set_loop(self._loop)
+        if self._speed != 1.0:
+            self._rt.set_animation_speed(self._speed)
         if not self._skip_frames:
             self._rt.set_skip_frames(False)
         # NOT carried: the section, and only the section. It is a range of frame
@@ -499,7 +515,7 @@ class SSInternalPlayer:
         try:
             return SSInternalPlayer(
                 child_data, lib=self._lib, base_dir=self.base_dir,
-                resource_manager=self._rm, sub_frame=self.sub_frame,
+                resource_manager=self._rm, sub_frame=self._sub_frame,
                 enable_events=False, parent_driven=True,
                 loader=self._loader, texmap=self._texmap)
         except Exception:
@@ -524,7 +540,7 @@ class SSInternalPlayer:
 
     def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
         rt = self._rt
-        sf = self.sub_frame if sub_frame is None else sub_frame
+        sf = self._sub_frame if sub_frame is None else sub_frame
         disp = frame_no if sf else math.floor(frame_no)
         fb = rt.get_frame_data_view(disp)
         if not fb:
@@ -552,7 +568,7 @@ class SSInternalPlayer:
         here keeps independent descendants advancing while off-screen (SDK doc:
         40_components/10_instance.ja.md). Never raises — and guards each slot on
         its own, so one wedged child cannot freeze its siblings' clocks."""
-        sf = self.sub_frame if sub_frame is None else sub_frame
+        sf = self._sub_frame if sub_frame is None else sub_frame
         if self._instances is not None:
             for pi in list(self._instances.part_indices()):
                 try:
@@ -588,7 +604,7 @@ class SSInternalPlayer:
             self._rt.stop()
 
     def set_loop_count(self, count: int) -> None:
-        self.loop = count
+        self._loop = count
         if self._rt:
             self._rt.set_loop(count)
 
@@ -600,7 +616,7 @@ class SSInternalPlayer:
         to see the value that took effect. :attr:`speed` keeps what was asked
         for, because the host layer replays it onto a rebuilt core.
         """
-        self.speed = speed
+        self._speed = speed
         if self._rt:
             self._rt.set_animation_speed(speed)
 
@@ -639,7 +655,7 @@ class SSInternalPlayer:
             self._rt.set_frame_rate(fps)
 
     def set_sub_frame_enabled(self, enabled: bool) -> None:
-        self.sub_frame = bool(enabled)
+        self._sub_frame = bool(enabled)
 
     # -- per-frame advance ---------------------------------------------
     def update(self, dt_ms: float) -> FramePlan:
@@ -694,7 +710,7 @@ class SSInternalPlayer:
         self._was_finished = finished_state
 
         # --- draw plan (sub-frame off floors the *display* frame only)
-        disp = frame_no if self.sub_frame else math.floor(frame_no)
+        disp = frame_no if self._sub_frame else math.floor(frame_no)
         fb = rt.get_frame_data_view(disp)
         wm, wn = rt.world_matrices()
         self._last_world = wm[0:wn] if (wm and wn) else []
@@ -718,7 +734,7 @@ class SSInternalPlayer:
                     frame_mask = None
             try:
                 items = collect_ordered(rt, fd, self._instances, self._effects,
-                                        frame_no, dt_s, looped, self.sub_frame,
+                                        frame_no, dt_s, looped, self._sub_frame,
                                         part_infos=self._part_infos,
                                         frame_mask=frame_mask,
                                         parts=bulk_parts)
