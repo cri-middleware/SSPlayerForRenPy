@@ -50,6 +50,8 @@ screen demo():
 ```
 ※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
 
+**自分のアニメーションも同じ流れで入ります。** SpriteStudio のプロジェクトを `SpriteStudio_Source/` に置けば、次のリロード（**Shift+R**）で Auto Importer が変換します。手動の書き出し手順はありません。Ren'Py を起動せずに変換する 2 つの経路（デスクトップの `SSConverterGUI`、CI 向けの `ssconverter-cli`）も [アセットの取り込み](docs/ja/import.md) にあります。
+
 ### 動作確認
 
 同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
