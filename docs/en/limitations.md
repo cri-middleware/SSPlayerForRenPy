@@ -25,7 +25,7 @@ This page covers what is specific to **this** player. The constraints that come 
 > For ordinary use — playing forward and showing / hiding the sprite normally — audio just works: it plays on the `sfx` mixer, so player volume and mute apply. Only these edge cases have caveats:
 >
 > - **No reverse audio.** When an animation runs backward (a reverse direction, or a ping-pong return leg), its sounds are skipped — audio cannot be played in reverse. A negative speed is not one of those cases: speed is a multiplier, and a negative one stops the playhead rather than turning it around, as does `0`.
-> - **Seeking does not scrub audio.** A sound fires only when the playhead crosses its frame during playback; jumping the frame (`ss_set_frame`) neither scrubs nor re-fires skipped sounds.
+> - **Seeking does not scrub audio.** A sound fires only when the playhead crosses its frame during playback; jumping the frame (`ss_set_frame_no`) neither scrubs nor re-fires skipped sounds.
 > - **Sound outlives the playback that started it.** `ss_pause()` and `ss_stop()` end the *animation*, not the sound — SpriteStudio has no infinite loop (`loop_num` is a play count), so every sound ends on its own, and one that outlasts its animation is the animation data's business. Call `ss_stop_audio()` where you do want silence.
 > - **Stopping a hand-managed player.** `hide` / `scene` stops its sound at once. If instead you keep an `SSPlayer` in a variable and replace it yourself, call `ss_stop_audio()` to stop immediately — otherwise it is auto-stopped within ~0.25s of leaving the screen.
 > - **Ship the sound files** alongside the `.ssab` (they resolve relative to it, like textures); a missing file is skipped.
