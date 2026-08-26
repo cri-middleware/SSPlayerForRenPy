@@ -341,7 +341,7 @@ init python:
 image boss = SSPlayer(
     "ss_assets/Boss/Boss.ssab",
     on_signal=my_signal_handler,
-    on_finished=my_finish_handler
+    on_animation_finished=my_finish_handler
 )
 ```
 
@@ -349,9 +349,9 @@ image boss = SSPlayer(
 - `on_user_data`: Called when User Data is reached
 - `on_signal`: Called when a Signal is reached
 - `on_audio`: Called when an audio playback specified frame is reached
-- `on_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
-- `on_looped`: Called each time a loop iteration completes; the final iteration fires `on_finished` instead
-- `on_started`: Called when animation playback starts
+- `on_animation_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
+- `on_animation_looped`: Called each time a loop iteration completes; the final iteration fires `on_animation_finished` instead
+- `on_animation_started`: Called when animation playback starts
 
 > [!NOTE]
 > Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.

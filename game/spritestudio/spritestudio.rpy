@@ -1239,7 +1239,7 @@ init -10 python:
                      loop=-1, speed=1.0, sub_frame=True, frame_skip=True,
                      size=None, attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
-                     on_finished=None, on_looped=None, on_started=None,
+                     on_animation_finished=None, on_animation_looped=None, on_animation_started=None,
                      aliases=None, audio_channel=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
             self.ssab = ssab
@@ -1319,9 +1319,9 @@ init -10 python:
             self.on_user_data = on_user_data
             self.on_signal = on_signal
             self.on_audio = on_audio
-            self.on_finished = on_finished
-            self.on_looped = on_looped
-            self.on_started = on_started
+            self.on_animation_finished = on_animation_finished
+            self.on_animation_looped = on_animation_looped
+            self.on_animation_started = on_animation_started
             # How SS Audio events pick a Ren'Py channel (when SS_ENABLE_AUDIO):
             #   None      -> the shared parallel pool (ss_audio_*, sfx mixer):
             #                simultaneous sounds get distinct channels. Default.
@@ -1474,9 +1474,9 @@ init -10 python:
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
-                on_finished=self.on_finished,
-                on_looped=self.on_looped,
-                on_started=self.on_started,
+                on_animation_finished=self.on_animation_finished,
+                on_animation_looped=self.on_animation_looped,
+                on_animation_started=self.on_animation_started,
                 aliases=self.aliases,
                 audio_channel=self._audio_channel,
                 **self.kwargs
@@ -1566,7 +1566,7 @@ init -10 python:
                         # Paused-forever: a stopped player, or a one-shot that
                         # had already finished. Deliberately NO play() — that
                         # would resume it, and for a finished one-shot it would
-                        # also re-arm the completion edge so on_finished (and
+                        # also re-arm the completion edge so on_animation_finished (and
                         # sequence advance) fired a second time for the same
                         # playthrough. set_animation left the head parked, so
                         # seeking alone poses the saved frame.
@@ -1670,7 +1670,7 @@ init -10 python:
                     for fe in plan.events:
                         self._dispatch_frame_events(fe)
                 if plan.looped:
-                    self._call_cb(self.on_looped)
+                    self._call_cb(self.on_animation_looped)
             except Exception as e:
                 self._warn_once("event-pump",
                                 "event dispatch failed (%r); events disabled "
@@ -1936,7 +1936,7 @@ init -10 python:
                 # _start_initial but must NOT prune: it is restoring, not
                 # switching, which is why this lives here and not in there.)
                 self._prune_overrides_for_new_animation()
-                self._call_cb(self.on_started)
+                self._call_cb(self.on_animation_started)
 
             # Pre-upload atlases so a large one first drawn deep in a long
             # timeline doesn't stall that frame (first-play hitch). See above.
@@ -1952,20 +1952,20 @@ init -10 python:
             plan = core.update(dt * 1000.0)
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
             self.animation = core.animation
-            self._dispatch_plan(plan)            # timeline events + on_looped
+            self._dispatch_plan(plan)            # timeline events + on_animation_looped
             # Sequence chaining is the host's playback policy: on the core's
             # completion edge (FramePlan.finished = the is_finished rising edge),
             # advance to the next queued clip (e.g. an alias like ["attack1",
-            # "wait1"]) or fire on_finished once the sequence is spent. The switch
+            # "wait1"]) or fire on_animation_finished once the sequence is spent. The switch
             # happens HERE, between updates — so every frame's draw plan stays
             # consistent with a single animation (no mid-update frame skew).
             if plan.finished:
                 if self._advance_to_next_in_sequence(core):
                     self.animation = core.animation
-                    self._call_cb(self.on_started)
+                    self._call_cb(self.on_animation_started)
                     renpy.redraw(self, 0)
                 else:
-                    self._call_cb(self.on_finished)
+                    self._call_cb(self.on_animation_finished)
 
             # Rollback / save snapshot, taken AFTER the chaining block: on a
             # chain-advance frame the head has just moved to the NEW clip's
@@ -2876,7 +2876,7 @@ init -10 python:
             else:
                 self._core.play()
             self.animation = self._core.animation
-            self._call_cb(self.on_started)
+            self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
 
         def ss_pause(self):
