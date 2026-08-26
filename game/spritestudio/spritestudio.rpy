@@ -1634,7 +1634,7 @@ init -10 python:
                 core.play(start_frame=start_frame)
             else:
                 core.play()
-            self.animation = core.animation
+            self.animation = core.current_animation
 
         def _texture_path(self, thash):
             # Resolve via the core (which owns the cellmap → image map, merged
@@ -1951,7 +1951,7 @@ init -10 python:
             _tg = time.perf_counter() if SS_PROFILE else 0.0
             plan = core.update(dt * 1000.0)
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
-            self.animation = core.animation
+            self.animation = core.current_animation
             self._dispatch_plan(plan)            # timeline events + on_animation_looped
             # Sequence chaining is the host's playback policy: on the core's
             # completion edge (FramePlan.finished = the is_finished rising edge),
@@ -1961,7 +1961,7 @@ init -10 python:
             # consistent with a single animation (no mid-update frame skew).
             if plan.finished:
                 if self._advance_to_next_in_sequence(core):
-                    self.animation = core.animation
+                    self.animation = core.current_animation
                     self._call_cb(self.on_animation_started)
                     renpy.redraw(self, 0)
                 else:
@@ -2832,7 +2832,7 @@ init -10 python:
                 # (the pack's resources are already loaded by then, so the extra
                 # set_animation is just the switch).
                 self._ensure()
-            if not name or name == self._core.animation:
+            if not name or name == self._core.current_animation:
                 return True
             if not self._core.set_animation(name):
                 self._warn_once(("anim", name),
@@ -2849,12 +2849,12 @@ init -10 python:
             # setup_animation dropped the Brain's visibility + non-Permanent
             # overrides; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
-            self.animation = self._core.animation
+            self.animation = self._core.current_animation
             renpy.redraw(self, 0)
             return True
 
-        def ss_get_animation(self):
-            return self._core.animation if self._core else self.animation
+        def ss_get_current_animation(self):
+            return self._core.current_animation if self._core else self.animation
 
         def ss_animation_names(self):
             self._ensure()
@@ -2875,7 +2875,7 @@ init -10 python:
                 self._core.play(start_frame=start_frame)
             else:
                 self._core.play()
-            self.animation = self._core.animation
+            self.animation = self._core.current_animation
             self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
 

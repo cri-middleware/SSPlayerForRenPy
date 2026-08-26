@@ -123,7 +123,7 @@ $ player = SSPlayer("ss_assets/Ringo/Ringo.ssab")
 $ anim_names = player.ss_animation_names()
 
 # 現在再生中のアニメーション名を取得
-$ current_anim = player.ss_get_animation()
+$ current_anim = player.ss_get_current_animation()
 
 # 任意のアニメーションへの切り替え（切り替え＋頭出し → 再生）
 $ player.ss_play("run")
