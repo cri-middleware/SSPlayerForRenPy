@@ -131,7 +131,7 @@ $ player.ss_play("run")
 
 - **切り替えと再生の分離**: `ss_set_animation("run")` はアニメーションを切り替えてポーズ（頭出し）するだけで、再生は開始しません。`ss_play()` で再生を開始します。
 - **切り替えは軽い処理です**: テクスチャなど `.ssab` に必要なリソースは初回表示時にまとめて読み込まれるので、`ss_set_animation()` は毎フレーム呼んでも問題ない軽さです（アニメーション単位の読み込みは発生しません）。
-- **再生制御**: `ss_pause()` / `ss_resume()` / `ss_stop()`（再生ヘッドは **その場に留まり**、`ss_stop()` では巻き戻りません。先頭に戻すのは `ss_play()` です）、フレーム操作 `ss_set_frame()` / `ss_get_frame()`、速度 `ss_set_speed_scale()`、ループ `ss_set_loop_count()` などが利用できます。
+- **再生制御**: `ss_pause()` / `ss_resume()` / `ss_stop()`（再生ヘッドは **その場に留まり**、`ss_stop()` では巻き戻りません。先頭に戻すのは `ss_play()` です）、フレーム操作 `ss_set_frame_no()` / `ss_get_frame_no()`、速度 `ss_set_speed_scale()`、ループ `ss_set_loop_count()` などが利用できます。
 - **再生方向**: `ss_set_playback_direction(direction, style)` で逆再生（`direction=1`）や往復再生（`style=1`）に切り替えられます。現在の設定は `ss_get_playback_direction()` / `ss_get_playback_style()` で取得できます（往復再生の戻り区間でも、返るのは「設定値」であって進行方向ではありません）。実際の進行方向は `ss_is_playing_forward()` です — **音声はこれでゲートしてください**。逆再生音声は無いため、後ろ向きの脚で跨いだサウンドキーは鳴らすべきものではなく、これはこのプレイヤー自身が掛けている判定と同じものです。
 - **ループ跨ぎ**: `ss_just_looped()` は直近の update でループ境界を跨いだかどうかを返します。**パルス**であって状態ではないため、跨いだ tick の内側でのみ `True` です（だから `ss_is_looped` ではありません。1 tick 遅れて読むと `False` になります）。
 - **フレームスキップ**: 既定は**オン**で、処理が詰まった直後は先のフレームへ追いついて時間どおりに再生します（2秒のアニメは常に2秒）。`ss_set_frame_skip_enabled(False)` にすると1描画につき1フレームずつ進み、フレームを飛ばさない代わりに引き伸ばされます。1コマも飛ばしたくない短いエフェクトなどで使ってください。コンストラクタの `frame_skip=False` でも指定できます。

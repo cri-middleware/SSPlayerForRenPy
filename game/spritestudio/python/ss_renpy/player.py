@@ -604,7 +604,7 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_animation_speed(speed)
 
-    def set_frame(self, frame: float) -> None:
+    def set_frame_no(self, frame: float) -> None:
         if self._rt:
             self._rt.set_frame_no(frame)
 

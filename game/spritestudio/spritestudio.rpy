@@ -1570,7 +1570,7 @@ init -10 python:
                         # sequence advance) fired a second time for the same
                         # playthrough. set_animation left the head parked, so
                         # seeking alone poses the saved frame.
-                        core.set_frame(self._saved_frame)
+                        core.set_frame_no(self._saved_frame)
                     else:
                         # play() re-seeks to the section start, so seek to the
                         # saved frame AFTER starting playback. Seeking first and
@@ -1579,7 +1579,7 @@ init -10 python:
                         # update(0) on the first post-rollback render then poses
                         # this exact frame.
                         core.play()
-                        core.set_frame(self._saved_frame)
+                        core.set_frame_no(self._saved_frame)
                         if state == "paused":
                             core.pause()
                 else:
@@ -2092,7 +2092,7 @@ init -10 python:
             # Keep requesting redraws only while something is actually moving; an
             # idle sprite (paused / stopped / play-once finished, no live rigs)
             # renders an identical frame, so we let it go quiescent until a
-            # control method (ss_play/ss_resume/ss_set_frame/ss_stop/...) re-arms
+            # control method (ss_play/ss_resume/ss_set_frame_no/ss_stop/...) re-arms
             # it. is_animating() stays True while effects / instances run.
             if core.is_animating():
                 renpy.redraw(self, 0)
@@ -2913,12 +2913,12 @@ init -10 python:
         def ss_is_pausing(self):
             return bool(self._core and self._core.is_pausing())
 
-        def ss_get_frame(self):
+        def ss_get_frame_no(self):
             return self._core.frame_no if self._core else 0.0
 
-        def ss_set_frame(self, frame):
+        def ss_set_frame_no(self, frame):
             if self._core:
-                self._core.set_frame(frame)
+                self._core.set_frame_no(frame)
                 renpy.redraw(self, 0)
 
         def ss_total_frames(self):
