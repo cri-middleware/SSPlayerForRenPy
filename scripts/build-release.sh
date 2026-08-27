@@ -251,10 +251,10 @@ step "packaging game/spritestudio -> $ARTIFACT"
 # them behind would put two untracked files in game/spritestudio that only a
 # release run ever creates.
 cleanup_docs () {
-  rm -f "$PKG_DIR/LICENSE.md" "$PKG_DIR/THIRD_PARTY_NOTICES.md"
+  rm -f "$PKG_DIR/LICENSE.md" "$PKG_DIR/LICENSE.ja.md" "$PKG_DIR/THIRD_PARTY_NOTICES.md"
 }
 trap cleanup_docs EXIT
-cp "$ROOT_DIR/LICENSE.md" "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$PKG_DIR/"
+cp "$ROOT_DIR/LICENSE.md" "$ROOT_DIR/LICENSE.ja.md" "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$PKG_DIR/"
 
 # `spritestudio` at the archive root, so a creator drops it straight into their
 # project's game/ directory. -y stores symlinks AS symlinks -- see the header;
@@ -318,7 +318,7 @@ if [ "$VERIFY" = "yes" ]; then
 
   # The drop-in folder has to work with no scripts/, no SDK and no build, so the
   # things a creator's project reaches for have to be inside it.
-  for f in spritestudio/LICENSE.md spritestudio/THIRD_PARTY_NOTICES.md \
+  for f in spritestudio/LICENSE.md spritestudio/LICENSE.ja.md spritestudio/THIRD_PARTY_NOTICES.md \
            spritestudio/libs/VERSION spritestudio/python/ss_renpy/__init__.py; do
     [ -e "$CHECK/$f" ] || fail "$ARTIFACT is missing $f"
   done
