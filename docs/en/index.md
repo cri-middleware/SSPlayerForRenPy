@@ -1,6 +1,6 @@
 # 🎭 SpriteStudio Player for Ren'Py
 
-A plugin (player) to play animations created in [OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. The playback process is powered by `libssruntime` provided by the [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK).
+A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. The playback process is powered by `libssruntime` provided by the [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK).
 
 !!! tip "Try it in your browser"
     [▶️ Run the sample project](demo/) — a Ren'Py Web build published alongside this
@@ -25,7 +25,7 @@ This documentation is structured by user purpose.
 This player is designed to bring the full expressive power of SpriteStudio to the Ren'Py engine.
 
 *   **Eliminate Complex ATL:** You no longer need to write long, complex ATL (Animation and Transformation Language) blocks in Ren'Py. Animations crafted in the editor can be played with just a few lines of script.
-*   **Full Feature Support:** It fully supports advanced SpriteStudio 7 features out of the box, including bone hierarchies, meshes & deformations, and particle effects.
+*   **Full Feature Support:** It fully supports advanced SpriteStudio features out of the box, including bone hierarchies, meshes & deformations, and particle effects.
 *   **High-Speed Native Processing:** Powered by `libssruntime` (Rust) and deeply integrated with Ren'Py's rendering pipeline, it renders animations lightweight and fast without relying on heavy video files.
 *   **Transparency & Blending:** Supports seamless fading and additive blending for effects, enabling the rich visual presentation essential for modern visual novels.
 

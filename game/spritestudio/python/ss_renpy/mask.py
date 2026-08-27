@@ -1,6 +1,6 @@
 """Engine-independent mask / clipping-mask core (SDK doc: 40_components/40_mask.md).
 
-SpriteStudio 7 "mask" and "clipping" are two features over one stencil. Ren'Py's
+SpriteStudio "mask" and "clipping" are two features over one stencil. Ren'Py's
 GL2 model layer does not expose a stencil buffer, so — exactly like the Godot
 port — we use the **coverage-bitmap hybrid**:
 

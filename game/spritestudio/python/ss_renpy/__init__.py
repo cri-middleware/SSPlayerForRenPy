@@ -1,4 +1,4 @@
-"""Ren'Py SSPlayer — SpriteStudio 7 animation playback for Ren'Py.
+"""Ren'Py SSPlayer — SpriteStudio animation playback for Ren'Py.
 
 Layers:
   * ``ssruntime``  — ctypes FFI to libssruntime ("Brain"). No renpy import.

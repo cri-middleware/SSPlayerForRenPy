@@ -1,6 +1,6 @@
 # SpriteStudio Player for Ren'Py — AI Agent Guide
 
-A **shipping, creator-facing plugin** that plays **SpriteStudio 7** in Ren'Py. Two
+A **shipping, creator-facing plugin** that plays **SpriteStudio** in Ren'Py. Two
 native cores from the `SpriteStudio-SDK` submodule do the work: `libssruntime` (the
 "Brain") computes each frame as a FlatBuffers draw plan over a C-API; `libssconverter`
 turns a `.sspj` project into a runtime `.ssab` pack. This repo is the Ren'Py layer +
