@@ -217,6 +217,7 @@ Write-Step "packaging game/spritestudio -> $artifact"
 # release run ever creates.
 try {
     Copy-Item -Force "$rootDirectory/LICENSE.md" "$packageDirectory/"
+    Copy-Item -Force "$rootDirectory/LICENSE.ja.md" "$packageDirectory/"
     Copy-Item -Force "$rootDirectory/THIRD_PARTY_NOTICES.md" "$packageDirectory/"
 
     # `spritestudio` at the archive root, so a creator drops it straight into
@@ -227,7 +228,7 @@ try {
         & zip -qr -X -y "$out/$artifact" spritestudio -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
     } finally { Pop-Location }
 } finally {
-    Remove-Item -Force -ErrorAction SilentlyContinue "$packageDirectory/LICENSE.md", "$packageDirectory/THIRD_PARTY_NOTICES.md"
+    Remove-Item -Force -ErrorAction SilentlyContinue "$packageDirectory/LICENSE.md", "$packageDirectory/LICENSE.ja.md", "$packageDirectory/THIRD_PARTY_NOTICES.md"
 }
 
 Copy-Item -Force "$out/$artifact" "$out/$alias"
@@ -294,7 +295,7 @@ if ($verify -eq "yes") {
 
     # The drop-in folder has to work with no scripts/, no SDK and no build, so
     # the things a creator's project reaches for have to be inside it.
-    foreach ($f in @("spritestudio/LICENSE.md", "spritestudio/THIRD_PARTY_NOTICES.md",
+    foreach ($f in @("spritestudio/LICENSE.md", "spritestudio/LICENSE.ja.md", "spritestudio/THIRD_PARTY_NOTICES.md",
                      "spritestudio/libs/VERSION", "spritestudio/python/ss_renpy/__init__.py")) {
         if (-not (Test-Path "$check/$f")) { $failed.Add("$artifact is missing $f") }
     }
