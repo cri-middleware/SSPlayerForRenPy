@@ -1,6 +1,6 @@
 # 🎭 SpriteStudio Player for Ren'Py
 
-[OPTPiX SpriteStudio 7](https://www.webtech.co.jp/spritestudio/) で作成したアニメーションを [Ren'Py](https://www.renpy.org/) 上で再生するためのプラグイン（プレイヤー）です。再生処理は [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) が提供する `libssruntime` を介して行います。
+[SpriteStudio](https://www.webtech.co.jp/spritestudio/) で作成したアニメーションを [Ren'Py](https://www.renpy.org/) 上で再生するためのプラグイン（プレイヤー）です。再生処理は [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) が提供する `libssruntime` を介して行います。
 
 !!! tip "ブラウザで試す"
     [▶️ サンプルプロジェクトを再生する](../demo/) — 本ドキュメントと同じサイトで公開している
@@ -25,7 +25,7 @@
 本プレイヤーは、Ren'Py エンジン上で SpriteStudio の表現力をフルに引き出すために設計されています。
 
 *   **複雑な ATL を排除:** Ren'Py 側で長大な ATL (Animation and Transformation Language) を書く必要はありません。エディタで作成したモーションをそのまま数行のスクリプトで再生できます。
-*   **完全な機能サポート:** ボーン階層、メッシュ＆デフォーム、パーティクルエフェクトなど、SpriteStudio 7 の高度なアニメーション機能を標準でサポートします。
+*   **完全な機能サポート:** ボーン階層、メッシュ＆デフォーム、パーティクルエフェクトなど、SpriteStudio の高度なアニメーション機能を標準でサポートします。
 *   **高速なネイティブ処理:** バックエンドの `libssruntime` (Rust) による最適化と、Ren'Py のレンダリングパイプラインを活かした設計により、動画ファイルに頼らず軽量・高速に描画します。
 *   **透過とブレンドのサポート:** シームレスなフェードや、エフェクトの加算合成など、ビジュアルノベルに欠かせないリッチな画面演出が可能です。
 

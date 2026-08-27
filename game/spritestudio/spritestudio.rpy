@@ -1,6 +1,6 @@
 # SpriteStudio Player for Ren'Py — SSPlayer
 #
-# Renders a SpriteStudio 7 .ssab animation pack as a Creator-Defined Displayable.
+# Renders a SpriteStudio .ssab animation pack as a Creator-Defined Displayable.
 # One SSPlayer instance plays one .ssab and selects an animation in it by name:
 #
 #     add SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="Idle") xalign 0.5 yalign 0.5
