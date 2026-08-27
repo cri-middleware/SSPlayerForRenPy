@@ -850,7 +850,7 @@ class SSInternalPlayer:
         """Force-hide ``part`` (``hide=True``) or revert it to the animation.
 
         ``cascade`` propagates the force-hide to the part's descendants — new,
-        override-only behaviour (a keyframed hide never cascades in SS7).
+        override-only behaviour (a keyframed hide never cascades in SpriteStudio).
         Visibility takes no priority mode: it always wins, and a new animation
         always clears it.
         """
