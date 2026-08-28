@@ -92,7 +92,7 @@ def check_pack(lib, path: str, anim=None) -> bool:
             return _check(False, f"set_animation({a0!r})", fails)
         pl.set_loop_count(-1)
         pl.play()
-        fps = pl.fps or 30
+        fps = pl.frame_rate or 30
         dt = 1000.0 / fps
         total = max(1, meta.animations()[0].total_frame)
 
