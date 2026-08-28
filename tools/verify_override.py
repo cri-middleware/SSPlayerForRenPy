@@ -67,7 +67,7 @@ def _player():
 
 def _step(p, n=1):
     """Advance ``n`` frames and return the last FramePlan."""
-    dt_ms = 1000.0 / (p.fps or 30)
+    dt_ms = 1000.0 / (p.frame_rate or 30)
     plan = None
     for _ in range(n):
         plan = p.update(dt_ms)

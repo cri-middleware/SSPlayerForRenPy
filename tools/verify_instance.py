@@ -60,7 +60,7 @@ def check_pack(lib, path: str) -> bool:
         p.close(); return False
     p.play()
 
-    fps = p.fps or 30
+    fps = p.frame_rate or 30
     dt_ms = 1000.0 / fps
     total = max(1, p.total_frames)
     frames_with_geom = max_mesh = total_fx = bad = 0

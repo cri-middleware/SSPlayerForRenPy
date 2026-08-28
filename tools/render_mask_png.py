@@ -130,7 +130,7 @@ def render(path, anim, frame, out, use_mask=True, bg="808080"):
     pl.set_loop_count(-1)
     pl.play()
     plan = None
-    fps = pl.fps or 30
+    fps = pl.frame_rate or 30
     for fr in range(frame + 1):
         plan = pl.update(0.0 if fr == 0 else 1000.0 / fps)
     fm = plan.frame_mask

@@ -31,8 +31,11 @@ If you find a bug, please open a [GitHub Issue](https://github.com/cri-middlewar
 ### Pull Requests
 1. Fork the repository and create your branch from `develop`.
 2. Ensure your code follows the existing style and conventions.
-3. Test your changes locally by running the sample projects via `scripts/run-demo.sh` or `scripts\run-demo.ps1`.
-4. Submit a Pull Request targeting the `develop` branch with a clear description of the changes.
+3. Run the headless test suite: `scripts/run-tests.sh` (`scripts\run-tests.ps1` on Windows).
+   It needs the runtime and the example data — see Development Environment below.
+4. Test your changes on screen by running the sample projects via `scripts/run-demo.sh` or `scripts\run-demo.ps1`.
+   Rendering is not covered by the suite and has to be signed off this way.
+5. Submit a Pull Request targeting the `develop` branch with a clear description of the changes.
 
 ## Development Environment
 
@@ -96,8 +99,11 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ### プルリクエスト
 1. リポジトリをフォークし、`develop` ブランチから作業用ブランチを作成してください。
 2. 既存の規約に従ってコードを記述してください。
-3. デモプロジェクトを実行し、動作確認を行ってください。
-4. `develop` ブランチに向けて、変更内容を明確に記載したプルリクエストを送信してください。
+3. ヘッドレステストを実行してください: `scripts/run-tests.sh`（Windows は `scripts\run-tests.ps1`）。
+   実行にはランタイムとサンプルデータが必要です（後述の「開発環境のセットアップ」を参照）。
+4. デモプロジェクトを実行し、画面上での動作確認を行ってください。描画はテストの対象外のため、
+   この確認でしか担保できません。
+5. `develop` ブランチに向けて、変更内容を明確に記載したプルリクエストを送信してください。
 
 ## 開発環境のセットアップ
 

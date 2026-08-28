@@ -77,8 +77,8 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     acquired_at_load = set(rm.acquired_set)
     if not p.set_animation(name):
         print(f"    FAIL: set_animation({name!r})"); return False
-    if p.animation != name:
-        print(f"    FAIL: animation is {p.animation!r}, expected {name!r}")
+    if p.current_animation != name:
+        print(f"    FAIL: animation is {p.current_animation!r}, expected {name!r}")
         ok = False
     late_tex = rm.acquired_set - acquired_at_load
     if late_tex:
@@ -90,7 +90,7 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
     if not p.is_playing():
         print("    FAIL: not playing after play()"); ok = False
 
-    fps = p.fps or 30
+    fps = p.frame_rate or 30
     dt_ms = 1000.0 / fps
     total = max(1, p.total_frames)
     frames_with_items = max_mesh = total_fx = bad = 0
@@ -175,7 +175,7 @@ def check_loop_counts(lib) -> bool:
             p.set_loop_count(loop)
             p.set_animation("attack1")
             p.play()
-            dt_ms = 1000.0 / (p.fps or 30)
+            dt_ms = 1000.0 / (p.frame_rate or 30)
             events = []
             for _ in range(steps):
                 plan = p.update(dt_ms)
@@ -209,7 +209,7 @@ def check_loop_counts(lib) -> bool:
         p.set_loop_count(3)
         p.set_animation("attack1")
         p.play()
-        dt_ms = 1000.0 / (p.fps or 30)
+        dt_ms = 1000.0 / (p.frame_rate or 30)
         p.update(dt_ms)
         p.stop()
         if any(p.update(dt_ms).finished for _ in range(120)):
@@ -262,22 +262,20 @@ def check_playback_modes(lib) -> bool:
     finally:
         p.close()
 
-    # animation_speed reports what the Brain STORED, which is not always what it
+    # speed_scale reports what the Brain STORED, which is not always what it
     # was handed: a zero or negative rate clamps to a stop there (reverse is
     # set_playback_direction's business), so a host can tell that its negative
-    # became a stop. `speed` keeps the request, for the host layer to replay.
-    print("### speed  the effective rate, not the requested one")
+    # became a stop. There is deliberately no read-out for the request itself —
+    # `_speed` is private since the request mirrors stopped being published.
+    print("### speed_scale  the effective rate, not the requested one")
     p = mk()
     try:
         p.set_animation(p.animation_names()[0])
         for asked, effective in ((0.5, 0.5), (2.0, 2.0), (0.0, 0.0), (-1.0, 0.0)):
             p.set_speed_scale(asked)
             if abs(p.speed_scale - effective) > 1e-6:
-                print(f"    FAIL: set_speed({asked}) reads back "
+                print(f"    FAIL: set_speed_scale({asked}) reads back "
                       f"{p.speed_scale}, want {effective}")
-                ok = False
-            if p.speed != asked:
-                print(f"    FAIL: speed lost the request {asked}: {p.speed}")
                 ok = False
         print("    0.5/2.0 as asked; 0.0 and -1.0 both read back 0.0  -> "
               + ("PASS" if ok else "FAIL"))
@@ -295,7 +293,7 @@ def check_playback_modes(lib) -> bool:
             q.set_loop_count(1)
             q.play()
             span = max(1, q.total_frames - 1)
-            heads[skip] = q.update(1000.0 / (q.fps or 30) * span).frame_no
+            heads[skip] = q.update(1000.0 / (q.frame_rate or 30) * span).frame_no
         finally:
             q.close()
     if heads.get(True, 0) <= heads.get(False, 0):
@@ -326,7 +324,7 @@ def check_finished_edge(lib) -> bool:
     p.set_loop_count(1)            # play once so it finishes
     p.set_animation("attack1")
     p.play()
-    fps = p.fps or 30
+    fps = p.frame_rate or 30
     dt_ms = 1000.0 / fps
     finished_seen = False
     advanced_to = None
@@ -341,7 +339,7 @@ def check_finished_edge(lib) -> bool:
                 p.set_animation("wait1")
                 p.play()
                 nxt = p.update(dt_ms)            # the frame after the switch
-                advanced_to = p.animation
+                advanced_to = p.current_animation
                 advanced_ok = (advanced_to == "wait1" and bool(nxt.items)
                                and nxt.frame_no >= 0)
                 break
@@ -386,7 +384,7 @@ def check_restore_state(lib) -> bool:
     p.set_loop_count(1)
     p.set_animation("attack1")
     p.play()
-    dt_ms = 1000.0 / (p.fps or 30)
+    dt_ms = 1000.0 / (p.frame_rate or 30)
     saved = None
     for _ in range(400):
         if p.update(dt_ms).finished:
@@ -405,7 +403,7 @@ def check_restore_state(lib) -> bool:
     q = _new()                       # "stopped": seek only, never play()
     q.set_loop_count(1)
     q.set_animation("attack1")
-    q.set_frame(saved)
+    q.set_frame_no(saved)
     first = q.update(0.0)
     second = q.update(dt_ms)
     q_playing = q.is_playing()
@@ -423,7 +421,7 @@ def check_restore_state(lib) -> bool:
     r.set_loop_count(1)
     r.set_animation("attack1")
     r.play()
-    r.set_frame(5.0)
+    r.set_frame_no(5.0)
     r.pause()
     held = r.update(0.0)
     later = r.update(dt_ms * 3)
