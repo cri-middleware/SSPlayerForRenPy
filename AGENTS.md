@@ -69,7 +69,7 @@ static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config p
 - **Coordinates:** use `ss_context_set_coordinate_system`; don't add a second Y-flip.
 - **Scripts** (`scripts/`, `*.sh`/`*.ps1`): `build-runtime`/`download-sdk`,
   `download-flatbuffers`+`generate-runtime-code`, `deploy-examples`, `run-demo`,
-  `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`,
+  `run-tests` (§5), `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`,
   and the release: `build-release` (both assets, checked) + `release-version`.
 
 ## 3b. Releases
@@ -164,21 +164,39 @@ Two things to know about callouts, which Zensical parses natively now that `mkdo
 ## 5. Verification
 Each engine-independent layer has a headless `tools/` test (plain CPython); **GL2
 rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) needs a GUI run — sign off via
-`Shift+B` or `scripts/run-demo.*`. Run all:
-`for t in tools/verify_*.py tools/m0_smoke.py; do python3 "$t"; done`.
+`Shift+B` or `scripts/run-demo.*`. Run all: **`scripts/run-tests.sh`** (`.ps1`
+twin, `key=value` options and `--help` like the other scripts here —
+`only=mask,events`, `skip=`, `list=yes`, `verbose=yes`).
 
 | Layer | Where | Test |
 |---|---|---|
 | Playback core + events | `player.py`, `events.py` | `verify_internal_player`, `verify_events` |
 | Geometry/Mesh + PartColor | `framedata.py` | `verify_m2`, `verify_mesh` |
 | Instance / Effect / Shape | `instance.py`, `effect*.py`, `framedata.py` | `verify_instance`, `verify_effect`, `verify_shape` |
+| Instance slot stepping | `instance.py` | `verify_hidden` |
 | Mask / clipping | `mask.py` | `verify_mask` |
 | Part overrides (colour/cell/visibility) | `player.py`, `ssruntime_*.py` | `verify_override` |
 | User shaders (SS6 `ss-*`) | `framedata.read_shader` | `verify_shader` |
+| `.ssab` identifier gate | `ssab_meta.py` | `verify_ssab_guard` |
 | Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` |
 
-Also: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj→.ssab`),
-`render_png.py`/`render_mask_png.py` (software raster, not GL2). Lint:
+**The runner exists because a bare `for` loop over these reports green on a tree
+where nothing loaded.** Both prerequisites are gitignored, so a fresh clone has
+neither: `game/spritestudio/libs/` (`build-runtime`) and `game/ss_assets/`
+(`deploy-examples`). A tool that cannot find its pack prints `SKIP` and **exits
+0** — several do — so `run-tests` checks both up front and refuses to start a
+partial suite, and treats a `SKIP` that survives that preflight as a failure
+rather than a pass. Sub-case skips ("this part does not draw in this animation")
+are counted beside the `PASS`, not failed.
+
+Nothing runs this in CI, so it is a local gate: run it after touching anything
+under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is
+the case to watch — there is no compiler to catch the call sites, so it surfaces
+only as an `AttributeError` from whichever tool still reads the old name.
+
+Also, outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py`
+(shell `.sspj→.ssab`), `render_png.py`/`render_mask_png.py` (software raster, not
+GL2 — these two need Pillow, which nothing else here does). Lint:
 `renpy-sdk/renpy.sh . lint`. **Not rendered:** Text/NineSlice; animation blend; nested
 Instance/Effect timeline events. **Audio** is played by `SSPlayer` (`sfx` mixer,
 round-robin, `ss_stop_audio`; reverse muted). See `docs/*/limitations.md`.
