@@ -40,7 +40,7 @@ def display_frame(frame_no: float, sub_frame: bool):
 
 def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                     parent_looped, sub_frame, part_infos=None, frame_mask=None,
-                    inherited=None, parts=None):
+                    inherited=None, parts=None, clip_out=None):
     """Z-ordered renderables for ``rt`` at the current frame.
 
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
@@ -85,6 +85,22 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
             if do_mask:
                 mask.attach_target(mp, frame_mask, part_infos, inherited)
             out.append(("mesh", mp))
+            # When an owner asked for them (``clip_out`` — only ever passed to a
+            # sub-animation, never the root), record this player's clipping
+            # writers so the owner can bubble them into its coverage (SDK doc
+            # §2-7). Collected regardless of the inherited influence: a
+            # mask_influence==0 instance still carries its child's writers out,
+            # onto the union plane (the owner composes the OP). A pure mask closes
+            # within the child, so only clipping writers (which apply to *higher*
+            # ranks) carry out.
+            if clip_out is not None and part_infos is not None:
+                cpi = (part_infos[mp.part_index]
+                       if 0 <= mp.part_index < len(part_infos) else None)
+                if cpi is not None and cpi.is_clipping:
+                    cps = fd.Parts(mp.part_index)
+                    cmv = cps.Mask() if cps is not None else 0.0
+                    if cmv:                       # mask == 0 → writes nothing
+                        clip_out.append(mask.clip_writer_desc(mp, cmv))
         elif tag == "instance":
             _, p, mat, alpha, hidden = item
             stepped_inst.add(p)
@@ -93,8 +109,14 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
             # patch afterwards (SDK doc: 40_components/40_mask.md §2-6).
             child_ctx = (mask.inherit_for(p, part_infos, frame_mask, inherited)
                          if do_mask else None)
+            # Only the coverage owner (the root, which holds ``frame_mask``)
+            # gathers a child's clipping writers to carry out (SDK doc §2-7);
+            # deeper players carry nothing (single-stage, matching the reference
+            # ports — ForGodot bdfbf02 / ForWeb 7fd8275).
+            child_clip = [] if frame_mask is not None else None
             child_items = (instances.collect(
-                p, parent_frame, dt, parent_looped, sub_frame, child_ctx)
+                p, parent_frame, dt, parent_looped, sub_frame, child_ctx,
+                clip_out=child_clip)
                 if instances is not None else [])
             if hidden:
                 continue   # stepped for timing above; just not drawn
@@ -108,6 +130,16 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                 else:  # "fx"
                     out.append(("fx",
                                 transform_effect_batch(payload, mat, alpha)))
+            # Bubble the visible child's clipping writers into this coverage,
+            # ranked at the instance part and transformed by its slot matrix, with
+            # the OP composed against the influence handed down (SDK doc §2-7).
+            if child_clip and frame_mask is not None and part_infos is not None:
+                rank = frame_mask.rank_of.get(p)
+                pin = (part_infos[p] if 0 <= p < len(part_infos) else None)
+                if rank is not None and pin is not None:
+                    inh_infl = mask.compose(mask.ROOT_CONTEXT, pin)[0]
+                    for desc in child_clip:
+                        frame_mask.add_bubbled(desc, mat, rank, inh_infl)
         elif tag == "effect":
             _, p, mat, alpha, hidden = item
             stepped_fx.add(p)
@@ -232,7 +264,7 @@ class InstanceRig:
             ch.sub.reset_slots()
 
     def collect(self, part_index, parent_frame, dt, parent_looped, sub_frame,
-                inherited=None):
+                inherited=None, clip_out=None):
         """Step one instance part and return the child's child-space renderables.
 
         Returns ``[]`` when the part has no resolvable child or the slot reports
@@ -246,7 +278,9 @@ class InstanceRig:
 
         ``inherited`` is the composed mask context for the sub-animation (SDK
         doc: 40_components/40_mask.md §2-6), passed straight through to the
-        child's ``render_at`` so it can stamp its own parts.
+        child's ``render_at`` so it can stamp its own parts. ``clip_out``, when
+        given, is the list the child appends its own clipping-writer descriptors
+        to so the caller can carry them out into its coverage (SDK doc §2-7).
         """
         ch = self._children.get(part_index)
         if ch is None:
@@ -269,7 +303,32 @@ class InstanceRig:
                                    sub_frame)
             return []
         return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame,
-                                inherited)
+                                inherited, clip_out=clip_out)
+
+    def has_clipping_children(self) -> bool:
+        """True if any instance child's sub-animation statically holds a clipping
+        writer part — so its masks can carry out into this owner (SDK doc §2-7).
+        Lets the owner decide up front whether to build a coverage at all."""
+        for ch in self._children.values():
+            pinfos = getattr(ch.sub, "_part_infos", None) or ()
+            if any(getattr(pi, "is_clipping", False) for pi in pinfos):
+                return True
+        return False
+
+    def pending_clip_ranks(self, rank_of):
+        """Owner-draw-order ranks of the instance parts whose sub-animation holds
+        a clipping writer, so the owner can pre-count their §2-7 carry-over in the
+        mask scope (``FrameMask.note_pending_clip_ranks``) before the children are
+        stepped and the writers actually gathered."""
+        out = []
+        for pidx, ch in self._children.items():
+            r = rank_of.get(pidx)
+            if r is None:
+                continue
+            pinfos = getattr(ch.sub, "_part_infos", None) or ()
+            if any(getattr(pi, "is_clipping", False) for pi in pinfos):
+                out.append(r)
+        return out
 
     def part_indices(self):
         """Part indices of every Instance slot this rig owns — the full set to

@@ -528,7 +528,8 @@ class SSInternalPlayer:
         except Exception:
             return None
 
-    def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
+    def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None,
+                  clip_out=None):
         """Pose to an externally-stepped ``frame_no`` (no head advance) and return
         this player's z-ordered, world-space draw items.
 
@@ -541,11 +542,13 @@ class SSInternalPlayer:
         failure returns Normal/Mesh-only, and a native/parse failure returns an
         empty list rather than propagating into the parent's frame build."""
         try:
-            return self._render_at(frame_no, looped, dt_s, sub_frame, inherited)
+            return self._render_at(frame_no, looped, dt_s, sub_frame, inherited,
+                                   clip_out)
         except Exception:
             return []
 
-    def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
+    def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None,
+                   clip_out=None):
         rt = self._rt
         sf = self._sub_frame if sub_frame is None else sub_frame
         disp = frame_no if sf else math.floor(frame_no)
@@ -557,7 +560,7 @@ class SSInternalPlayer:
             return collect_ordered(rt, fd, self._instances, self._effects,
                                    frame_no, dt_s, looped, sf,
                                    part_infos=self._part_infos,
-                                   inherited=inherited)
+                                   inherited=inherited, clip_out=clip_out)
         except Exception:
             fb2 = rt.get_frame_data_view(disp)
             return ([("mesh", mp)
@@ -733,10 +736,20 @@ class SSInternalPlayer:
             hidden = framedata.hidden_parts(fd, bulk_parts)
             # Build the coverage *before* collect_ordered steps any slot — both
             # read the transient SoA, which an instance/effect step invalidates.
-            if self._has_mask_writers:
+            # An owner with no writers of its own still needs a coverage when an
+            # instance child carries clipping writers out into it (SDK doc §2-7),
+            # so build one whenever a clipping child exists and let collect_ordered
+            # fill the bubbled writers; it is dropped below if nothing lands.
+            has_clip_children = (self._instances is not None
+                                 and self._instances.has_clipping_children())
+            if self._has_mask_writers or has_clip_children:
                 try:
-                    frame_mask = mask.build_frame_mask(rt, fd, self._part_infos,
-                                                       bulk_parts)
+                    frame_mask = mask.build_frame_mask(
+                        rt, fd, self._part_infos, bulk_parts,
+                        allow_empty=not self._has_mask_writers)
+                    if frame_mask is not None and has_clip_children:
+                        frame_mask.note_pending_clip_ranks(
+                            self._instances.pending_clip_ranks(frame_mask.rank_of))
                 except Exception:
                     frame_mask = None
             try:
@@ -754,6 +767,13 @@ class SSInternalPlayer:
                               rt, framedata.parse(fb2))]
                          if fb2 else [])
                 frame_mask = None
+            if frame_mask is not None:
+                # Re-derive bbox / meta / scope now that collect_ordered has folded
+                # in any carried-out clipping writers; drop a coverage that never
+                # gathered a single writer.
+                frame_mask.finalize()
+                if frame_mask.count == 0:
+                    frame_mask = None
         self._last_hidden = hidden
 
         return FramePlan(items=items, frame_no=frame_no, disp=disp,

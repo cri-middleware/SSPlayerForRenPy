@@ -151,6 +151,10 @@ class FrameMask:
     max_mask_rank: int = -1                         # max rank of pure-mask writers
     min_clip_rank: Optional[int] = None             # min rank of clipping writers
     rank_of: dict = field(default_factory=dict)     # part_index -> draw-order rank
+    # Raw world bbox accumulator [x0, y0, x1, y1], kept so add_bubbled can extend
+    # it before finalize re-derives bmin/bsize (SDK doc §2-7 carry-over).
+    _raw: list = field(default_factory=lambda: [float("inf"), float("inf"),
+                                                float("-inf"), float("-inf")])
 
     @property
     def count(self) -> int:
@@ -170,6 +174,77 @@ class FrameMask:
         if self.min_clip_rank is not None and rank > self.min_clip_rank:
             return True
         return False
+
+    def finalize(self) -> None:
+        """(Re)derive ``bmin`` / ``bsize`` / ``meta`` / scope bounds from the
+        current writers. Called by :func:`build_frame_mask` after the owner's own
+        writers, and again after :meth:`add_bubbled` has folded in any
+        instance-child clipping writers (SDK doc §2-7)."""
+        raw = self._raw
+        if self.writers and raw[2] >= raw[0]:
+            self.bmin = (raw[0], raw[1])
+            self.bsize = (max(raw[2] - raw[0], 1e-3), max(raw[3] - raw[1], 1e-3))
+        self.meta = [(w.rank, w.bit, 1 if w.op_invert else 0,
+                      1 if w.is_clipping else 0) for w in self.writers]
+        mask_ranks = [w.rank for w in self.writers if not w.is_clipping]
+        clip_ranks = [w.rank for w in self.writers if w.is_clipping]
+        self.max_mask_rank = max(mask_ranks) if mask_ranks else -1
+        self.min_clip_rank = min(clip_ranks) if clip_ranks else None
+
+    def note_pending_clip_ranks(self, ranks) -> None:
+        """Lower ``min_clip_rank`` to include instance parts that WILL bubble a
+        clipping writer this frame (SDK doc §2-7), so :meth:`in_scope` — the cheap
+        pre-filter run while targets are stamped, *before* the child clippers are
+        actually gathered — already counts them. The per-writer replay test stays
+        authoritative, so an over-inclusive rank here only costs a redundant
+        shader pass, never a wrong pixel."""
+        if not ranks:
+            return
+        m = min(ranks)
+        self.min_clip_rank = m if self.min_clip_rank is None \
+            else min(self.min_clip_rank, m)
+
+    def add_bubbled(self, desc, mat, rank: int, inherited_influence: bool) -> bool:
+        """Fold one instance-child clipping writer into this coverage (SDK doc
+        §2-7 carry-over).
+
+        ``desc`` is a :func:`clip_writer_desc` read from the sub-animation's drawn
+        geometry (sub-anim-local space); ``mat`` is the instance slot's world
+        matrix (sub-anim local → this coverage's space); ``rank`` is the instance
+        part's rank in this owner's draw order (the whole sub-animation sits
+        there, so its writers clip the owner's parts drawn after it);
+        ``inherited_influence`` is the composed ``mask_influence`` reaching the
+        child, ANDed into the writer's OP so a ``mask_influence == 0`` instance
+        drops its writers onto the union (increment) plane. Extends the raw bbox;
+        the caller re-runs :meth:`finalize` afterwards. Returns False when the
+        writer budget is full."""
+        if len(self.writers) >= MAX_WRITERS:
+            self.capped = True
+            return False
+        if mat is not None:
+            positions = [framedata._transform(mat, x, y)
+                         for (x, y) in desc["positions"]]
+        else:
+            positions = list(desc["positions"])
+        w = MaskWriter(
+            part_index=-2, rank=rank, bit=len(self.writers),
+            op_invert=bool(desc["op_invert"] and inherited_influence),
+            is_clipping=True, mask_value=float(desc["mask_value"]),
+            texture_hash=desc["texture_hash"], has_texture=desc["has_texture"],
+            positions=positions, uvs=list(desc["uvs"]),
+            triangles=list(desc["triangles"]))
+        self.writers.append(w)
+        raw = self._raw
+        for (x, y) in positions:
+            if x < raw[0]:
+                raw[0] = x
+            if y < raw[1]:
+                raw[1] = y
+            if x > raw[2]:
+                raw[2] = x
+            if y > raw[3]:
+                raw[3] = y
+        return True
 
 
 # Every SoA buffer the three writer-geometry builders below can need. Each field
@@ -258,7 +333,8 @@ def _mesh_writer_geom(soa, fd, p, thash):
                 has_texture=bool(thash))
 
 
-def build_frame_mask(rt, fd, part_infos, parts=None) -> Optional[FrameMask]:
+def build_frame_mask(rt, fd, part_infos, parts=None,
+                     allow_empty=False) -> Optional[FrameMask]:
     """Build the :class:`FrameMask` for ``fd``, or ``None`` if no live writer.
 
     Walks ``fd``'s draw batches in draw order (the same order the renderable
@@ -341,22 +417,33 @@ def build_frame_mask(rt, fd, part_infos, parts=None) -> Optional[FrameMask]:
                 if y > by1:
                     by1 = y
 
-    if not writers:
+    # ``allow_empty`` keeps a writer-less FrameMask alive so an owner whose only
+    # masks come from an instance child's carried-out clipping writers still has
+    # a coverage to bubble them into (SDK doc §2-7); the caller drops it after
+    # collect_ordered if nothing landed.
+    if not writers and not allow_empty:
         return None
 
-    bw = max(bx1 - bx0, 1e-3)
-    bh = max(by1 - by0, 1e-3)
-    meta = [(w.rank, w.bit, 1 if w.op_invert else 0, 1 if w.is_clipping else 0)
-            for w in writers]
-    mask_ranks = [w.rank for w in writers if not w.is_clipping]
-    clip_ranks = [w.rank for w in writers if w.is_clipping]
-    fm = FrameMask(
-        writers=writers, meta=meta, bmin=(bx0, by0), bsize=(bw, bh),
-        max_mask_rank=max(mask_ranks) if mask_ranks else -1,
-        min_clip_rank=min(clip_ranks) if clip_ranks else None,
-        rank_of=rank_of)
+    fm = FrameMask(writers=writers, rank_of=rank_of)
+    fm._raw = [bx0, by0, bx1, by1]
     fm.capped = capped       # diagnostics only (not part of the dataclass)
+    fm.finalize()
     return fm
+
+
+def clip_writer_desc(mp, mask_value) -> dict:
+    """Coverage-writer descriptor for a clipping part, from its drawn MeshPart
+    (SDK doc §2-7 carry-over).
+
+    ``positions`` / ``uvs`` / ``triangles`` are the part's drawn geometry in the
+    SUB-ANIMATION's local space; the instance owner transforms them into coverage
+    space via the slot matrix (:meth:`FrameMask.add_bubbled`). ``op_invert`` is
+    the clipper's own ``mask_influence`` (its write OP); the owner composes it
+    with the inherited influence. ``mask_value`` is the per-frame cutout."""
+    return dict(positions=list(mp.positions), uvs=list(mp.uvs),
+                triangles=list(mp.triangles), texture_hash=mp.texture_hash,
+                has_texture=bool(mp.texture_hash),
+                op_invert=bool(mp.mask_influence), mask_value=float(mask_value))
 
 
 def attach_target(mp, frame_mask: Optional[FrameMask], part_infos,
