@@ -156,13 +156,14 @@ class _StubSub:
         self.stepped = []
         self.rendered = []
 
-    def play(self):
+    def play(self, start_frame=-1.0):
         pass
 
     def step_slots_only(self, frame_no, looped, dt, sub_frame=None):
         self.stepped.append(frame_no)
 
-    def render_at(self, frame_no, looped, dt, sub_frame=None, inherited=None):
+    def render_at(self, frame_no, looped, dt, sub_frame=None, inherited=None,
+                  clip_out=None):
         self.rendered.append(frame_no)
         return []
 
