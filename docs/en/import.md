@@ -41,6 +41,9 @@ graph LR
     class BIN generated;
 ```
 
+> [!TIP]
+> If you do not have a `.sspj` yet and just want to try this out, the [official SpriteStudio sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is (that page is only available in Japanese; the downloads themselves are language-neutral). [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects. The downloaded project feeds any of the conversion methods below as-is.
+
 ---
 
 ## Method 1: Auto Importer

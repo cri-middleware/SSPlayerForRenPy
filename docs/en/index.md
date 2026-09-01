@@ -7,6 +7,12 @@ A plugin (player) to play animations created in [SpriteStudio](https://www.webte
     documentation. Nothing to install.
     _Coming soon_: the demo ships with the first release, so the link 404s until then.
 
+!!! tip "No SpriteStudio data of your own yet?"
+    The [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — that page is
+    Japanese only, but the downloads themselves are language-neutral.
+    [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and
+    [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects.
+
 ## Table of Contents
 
 This documentation is structured by user purpose.

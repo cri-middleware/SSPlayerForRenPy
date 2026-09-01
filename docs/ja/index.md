@@ -7,6 +7,11 @@
     Ren'Py Web ビルドです。インストールは不要です。
     _準備中_: デモは最初のリリースと同時に公開されるため、それまでは 404 になります。
 
+!!! tip "SpriteStudio のデータが手元に無くても始められます"
+    [公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら
+    [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo)、エフェクトを含むものなら
+    [パーティクル](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) が手頃です。
+
 ## 目次
 
 本ドキュメントは、目的別に以下の構成となっています。
