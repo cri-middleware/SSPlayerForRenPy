@@ -6,4 +6,4 @@
 # `mkdocs-static-i18n` is replaced by building each locale from its own config, and
 # `mkdocs-callouts` by Zensical's native `> [!NOTE]` parsing (`pymdownx.quotes`).
 # `pymdown-extensions` still ships as a dependency, which is why it is not listed here.
-zensical==0.0.56
+zensical==0.0.58
