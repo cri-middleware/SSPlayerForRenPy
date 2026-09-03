@@ -100,6 +100,12 @@ class PartInfo:
     them once. Their meaning is role-dependent — see the ``is_*`` helpers below
     for the canonical classification (pure mask / writer / clipping / target
     polarity).
+
+    ``skinned_mesh`` is the other static flag a Player reads once: a mesh part
+    whose vertices are drawn by bone skinning (``PartMeshBinding`` present with a
+    non-empty ``influence_bone``). Its own transform stays at the setup node
+    (usually near the character root), so it is a poor *part-tracking* target —
+    see :meth:`is_part_skinned_mesh`.
     """
     index: int
     name: str
@@ -114,6 +120,7 @@ class PartInfo:
     mask_write: bool = False
     mask_influence: bool = False
     draw_as_mask: bool = False
+    skinned_mesh: bool = False
 
     @property
     def is_instance(self) -> bool:
@@ -274,6 +281,12 @@ class SsabMeta:
                     eff = PartTypeEffect()
                     eff.Init(tbl.Bytes, tbl.Pos)
                     ref_effect_hash = eff.RefEffectNameHash()
+            # Skinned == a mesh binding with at least one influencing bone. A
+            # rigid (deform-only) mesh has a binding with no bones and tracks
+            # fine, so the bone count — not the binding's mere presence — is the
+            # gate (SDK ssab.fbs: PartMeshBinding.influence_bone).
+            mb = pd.MeshBinding()
+            skinned = bool(mb is not None and mb.InfluenceBoneLength() > 0)
             out.append(PartInfo(
                 index=i, name=_s(pd.Name()), parent_index=pd.ParentIndex(),
                 part_type=ptype, ref_anime_pack=ref_pack,
@@ -283,11 +296,27 @@ class SsabMeta:
                 visible_inside_mask=bool(pd.VisibleInsideMask()),
                 mask_write=bool(pd.MaskWrite()),
                 mask_influence=bool(pd.MaskInfluence()),
-                draw_as_mask=bool(pd.DrawAsMask())))
+                draw_as_mask=bool(pd.DrawAsMask()),
+                skinned_mesh=skinned))
         return out
 
     def part_names(self) -> list[str]:
         return [p.name for p in self.parts()]
+
+    def is_part_skinned_mesh(self, name: str) -> bool:
+        """Whether ``name`` is a bone-skinned mesh part (``False`` if unknown).
+
+        A skinned mesh is drawn from its bound bones, so its own node transform
+        stays put at the setup pose while the visible art deforms elsewhere —
+        which makes it a poor *part-tracking* target (a follower snaps to the
+        node, not the art). See the sibling Players' ``is_part_skinned_mesh``
+        and the mirror of the existing ``is_part_hidden`` query. Deform-only
+        (rigid) meshes and every non-mesh part return ``False``.
+        """
+        for p in self.parts():
+            if p.name == name:
+                return p.skinned_mesh
+        return False
 
     def instance_parts(self) -> list[PartInfo]:
         return [p for p in self.parts() if p.is_instance]
