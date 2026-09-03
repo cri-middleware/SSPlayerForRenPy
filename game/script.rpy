@@ -6,6 +6,7 @@
 # images and screens may live anywhere):
 #   - scene_ringo.rpy   — ringo_demo (image attributes / Character image=)
 #   - scene_helper.rpy  — ringo_helper_demo (SSCharacter / attachments / helpers)
+#   - scene_part_follow.rpy — part_follow_demo (ss_attach / part tracking + skinned-mesh check)
 #   - scene_mask.rpy    — mask_demo (mask / clipping-mask sample)
 #   - scene_viewer.rpy  — viewer_demo + screen ss_demo (legacy pack cycler)
 #   - asset_picker.rpy  — asset_picker_demo (auto-discovered .ssab browser)
@@ -104,6 +105,9 @@ screen ss_main_menu():
                 text_size 24
             textbutton _("SSPlayer helper functions sample"):
                 action Return("ringo_helper_demo")
+                text_size 24
+            textbutton _("Part tracking (attach) sample"):
+                action Return("part_follow_demo")
                 text_size 24
 
             null height 20
