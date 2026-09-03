@@ -834,6 +834,23 @@ class SSInternalPlayer:
             return False
         return i in self._last_hidden
 
+    def is_part_skinned_mesh(self, name: str) -> bool:
+        """Whether ``name`` is a bone-skinned mesh part (``False`` if unknown).
+
+        Static ``.ssab`` metadata (a mesh binding with influencing bones), so —
+        unlike :meth:`is_part_hidden` — this holds before the first frame and
+        never changes. A skinned mesh draws from its bones while its own node
+        transform stays at the setup pose, so it is a poor *part-tracking*
+        (``ss_attach``) target: a follower snaps to the node, not the deformed
+        art. Mirrors the sibling Players' ``is_part_skinned_mesh``; deform-only
+        (rigid) meshes and non-mesh parts answer ``False``. Read once, from the
+        per-part info the pack was parsed into at construction.
+        """
+        i = self.find_part_index(name)
+        if i < 0:
+            return False
+        return self._part_infos[i].skinned_mesh
+
     # -- part overrides -------------------------------------------------
     # Per-part runtime overrides (color / cell / visibility): an imperative
     # "make this part this colour / cell / hidden NOW" that the Brain applies on

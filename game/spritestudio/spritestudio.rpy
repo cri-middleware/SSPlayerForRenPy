@@ -1603,6 +1603,12 @@ init -10 python:
             # no-op for packs with no sound). Done here, before the first
             # update() fires any Audio event.
             self._preload_audio()
+            # Now that the pack is parsed, warn for any attachment registered
+            # before load (constructor attachments=, or an ss_attach while the
+            # core was dropped) that targets a bone-skinned mesh part — the same
+            # non-blocking hint ss_attach gives once the core is live.
+            for _rec in self._attach_list():
+                self._warn_if_skinned_target(_rec["part"])
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -1654,6 +1660,31 @@ init -10 python:
             if key not in self._warned:
                 self._warned.add(key)
                 renpy.log("ss: " + msg)
+
+        def _warn_if_skinned_target(self, part):
+            """Log once if an attachment targets a bone-skinned mesh part.
+
+            A skinned mesh draws from its bones while its own transform stays at
+            the setup node (near the character root), so a follower snaps there
+            rather than onto the deformed art — a shared-libssruntime property,
+            not a bug. Non-blocking (the attach still stands); it only points at
+            the NULL-part workaround. Silent until the core is built — the sweep
+            in _ensure catches constructor / pre-load attachments — and only for
+            a real skinned target, so a rigid mesh or a good part says nothing."""
+            try:
+                if self._core is None or not isinstance(part, str):
+                    return
+                if self._core.is_part_skinned_mesh(part):
+                    self._warn_once(
+                        ("skinned_attach", part),
+                        "ss_attach target %r is a bone-skinned mesh part; its "
+                        "transform stays at the setup pose, so the child follows "
+                        "the character root, not the visible art. Place a NULL "
+                        "part at that spot in SpriteStudio and attach to that "
+                        "instead (ss_is_part_skinned_mesh() reports this)."
+                        % (part,))
+            except Exception:
+                pass   # a diagnostic must never break an attach
 
         # -- timeline events (UserData / Signal / Audio) -------------------
         def _dispatch_plan(self, plan):
@@ -3089,6 +3120,19 @@ init -10 python:
             """
             return self._core.is_part_hidden(name) if self._core else False
 
+        def ss_is_part_skinned_mesh(self, name):
+            """Whether ``name`` is a bone-skinned mesh part.
+
+            Static pack metadata — unlike `ss_is_part_hidden` it holds before
+            anything is drawn (loading the pack if needed). A skinned mesh draws
+            from its bones while its own transform stays at the setup pose, so it
+            is a poor `ss_attach` target: the follower snaps to the node, not the
+            deformed art. Ask this to pick a follow target, or place a NULL part
+            at the spot in SpriteStudio and attach to that. False for an unknown
+            part, and for deform-only (rigid) meshes and non-mesh parts."""
+            self._ensure()
+            return self._core.is_part_skinned_mesh(name) if self._core else False
+
         # -- part attachments ----------------------------------------------
         # Pin a displayable to a part's live transform: every frame it is drawn
         # at that part's position (and rotation; scale too when drive_scale),
@@ -3203,6 +3247,7 @@ init -10 python:
                                         "on_hide": on_hide, "anchor": anchor,
                                         "angle": float(angle)})
             self._invalidate_attachments()
+            self._warn_if_skinned_target(part)
             return child
 
         def ss_detach(self, child=None, part=None):

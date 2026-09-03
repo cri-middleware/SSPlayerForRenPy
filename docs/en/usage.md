@@ -190,6 +190,7 @@ $ ringo.ss_clear_attachments()
 | `ss_attachments()` | The current attachments as `(part_name, child)` pairs |
 | `ss_part_names()` / `ss_find_part_index(part_name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
 | `ss_is_part_hidden(part_name)` | Whether the part is hidden on the last rendered frame |
+| `ss_is_part_skinned_mesh(part_name)` | Whether the part is a bone-skinned mesh — a poor follow target (see the note below). Static, so it answers before the first frame |
 | `ss_part_transform(part_name)` | The part's transform for the last rendered frame, or `None` |
 
 > When you only need the part's position at a single moment (a projectile spawn point, for example) rather than continuous following, calling `ss_part_transform()` directly is simpler.
@@ -234,7 +235,7 @@ This follows from describing a pose as a rotation and a scale at all, so it is s
 - The part name does not have to exist yet. A child registered for a part that is not in the current animation is simply not drawn, and starts riding on its own once the part appears.
 - Part names resolve against the parts of the pack the player itself is playing. **Parts inside an Instance part (the child animation) cannot be specified** (the Instance part itself can).
 - If several parts share a name, the **last** one in the pack is used. Rename duplicates in SpriteStudio when you need a specific one.
-- Prefer a **Normal (image) part** as the target. A Mesh part's pivot stays where the undeformed part was, so a child pinned to it drifts away from the deformed shape you see on screen.
+- **A bone-skinned mesh part cannot be followed directly.** A mesh part bound to bones (a deforming part such as a hand or a face) has its vertices drawn by bone skinning, while the part's own transform stays at its setup node position — usually near the character root. So attaching a child to such a part makes the child snap near the root rather than onto the visible art. To follow that spot, add a **NULL part** (a bone-point / empty part) at it in SpriteStudio and target that part's name instead; a bone (armature) or joint part works the same way. `ss_is_part_skinned_mesh("part_name")` reports whether a part is one of these — and `ss_attach` logs a one-time note (in `log.txt`) when it is handed such a target. A deform-only (rigid) mesh, which has no bones, follows fine and is not flagged.
 - Several children can ride the same part, and one player can carry as many attachments as you like.
 - Attachments are plain data, so they are **saved with the game and survive rollback** — there is no re-registration step after a load.
 - A child that fails to render is skipped for that frame and can never break the sprite.

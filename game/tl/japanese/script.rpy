@@ -1,7 +1,7 @@
 # Japanese translations for script.rpy (the start menu / language choices).
 # Per-scene dialogue translations live alongside their scenes:
-#   tl/japanese/scene_ringo.rpy, scene_helper.rpy, scene_mask.rpy,
-#   asset_picker.rpy.
+#   tl/japanese/scene_ringo.rpy, scene_helper.rpy, scene_part_follow.rpy,
+#   scene_mask.rpy, asset_picker.rpy.
 
 translate japanese strings:
 
@@ -19,6 +19,9 @@ translate japanese strings:
 
     old "SSPlayer helper functions sample"
     new "SSPlayer ヘルパー機能のサンプル"
+
+    old "Part tracking (attach) sample"
+    new "パーツ追従（attach）サンプル"
 
     old "Browse Imported Assets (auto-discovered)"
     new "インポート済みアセットを閲覧（自動検出）"

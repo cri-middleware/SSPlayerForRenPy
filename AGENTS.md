@@ -176,6 +176,7 @@ twin, `key=value` options and `--help` like the other scripts here —
 | Instance slot stepping | `instance.py` | `verify_hidden` |
 | Mask / clipping | `mask.py` | `verify_mask` |
 | Part overrides (colour/cell/visibility) | `player.py`, `ssruntime_*.py` | `verify_override` |
+| Skinned-mesh part query (attach target) | `ssab_meta.py`, `player.py` | `verify_skinned` |
 | User shaders (SS6 `ss-*`) | `framedata.read_shader` | `verify_shader` |
 | `.ssab` identifier gate | `ssab_meta.py` | `verify_ssab_guard` |
 | Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` |
