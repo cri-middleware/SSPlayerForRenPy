@@ -1,210 +1,96 @@
 # SpriteStudio Player for Ren'Py — AI Agent Guide
 
-A **shipping, creator-facing plugin** that plays **SpriteStudio** in Ren'Py. Two
-native cores from the `SpriteStudio-SDK` submodule do the work: `libssruntime` (the
-"Brain") computes each frame as a FlatBuffers draw plan over a C-API; `libssconverter`
-turns a `.sspj` project into a runtime `.ssab` pack. This repo is the Ren'Py layer +
-creator ergonomics around them. This file is the map; detail lives in code docstrings,
-the tests (§5), the docs (§4), and the SDK porting guide (§6).
+A shipping, creator-facing plugin that plays **SpriteStudio** in Ren'Py. Two native cores from the `SpriteStudio-SDK` submodule do the work: `libssruntime` (the "Brain") computes each frame as a FlatBuffers draw plan over a C-API, and `libssconverter` turns a `.sspj` project into a runtime `.ssab` pack. This repo is the Ren'Py layer and the creator ergonomics around them.
 
-## 1. Operating rules
-- Keep changes scoped to the request; don't commit unless asked.
-- Read enough context (callers, invariants) before editing; if a read was truncated,
-  read the rest first. Match the style of touched files.
-- **Ren'Py** is an external dependency (`renpy-sdk/`) — don't patch it; use its public
-  API and the `SS_*` knobs.
-- **SDK alignment:** when modifying core playback logic, refer to
-  `SpriteStudio-SDK/AGENTS.md` for Rust runtime constraints.
-- **Consumer model:** the drop-in `game/spritestudio/` must work without
-  `scripts/`/`tools/`/SDK and under the stock launcher — judge creator-facing changes
-  from that side (§2), and keep user docs (§4) user-facing.
+## Operating rules
 
-## 2. Layout & priorities
-Dev + demo project; only the drop-in **`game/spritestudio/`** ships to creators (pasted
-into a stock Ren'Py project — no `scripts/`, SDK, or build). Priorities: (a) asset
-import (`.sspj → .ssab`), (b) creator ergonomics, (c) export (desktop/Android/iOS/Web
-+ `.rpa`), (d) docs, then (e) render internals (mature, bug-fix territory).
+*   Keep changes scoped to the request; do not commit unless asked.
+*   Read enough context (callers, invariants) before editing; if a read was truncated, read the rest first. Match the style of touched files.
+*   **Ren'Py is an external dependency** (`renpy-sdk/`) — do not patch it. Use its public API and the `SS_*` environment knobs.
+*   **Consumer model:** the drop-in `game/spritestudio/` has to work with no `scripts/`, no `tools/` and no SDK, under the stock launcher. Judge creator-facing changes from that side, and keep `docs/` user-facing — never cite a dev script there.
+*   **Brain / render work: read `SpriteStudio-SDK/AGENTS.md` first**, then the porting guide under `SpriteStudio-SDK/libs/ssruntime/docs/` (numbered dirs, EN `.md` + JA `.ja.md`, indexed by `README.md`). Reference ports: `SSPlayerForGodot` (closest — source of the `ss-*` shaders and the coverage-bitmap mask) and `SSPlayerForWeb` (`GeometryBuilder.ts` is the render math).
+*   Priorities: asset import (`.sspj → .ssab`), creator ergonomics, export (desktop / Android / iOS / Web + `.rpa`), docs — then render internals, which are mature and bug-fix territory.
 
-| Path | Role | Ships? |
+## Architecture
+
+Three layers under `game/spritestudio/`. `python/ss_renpy/ssruntime.py` routes to `ssruntime_native.py` (ctypes FFI to the Brain) or `ssruntime_web.py` (Pyodide, `sys.platform == "emscripten"`). `player.py`'s `SSInternalPlayer` is the engine-independent core: it plays ONE animation via `update(dt_ms) → FramePlan` and reports `finished` / `looped` as observations only. The `SSPlayer` displayable (`spritestudio.rpy`) builds the `renpy.Render` and owns policy — sequence chaining, image attributes, callbacks, resource injection.
+
+The sibling `*.rpy` are the drop-in ergonomics, each self-contained, dev-gated and droppable: `ss_character.rpy` (`SSCharacter`, a one-line talking sprite), `ss_helpers.rpy` (`ss_play_once` / `ss_duration`), `ss_browser.rpy` (Asset Browser, `Shift+B`), `ss_diagnostics.rpy`, and `auto_importer.rpy` (dev-only: `SpriteStudio_Source/` → `game/ss_assets/` through `ss_renpy/converter.py` → `libssconverter`). `ssab_meta.py` parses the static `.ssab` metadata the Brain does not surface; `resolver.py` is the zero-config pack index.
+
+| Path | Role | Ships to creators? |
 |---|---|---|
-| `game/spritestudio/python/ss_renpy/` | Engine-independent playback + import core (§3). | yes |
-| `game/spritestudio/*.rpy` | `SSPlayer` displayable + drop-in ergonomics (§3). | yes |
+| `game/spritestudio/python/ss_renpy/` | Engine-independent playback + import core. | yes |
+| `game/spritestudio/*.rpy` | `SSPlayer` displayable + drop-in ergonomics. | yes |
 | `game/spritestudio/{libs/<platform>,python/{ss,flatbuffers}}` | Native libs + FlatBuffers bindings. | yes |
 | `game/*.rpy`, `game/tl/` | Demo game + JA translation. | no |
-| `docs/`, `mkdocs*.yml` | Bilingual user docs (§4). | no |
-| `scripts/`, `tools/` | Build/deploy wrappers (§3); headless tests + utils (§5). | no |
-| `SpriteStudio-SDK/` | Submodule: both cores + porting guide (§6). | no |
-| `game/spritestudio/python/ss_renpy/__init__.py` (`__version__`), `scripts/SDK_VERSION.txt`, `scripts/RENPY_VERSION.txt` | Pin package-release / SDK / Ren'Py versions (§3). | no |
+| `docs/`, `mkdocs*.yml`, `overrides/` | Bilingual user docs. | no |
+| `scripts/`, `tools/` | Build / deploy wrappers; headless tests + utilities. | no |
+| `SpriteStudio-SDK/` | Submodule: both cores + the porting guide. | no |
 
-## 3. Architecture & constraints
-**3-layer stack** (under `game/spritestudio/`): `python/ss_renpy/ssruntime.py` routes to
-`ssruntime_native.py` (ctypes FFI to the Brain) or `ssruntime_web.py` (Pyodide,
-`sys.platform=="emscripten"`); `player.py`'s `SSInternalPlayer` is the engine-independent
-core (plays ONE animation via `update(dt_ms)→FramePlan`, reports `finished`/`looped` as
-observations only); the `SSPlayer` displayable (`spritestudio.rpy`) builds `renpy.Render`
-and owns policy (sequence chaining, image attributes, callbacks, resource injection).
+## Hard constraints
 
-**Drop-in ergonomics** — sibling `*.rpy`, each self-contained/dev-gated/droppable:
-`ss_character.rpy` (`SSCharacter` one-line talking sprite), `ss_helpers.rpy`
-(`ss_play_once`/`ss_duration`), `ss_browser.rpy` (Asset Browser, `Shift+B`),
-`ss_diagnostics.rpy`, `auto_importer.rpy` (dev-only: `SpriteStudio_Source/` →
-`game/ss_assets/` via `ss_renpy/converter.py` → `libssconverter`). `ssab_meta.py` parses
-static `.ssab` metadata the Brain doesn't surface; `resolver.py` = zero-config pack index.
+*   **Policy lives in `SSPlayer`, not the core** (sequence chaining), and UV normalization lives in the render layer. Every `python/` module must import in plain CPython with no `renpy` — the headless tools depend on it.
+*   The first `SSPlayer` argument is a gamedir-relative `.ssab` path; textures and instance sub-packs sit beside it, and loading goes through `renpy.loader`, so it works loose or inside a `.rpa`.
+*   **FFI:** release every Rust handle via `ss_*_destroy` (the bindings do it on `__del__`). Textures are the exception — Ren'Py owns them.
+*   **Hot path:** no per-frame Python allocations; consume `FramePlan` / `DrawBatch` directly. `_prewarm_textures` staggers uploads, `SS_PROFILE=1` logs the split.
+*   **Coordinates:** use `ss_context_set_coordinate_system`; never add a second Y-flip.
+*   **Versions:** `ss_renpy.__version__` (`game/spritestudio/python/ss_renpy/__init__.py`, PEP 440, e.g. `7.0.0b1`) is the package version and the single source of truth — it ships inside the folder creators get, and the release reads it for the tag and the zip name. It is independent of the SDK. `scripts/SDK_VERSION.txt` and `scripts/RENPY_VERSION.txt` pin the other two, and `libs/<platform>/` must match the SDK pin (bump → re-run `download-sdk`, often `generate-runtime-code`).
+*   **Scripts** are `scripts/*.sh` with `.ps1` twins, `key=value` options and `--help`: `build-runtime` / `download-sdk`, `download-flatbuffers` + `generate-runtime-code`, `deploy-examples`, `run-demo`, `run-tests`, `fetch-renpy-*`, `deploy-{desktop,android,ios,web}` (iOS is POSIX-only), `prepare-docs` / `build-docs` / `build-pages`, `build-release` / `release-version`.
 
-**Invariants & constraints:**
-- Policy (sequence chaining) lives in `SSPlayer`, not the core; UV normalization lives in
-  the render layer. Every `python/` module must import in plain CPython (no `renpy`).
-- First `SSPlayer` arg = gamedir-relative `.ssab` path; textures + instance sub-packs
-  co-located; loading via `renpy.loader` (works loose or in `.rpa`).
-- `ss_renpy.__version__` (in `game/spritestudio/python/ss_renpy/__init__.py`) is the package
-  version — the single source of truth, shipped inside the distributed `spritestudio/` folder and
-  read by the release workflow for the tag and zip name (independent of the SDK; PEP 440 form, e.g.
-  `7.0.0b1`). `scripts/SDK_VERSION.txt` / `scripts/RENPY_VERSION.txt`
-  pin versions; `libs/<platform>/` must match `scripts/SDK_VERSION.txt` (bump → re-run `download-sdk`,
-  often `generate-runtime-code`).
-- **FFI:** release every Rust handle via `ss_*_destroy` (bindings do it on `__del__`);
-  textures are the exception — Ren'Py owns them.
-- **Hot path:** no per-frame Python allocs; consume `FramePlan`/`DrawBatch` directly;
-  `_prewarm_textures` staggers uploads; `SS_PROFILE=1` logs the split.
-- **Coordinates:** use `ss_context_set_coordinate_system`; don't add a second Y-flip.
-- **Scripts** (`scripts/`, `*.sh`/`*.ps1`): `build-runtime`/`download-sdk`,
-  `download-flatbuffers`+`generate-runtime-code`, `deploy-examples`, `run-demo`,
-  `run-tests` (§5), `fetch-renpy-*`, `deploy-{desktop,android,ios,web}`,
-  and the release: `build-release` (both assets, checked) + `release-version`.
+## Documentation site
 
-## 3b. Releases
+`docs/` is a bilingual [Zensical](https://zensical.org) site ordered `setup → import → usage → export` (plus `build` and `limitations`). `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`; there is no fallback locale, so a page missing from one side is a nav entry pointing at nothing.
 
-A release is a tag, pushed first and built second: push `v$__version__`, then dispatch **Release** from that tag with `upload_release=true`. The tag names the Release; `upload_release=true` from anything else fails the run rather than silently producing none, and `build-release.sh` separately **refuses a tag that disagrees with `ss_renpy.__version__`** — a Release called `v1.2.3` carrying `SSPlayerForRenPy-1.2.4.zip` is worse than no release. The default dispatch (`upload_release=false`) is a QA build and creates no Release. Drafts are always drafts: a human reviews the assets and the generated notes and publishes from the UI, choosing pre-release / latest there.
+Each locale builds from its own config — `mkdocs.yml` → `site/`, `mkdocs.ja.yml` → `site/ja/`, both inheriting `mkdocs.base.yml`. **A YAML sequence must be defined in exactly one of the three files:** Zensical's `INHERIT` *concatenates* sequences where MkDocs replaces them, so a `nav` in the base as well as a locale config renders the English navigation followed by the Japanese one. Shared sequences (`theme.palette`, `theme.features`, `plugins`, `markdown_extensions`, `extra.alternate`, `extra_css`) live in the base and nowhere else; `nav` and `extra.social` live in the locale configs and never in the base. What is not simply written twice:
 
-`scripts/build-release.sh` is the release — `release.yml`'s job **is** this script (`sdk=download demo=build out=release-dist verify=yes clean=yes`, every option spelled out so a release cannot change because a default did), so CI and a local run cannot drift.
+*   **`overrides/main.html`** (`theme.custom_dir`) emits the Open Graph / Twitter Card tags the theme omits, and repairs the page title: Zensical never sets `page.is_homepage`, which its own `base.html` branches on, so the landing page would title itself twice over. One template serves both locales — localize through a per-locale config value, never a branch in the template — and it is kept in sync with the copies in SpriteStudio-Docs and the sibling players, `twitter:site` included.
+*   **`overrides/partials/alternate.html`** rebuilds the header language selector so switching language keeps the reader on the same page, driven by `extra.alternate[].link` (a locale subpath, not a URL) plus `extra.site_root_prefix`. Known gap: the `<link rel="alternate" hreflang>` tags in `<head>` still point at each locale root — they sit inside the theme's `site_meta` block, and overriding that means copying thirty lines Zensical may change.
+*   **`site_url` is per locale**, the ja one keeping its `ja/` suffix — `page.canonical_url`, and therefore `og:url`, is built from it. Each locale also owns its `assets/`: a shared `docs/assets/` would sit outside both `docs_dir`s.
+*   **Asset paths are source-relative** (`assets/…` from these top-level pages) and identical in both locales, raw `<video>` / `<img>` `src` included — Zensical resolves those the same way it resolves a Markdown link.
+*   **The demo link on `index.md` is the one path that differs** — `demo/` in English, `../demo/` in Japanese, the English pages sitting at the site root and the Japanese ones a level down. It is site-relative on purpose: `site/demo/` is not a page of this site, and an absolute URL would be wrong in a local `serve=yes` preview and on a fork's Pages. `--strict` passes because neither href resolves to a documentation page. The READMEs keep the absolute URL — GitHub has no site for a relative one to resolve against.
+*   **Footer social icons are defined twice**, in `mkdocs.yml` and `mkdocs.ja.yml` (translated labels, same icons and links). Add or reorder an icon in both, or the footers diverge.
+*   **There is deliberately no `edit_uri`**, so no "edit this page" button renders: it is a branch name nothing validates, and it had drifted wrong in three of the five player repos. Do not reintroduce it.
+*   **Callouts** are parsed natively: a list inside a `> [!NOTE]` block needs a blank `>` line before it or it renders as literal text, and `[!IMPORTANT]` is not a built-in admonition type — `docs/*/stylesheets/extra.css` styles it. Also avoid `src="…"` / `href="…"` inside an inline code span, which Zensical rewrites as if it were a real link; use a fenced block, which it leaves alone.
+
+`mkdocs.base.yml` sets `strict: true`, so a broken link fails the build. `serve` validates nothing, and nothing builds the docs on a pull request (`pages.yml` runs on `release: published` and dispatch), so the local build is the only gate — and **both locales have to be built**, English first because it clears `site/`, which contains `site/ja`. Building only English is the easy mistake: it leaves a stale `site/ja` behind, so a Japanese page you just broke still looks fine.
+
+```bash
+scripts/prepare-docs.sh              # once: .venv + the pins in docs/requirements.txt
+scripts/build-docs.sh                # the gate: English then Japanese, both --strict
+scripts/build-pages.sh serve=yes     # + the released Web demo -> http://localhost:8000/
+```
+
+`build-pages.sh` is the whole published site, and `pages.yml`'s build job **is** this script (`prepare=no docs=yes demo=download tag=…`, every option spelled out so a publish cannot change because a default did). `demo=download` needs `gh` and a Release carrying `SSPlayerForRenPy-web-demo.zip`; `zip=<path>` feeds one by hand, and `demo=build` runs the export here instead — the only option until that first Release exists. `sdk=` picks `download-sdk` or `build-runtime` and is consulted for `demo=build` only, since a downloaded demo brings its own runtime. An existing `renpy-sdk/` is never re-fetched. Note `game/options.rpy` excludes `site/**`: the docs build copies the screencasts into `site/*/assets/`, and Ren'Py classifies `**.webm` into every package.
+
+## Verification
+
+Every engine-independent layer has a headless `tools/` check in plain CPython. **GL2 rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) has no headless check — sign it off in a GUI run, via `Shift+B` or `scripts/run-demo.*`.
+
+| Layer | Tools |
+|---|---|
+| Playback core, events (`player.py`, `events.py`) | `verify_internal_player`, `verify_events` |
+| Geometry / mesh / PartColor (`framedata.py`) | `verify_m2`, `verify_mesh` |
+| Instance / effect / shape, slot stepping | `verify_instance`, `verify_effect`, `verify_shape`, `verify_hidden` |
+| Mask, clipping (`mask.py`) | `verify_mask` |
+| Part overrides, skinned-part query, user shaders | `verify_override`, `verify_skinned`, `verify_shader` |
+| `.ssab` identifier gate, resolver, snippet, smoke | `verify_ssab_guard`, `verify_resolver`, `verify_snippet`, `m0_smoke` |
+| The test doubles themselves, against production call sites | `verify_doubles` |
+
+**Run them through `scripts/run-tests.sh`** (`only=mask,events`, `skip=`, `list=yes`, `verbose=yes`), because a bare loop over the tools reports green on a tree where nothing loaded. Both prerequisites are gitignored, so a fresh clone has neither — `game/spritestudio/libs/` (`build-runtime` / `download-sdk`) and `game/ss_assets/` (`deploy-examples`) — and a tool that cannot find its pack prints `SKIP` and **exits 0**. The runner checks both up front, refuses to start a partial suite, and treats a `SKIP` that survives that preflight as a failure. Sub-case skips ("this part does not draw in this animation") are counted beside the `PASS`, not failed. Nothing runs the suite on a pull request, and `release.yml`'s dispatch-only test job loops over the tools itself rather than calling the runner, so this is the gate: run it after touching anything under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is the case to watch — no compiler catches the call sites, so it surfaces only as an `AttributeError` from whichever tool still reads the old name. Lint with `renpy-sdk/renpy.sh . lint`.
+
+Outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj → .ssab`), `ss_stamp_import.py` (stamp the auto-importer marker over an out-of-band pack), and `render_png.py` / `render_mask_png.py` (software raster, not GL2 — the only two that need Pillow). **Not rendered:** Text / NineSlice, animation blending, nested Instance / Effect timeline events. **Audio** is played by `SSPlayer` (`sfx` mixer, round-robin, `ss_stop_audio`; muted in reverse). See `docs/*/limitations.md`.
+
+## Releases
+
+A release is a tag, pushed first and built second: push `v$__version__`, then dispatch **Release** from that tag with `upload_release=true`. The tag names the Release, and `upload_release=true` from anything else fails the run rather than silently producing none; the default dispatch (`upload_release=false`) is a QA build and creates no Release. What comes out is a draft — a human reviews the assets and the generated notes and publishes from the UI. A beta is still published as the *latest* release, since `releases/latest/download/…` is the link the README and the docs hand out, and that only resolves for a non-prerelease.
+
+`scripts/build-release.sh` is the release — `release.yml`'s job **is** this script (`sdk=download demo=build out=release-dist verify=yes clean=yes`, every option spelled out so a release cannot change because a default did), so CI and a local run cannot drift. It produces the version-pinned plugin zip and Web demo zip, a version-less alias of each, and `SHA256SUMS` over all four.
 
 ```bash
 scripts/build-release.sh              # both assets
 scripts/build-release.sh demo=skip    # the plugin zip only, much faster
 ```
 
-`.ps1` twins as everywhere else, verified to produce a byte-identical archive on the same inputs. Both need `zip` on PATH: `Compress-Archive` cannot store symlinks at all, which is the one thing the macOS framework depends on.
+`demo=skip` is for iterating on the plugin zip, never for a release: `pages.yml` publishes the playable demo by downloading it off the Release, so a release without it leaves the site on the previous one. The `.ps1` twin produces a byte-identical archive from the same inputs, and both need `zip` on PATH — `Compress-Archive` cannot store symlinks at all.
 
-Both assets ship, so both are built here. The Web demo is not a side product: `pages.yml` publishes the playable demo by **downloading it off the Release**, so a release without it leaves the site on the previous one. It is also the expensive half (it fetches the Ren'Py SDK and runs a full Web export), which is what `demo=skip` is for while iterating on the plugin zip — never for a release. `sdk=<download|build|skip>` is the same pair `build-pages.sh` uses.
-
-Two checks earn their place. The tag/`__version__` one above, and: **the macOS framework must still be a bundle.** `libs/macos/libssruntime.framework` is versioned — `Versions/Current` and the bundle-root aliases are symlinks — and `zip` follows symlinks unless given `-y`, flattening it into plain copies. That invalidates its code signature (`codesign --verify` → "bundle format is ambiguous"), so a game bundling the extracted framework can no longer be signed or notarised. Consumers get that framework only through this zip, and the working tree here always has the real symlinks, so a flattened bundle would ship unnoticed. The script unpacks the finished archive and asserts the symlinks survived.
-
-## 4. Docs
-`docs/` = [Zensical](https://zensical.org) bilingual, ordered `setup → import → usage →
-export` (+ `build`/`limitations` for devs). **User-facing** — don't cite dev scripts.
-`limitations.md` is the canonical supported/unsupported list; keep `en/`/`ja/` in sync.
-
-Zensical has no multi-locale build, so **each locale is built from its own config**:
-`mkdocs.yml` builds `docs/en` to `site/`, `mkdocs.ja.yml` builds `docs/ja` to `site/ja/`,
-and both inherit the shared settings from `mkdocs.base.yml`. There is no fallback locale
-any more, so a page missing from one side is a nav entry pointing at nothing. Each locale
-also owns its `assets/` — there is no shared `docs/assets/`, it would sit outside both
-`docs_dir`s — which is why the paths are now identical in both languages rather than the
-`ja/` side needing an extra `../`.
-
-**The three-config split has one rule: a YAML sequence must be defined in exactly one of
-the three files.** Zensical's `INHERIT` *concatenates* parent and child sequences where
-MkDocs replaces them — put `nav` in the base as well as a locale config and the Japanese
-site renders the English navigation followed by the Japanese one. Shared sequences
-(`theme.palette`, `theme.features`, `plugins`, `markdown_extensions`, `extra.alternate`,
-`extra_css`) live in `mkdocs.base.yml` and nowhere else; `nav` and `extra.social` live in
-the locale configs and never in the base.
-
-Things that do **not** follow the "everything twice" rule, or that changed with the
-migration — check before duplicating:
-
-*   **`overrides/main.html`** (`theme.custom_dir`) emits the Open Graph / Twitter Card tags the theme omits, **and repairs the page title**: Zensical never sets `page.is_homepage`, which its own `base.html` branches on, so the landing page would title itself "SpriteStudio Player for Ren'Py - SpriteStudio Player for Ren'Py". The override derives the flag from `page.url` and overrides the `htmltitle` block. **One template serves both locales** — everything is read from whichever locale config is building. Localize by adding a per-locale config override, never by branching in the template. Keep it in sync with the copies in SpriteStudio-Docs and the sibling player repos.
-*   **`overrides/partials/alternate.html`** rebuilds the header language selector so switching language keeps you on the same page. `mkdocs-static-i18n` used to rewrite those links per page; nothing does once the locales are separate builds, and the stock partial would send every reader to the other locale's home page. Driven by `extra.alternate[].link` (a locale subpath, not a URL) plus `extra.site_root_prefix` in each locale config. Known gap: the `<link rel="alternate" hreflang>` tags in `<head>` still point at each locale root — they sit inside the theme's `site_meta` block, and overriding that would mean copying thirty lines Zensical may change.
-*   **`site_url` is per locale** and the ja one keeps its `ja/` suffix — `page.canonical_url`, and therefore `og:url`, is built from it.
-*   **Asset paths are source-relative** (`assets/…` from these top-level pages), including inside raw `<video>` / `<img>` HTML. Zensical resolves raw HTML `src` the same way it resolves Markdown links; MkDocs passed it through untouched. That difference is the one place where a MkDocs fallback build produces wrong output.
-*   **The demo link on `index.md` is the one path that is not identical in both locales** — `demo/` in English, `../demo/` in Japanese, because the English pages sit at the site root and the Japanese ones one level down in `ja/`. It is written site-relative on purpose: `site/demo/` is not a page of this site (`build-pages.*` / `pages.yml` drop it in beside the built docs), and a `https://cri-middleware.github.io/…` URL would be wrong in a local `build-pages.sh serve=yes` preview and on any fork's Pages. `--strict` passes because neither href resolves to a documentation page, and Zensical emits both verbatim. The READMEs keep the absolute URL — GitHub has no site for a relative one to resolve against.
-*   **Footer social icons are defined twice** — in `mkdocs.yml` and `mkdocs.ja.yml` (translated labels, same icons and links). Add or reorder an icon in both, or the two footers diverge. Keep `twitter:site` in `overrides/main.html` in sync with the X link.
-*   **There is deliberately no `edit_uri`**, so no "edit this page" button renders. It is a branch name nothing validates, and it had drifted wrong in three of the five player repos. Do not reintroduce it.
-
-`mkdocs.base.yml` sets `strict: true`, so a plain `build` fails on a broken link. `serve` validates nothing — `zensical serve --strict` is accepted and currently does nothing. Nothing builds the docs on a pull request either (`pages.yml` runs on `release: published` and dispatch), so the local build is the only gate, and **both locales have to be built** — English first, because it clears `site/`, which contains `site/ja`:
-
-```bash
-scripts/prepare-docs.sh          # once: .venv + the pins in docs/requirements.txt
-scripts/build-docs.sh            # the gate: English then Japanese, both --strict
-```
-
-`scripts/*.ps1` are the PowerShell twins, and both take `key=value` options and `--help` like the other scripts here (`build-docs.sh locale=ja`, `prepare-docs.sh force=yes`). `build-docs.sh` is what `pages.yml` runs too — through `build-pages.sh`, below — so CI and the local gate cannot drift; it wraps nothing more than `pip install -r docs/requirements.txt` and the two `zensical build` runs, in the order that works — `zensical` straight out of `.venv` still does the same thing. Every repository in the family spells this pair the same way, and the `-docs` suffix keeps it apart from the scripts that build the code.
-
-Building only English is the easy mistake: it leaves a stale `site/ja` behind, so a Japanese page you just broke still looks fine.
-
-`scripts/build-pages.sh` is the whole published site: both locale builds, then the
-playable Web demo unpacked into `site/demo/`, then — with `serve=yes` — the tree over
-HTTP, which is the only way to check the demo, the language selector and the links the
-way a reader meets them. `pages.yml`'s build job **is** this script (`prepare=no
-docs=yes demo=download tag=…`, every option spelled out so a publish cannot change
-because a default did), so running it locally runs what a deploy will publish. Only the
-deploy job has no local equivalent.
-
-```bash
-scripts/build-pages.sh serve=yes              # docs + released demo -> http://localhost:8000/
-scripts/build-pages.sh demo=build sdk=build   # ... with both built from this tree instead
-```
-
-The demo is a release **asset** — `release.yml` exports it and attaches
-`SSPlayerForRenPy-web-demo.zip`; `pages.yml` only downloads it. So `demo=download` (the
-default) is what a deploy actually publishes and needs `gh` plus a release carrying that
-asset, `zip=<path>` feeds it one by hand, and `demo=build` runs the `release.yml` export
-steps here instead — the only option until that first release exists. `sdk=` picks
-`download-sdk` or `build-runtime` and is consulted for `demo=build` only, since a
-downloaded demo brings its own runtime. An existing `renpy-sdk/` is never re-fetched
-(`fetch-renpy-sdk` replaces the whole directory, Web support included).
-
-Note that the documentation output is a Ren'Py packaging hazard, which is why
-`game/options.rpy` excludes `site/**`: the docs build copies the screencasts to
-`site/*/assets/`, and Ren'Py classifies `**.webm` into every package — so any export
-taken from a tree that had built the docs used to carry ~20 MB of documentation video.
-
-Two things to know about callouts, which Zensical parses natively now that `mkdocs-callouts` is gone: a list inside a `> [!NOTE]` block needs a blank `>` line before it or it renders as literal text, and `[!IMPORTANT]` is not a built-in admonition type — `docs/*/stylesheets/extra.css` styles it to keep the appearance it had. Also **avoid `src="…"` / `href="…"` inside an inline code span**: Zensical rewrites paths there as if they were real links, corrupting the example. Use a fenced block, which it leaves alone.
-
-## 5. Verification
-Each engine-independent layer has a headless `tools/` test (plain CPython); **GL2
-rendering** (PMA, mesh, blend, mask, `ss-*` GLSL) needs a GUI run — sign off via
-`Shift+B` or `scripts/run-demo.*`. Run all: **`scripts/run-tests.sh`** (`.ps1`
-twin, `key=value` options and `--help` like the other scripts here —
-`only=mask,events`, `skip=`, `list=yes`, `verbose=yes`).
-
-| Layer | Where | Test |
-|---|---|---|
-| Playback core + events | `player.py`, `events.py` | `verify_internal_player`, `verify_events` |
-| Geometry/Mesh + PartColor | `framedata.py` | `verify_m2`, `verify_mesh` |
-| Instance / Effect / Shape | `instance.py`, `effect*.py`, `framedata.py` | `verify_instance`, `verify_effect`, `verify_shape` |
-| Instance slot stepping | `instance.py` | `verify_hidden` |
-| Mask / clipping | `mask.py` | `verify_mask` |
-| Part overrides (colour/cell/visibility) | `player.py`, `ssruntime_*.py` | `verify_override` |
-| Skinned-mesh part query (attach target) | `ssab_meta.py`, `player.py` | `verify_skinned` |
-| User shaders (SS6 `ss-*`) | `framedata.read_shader` | `verify_shader` |
-| `.ssab` identifier gate | `ssab_meta.py` | `verify_ssab_guard` |
-| Resolver / snippet / smoke | `resolver.py`, `snippet.py` | `verify_resolver`, `verify_snippet`, `m0_smoke` |
-
-**The runner exists because a bare `for` loop over these reports green on a tree
-where nothing loaded.** Both prerequisites are gitignored, so a fresh clone has
-neither: `game/spritestudio/libs/` (`build-runtime`) and `game/ss_assets/`
-(`deploy-examples`). A tool that cannot find its pack prints `SKIP` and **exits
-0** — several do — so `run-tests` checks both up front and refuses to start a
-partial suite, and treats a `SKIP` that survives that preflight as a failure
-rather than a pass. Sub-case skips ("this part does not draw in this animation")
-are counted beside the `PASS`, not failed.
-
-Nothing runs this in CI, so it is a local gate: run it after touching anything
-under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is
-the case to watch — there is no compiler to catch the call sites, so it surfaces
-only as an `AttributeError` from whichever tool still reads the old name.
-
-Also, outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py`
-(shell `.sspj→.ssab`), `render_png.py`/`render_mask_png.py` (software raster, not
-GL2 — these two need Pillow, which nothing else here does). Lint:
-`renpy-sdk/renpy.sh . lint`. **Not rendered:** Text/NineSlice; animation blend; nested
-Instance/Effect timeline events. **Audio** is played by `SSPlayer` (`sfx` mixer,
-round-robin, `ss_stop_audio`; reverse muted). See `docs/*/limitations.md`.
-
-## 6. Porting guide (READ FIRST for Brain / render work)
-Start at **`SpriteStudio-SDK/AGENTS.md`**, then the porting guide under
-`SpriteStudio-SDK/libs/ssruntime/docs/` — numbered dirs (`10_introduction` …
-`60_tooling`), EN `.md` + JA `.ja.md`, indexed by `README.md`. **Reference ports:**
-`SSPlayerForGodot` (closest; source of the `ss-*` shaders + coverage-bitmap mask) and
-`SSPlayerForWeb` (`GeometryBuilder.ts` = render math).
+Two checks earn their place. The tag must agree with `ss_renpy.__version__` — a Release called `v1.2.3` carrying `SSPlayerForRenPy-1.2.4.zip` is worse than no release. And **the macOS framework must still be a bundle**: `libs/macos/libssruntime.framework` is versioned, its `Versions/Current` and bundle-root aliases are symlinks, and `zip` follows symlinks unless given `-y`. Flattening them invalidates the code signature (`codesign --verify` → "bundle format is ambiguous"), so a game bundling the extracted framework can no longer be signed or notarised. Consumers get that framework only through this zip, and the working tree here always has the real symlinks, so a flattened bundle would ship unnoticed. The script unpacks the finished archive and asserts they survived.

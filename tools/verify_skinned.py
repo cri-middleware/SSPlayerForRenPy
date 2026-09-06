@@ -12,9 +12,9 @@ behaviour change.
 
 The answer is read from static ``.ssab`` metadata (``PartMeshBinding`` with a
 non-empty ``influence_bone``), so there are three surfaces that must agree, and
-this pins all three against index / schema drift — the exact breakage AGENTS.md
-§5 warns of, since nothing but an ``AttributeError`` or a wrong bool would show
-it otherwise:
+this pins all three against index / schema drift — the exact breakage the
+"Verification" section of AGENTS.md warns of, since nothing but an
+``AttributeError`` or a wrong bool would show it otherwise:
 
   * ``SsabMeta.is_part_skinned_mesh`` / ``PartInfo.skinned_mesh`` (pure parse),
   * ``SSInternalPlayer.is_part_skinned_mesh`` (the core, over the built pack).

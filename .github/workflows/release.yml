@@ -35,7 +35,7 @@ concurrency:
 # pinned by scripts/SDK_VERSION.txt to be reachable (no extra auth required).
 jobs:
   # Headless verification gate: every engine-independent layer has a plain-
-  # CPython test under tools/ (AGENTS.md §5), plus the Ren'Py lint. GL2
+  # CPython test under tools/ (AGENTS.md, "Verification"), plus the Ren'Py lint. GL2
   # rendering cannot be verified here — sign it off locally (Shift+B /
   # scripts/run-demo.*) before releasing.
   test:
