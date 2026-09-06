@@ -44,6 +44,16 @@ graph LR
 > [!TIP]
 > If you do not have a `.sspj` yet and just want to try this out, the [official SpriteStudio sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is (that page is only available in Japanese; the downloads themselves are language-neutral). [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects. The downloaded project feeds any of the conversion methods below as-is.
 
+> [!NOTE]
+> **Which SpriteStudio file becomes which converted file** (the roles of `.sspj` / `.ssae` / `.ssce` /
+> `.ssqe` and how they map) is the same for every Player, so it is documented in the portal —
+> [Asset Conversion — How a project's files map to the output](https://cri-middleware.github.io/SpriteStudio-Docs/overview/conversion/#how-a-projects-files-map-to-the-output).
+>
+> Two points matter. **One `.ssae` becomes one `.ssab`**, and **cell positions are baked from the
+> `.ssce` into the `.ssab`**. Because of the latter, whenever you add, move or resize cells, or change
+> the image size, **rebuild the `.ssab` and ship it alongside the image** — replacing the image alone
+> leaves the old source rectangles in place and the artwork shifts.
+
 ---
 
 ## Method 1: Auto Importer

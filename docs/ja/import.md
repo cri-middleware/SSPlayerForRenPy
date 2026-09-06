@@ -44,6 +44,16 @@ graph LR
 > [!TIP]
 > 手元に `.sspj` がまだ無い状態で試したい場合は、[SpriteStudio 公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo)、エフェクトを含むものなら [パーティクル](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) が手頃です。ダウンロードしたプロジェクト一式は、以下のどのコンバート方法にもそのまま渡せます。
 
+> [!NOTE]
+> **どの SpriteStudio ファイルが、変換後のどれになるのか**（`.sspj` / `.ssae` / `.ssce` / `.ssqe` の
+> 役割と対応）は Player 共通なので、ポータルにまとめてあります —
+> [アセットの変換 — プロジェクトの構成と、変換後の対応](https://cri-middleware.github.io/SpriteStudio-Docs/ja/overview/conversion/#プロジェクトの構成と変換後の対応)。
+>
+> 要点は 2 つです。**`.ssae` 1 本が `.ssab` 1 本**になること、そして
+> **セルの切り出し位置は `.ssce` から `.ssab` へ焼き込まれる**こと。後者があるため、セルを追加・移動・
+> リサイズしたり画像サイズを変えたりしたときは、**画像だけでなく `.ssab` も作り直して一緒に配置**
+> してください。画像だけを新しくすると、古い切り出し位置のまま描画されて絵がずれます。
+
 ---
 
 ## 方法1: 自動インポート機能 (Auto Importer)
