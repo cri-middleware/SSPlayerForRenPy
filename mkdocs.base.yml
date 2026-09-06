@@ -85,6 +85,21 @@ plugins:
 # line before it, and `[!IMPORTANT]` has no built-in styling - see
 # docs/*/stylesheets/extra.css.
 markdown_extensions:
+  # Heading ids. Python-Markdown's default slugify strips every non-ASCII character, which on the
+  # Japanese site left 16 headings with a positional `_1`, `_2` id -- unlinkable, and renumbered
+  # whenever a heading is added above them. Many more were truncated to whatever Latin text they
+  # happened to contain (`## 合成モード（blend_op）` was `#blend_op`). This keeps the text, so a ja
+  # page can be deep-linked like an en one.
+  #
+  # It also renders ` / `, ` & ` and ` — ` as a double hyphen where the default collapsed them to one,
+  # and leaves the separator behind when it strips a leading emoji, so every page's H1 gains a leading
+  # `-`. Both move English ids; nothing in this repo links into them. SpriteStudio-Docs,
+  # SSPlayerForUnity, SSPlayerForWgpu, SSPlayerForGodot and SSPlayerForFlutter all produce the same
+  # ids from this setting.
+  - toc:
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - admonition
   - pymdownx.details
   - pymdownx.superfences:
