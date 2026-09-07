@@ -91,7 +91,7 @@ screen ss_asset_picker():
 
     $ _recs = ss_picker_records()
     $ _count = len(_recs)
-    $ _cur_anim = ss_picker_player.ss_get_animation() if ss_picker_player is not None else None
+    $ _cur_anim = ss_picker_player.ss_get_current_animation() if ss_picker_player is not None else None
     $ _cur_disp = ss_escape(_cur_anim) if _cur_anim else "—"
 
     # --- header (pinned top) -------------------------------------------

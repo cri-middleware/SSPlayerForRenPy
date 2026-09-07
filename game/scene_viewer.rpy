@@ -86,7 +86,7 @@ init python:
         names = player.ss_animation_names()
         if not names:
             return
-        curr = player.ss_get_animation()
+        curr = player.ss_get_current_animation()
         try:
             idx = names.index(curr)
         except ValueError:
