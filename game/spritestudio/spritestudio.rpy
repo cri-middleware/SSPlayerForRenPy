@@ -3108,7 +3108,10 @@ init -10 python:
 
         def ss_part_transform(self, name):
             """Player-local transform of a part on the last rendered frame, or
-            ``None``: a dict with x/y (px), rotation (deg), xscale/yscale."""
+            ``None``: a dict with x/y (px), rotation (deg), xscale/yscale. A
+            part's skew (shear) is not included — SpriteStudio does not
+            propagate skew to a part's children, and a follower behaves like
+            one."""
             return self._core.part_transform(name) if self._core else None
 
         def ss_is_part_hidden(self, name):

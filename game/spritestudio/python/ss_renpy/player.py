@@ -806,7 +806,14 @@ class SSInternalPlayer:
 
     def part_transform(self, name: str):
         """Player-local transform of ``name`` on the last rendered frame, or
-        ``None``: dict with x/y (px), rotation (deg), xscale/yscale."""
+        ``None``: dict with x/y (px), rotation (deg), xscale/yscale.
+
+        A position, a rotation and a scale — a part's skew (shear) is not part
+        of it. SpriteStudio applies skew as a per-part vertex deform that does
+        not propagate to child parts, so a follower (which behaves like a child)
+        rides the pose without the shear even under a sheared part or parent;
+        the art itself still draws sheared.
+        """
         i = self.find_part_index(name)
         base = i * 16
         if i < 0 or base + 16 > len(self._last_world):
