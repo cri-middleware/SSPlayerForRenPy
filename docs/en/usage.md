@@ -391,7 +391,7 @@ Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in
 The window has three panes:
 
 1. **Pack list (left).** Every `.ssab` the resolver can find under `ss_assets/` — including packs bundled inside an `.rpa` archive. Click one to select it.
-2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly.
+2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly. **Drag** the sprite to move it and **scroll the wheel** (or press `+` / `-`) to scale it — handy for a pack whose art is far bigger or smaller than the preview box; `0` returns it to 100%. Scaling never interrupts playback, and the zoom is kept while you click through the animations of one pack.
 3. **Snippet (right).** Pick a **role** — Character / One-shot / UI — and a ready-to-paste `.rpy` snippet is generated for that pack. The default role is inferred from the pack's contents (an effect-only pack defaults to One-shot, for example), so you choose the role while watching the animation instead of guessing.
 
 Exporting the snippet appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.

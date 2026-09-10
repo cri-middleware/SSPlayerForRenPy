@@ -1,10 +1,10 @@
 # SpriteStudio Asset Browser — a developer-mode inspector / snippet generator.
 #
 # Press **Shift+B** in developer mode to toggle it. It lists every .ssab the
-# resolver can find (all discovered packs, incl. instance sub-packs), previews
-# any animation live, and saves a
-# ready-to-paste snippet for the role you pick (character / one-shot / UI) — so a
-# creator picks the role while watching the animation, instead of guessing.
+# resolver can find (all discovered packs, incl. instance sub-packs), previews any
+# animation live (drag to move it, wheel to scale it), and saves a ready-to-paste
+# snippet for the role you pick (character / one-shot / UI) — so a creator picks
+# the role while watching the animation, instead of guessing.
 #
 # It sits on top of the zero-config resolver + SSInternalPlayer. Only the hotkey
 # registration is dev-gated, so this file is harmless in a release build (the
@@ -42,6 +42,18 @@ init python:
     def _ss_browser_default_role(d):
         return _ss_snippet.default_role(len(d["anims"]), d["has_effects"])
 
+    # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
+    # scaling neither rebuilds the player nor restarts the animation.
+    SS_BROWSER_ZOOM_MIN = 0.2
+    SS_BROWSER_ZOOM_MAX = 5.0
+    SS_BROWSER_ZOOM_STEP = 1.1       # one wheel notch
+
+    def _ss_browser_zoom_by(factor):
+        """Scale the preview by `factor`, clamped to the range above."""
+        z = store.ss_browser_zoom * factor
+        store.ss_browser_zoom = max(SS_BROWSER_ZOOM_MIN,
+                                    min(SS_BROWSER_ZOOM_MAX, z))
+
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
         # Stop the outgoing preview's audio: it is held in a variable and swapped,
@@ -54,6 +66,11 @@ init python:
                 _old.ss_stop_audio()
             except Exception:
                 pass
+        # A new pack is a new subject: start it at 1:1. Switching ANIMATION comes
+        # through here too and keeps the zoom, so two clips of one pack can be
+        # compared at the same scale.
+        if name != store.ss_browser_pack:
+            store.ss_browser_zoom = 1.0
         store.ss_browser_pack = name
         d = _ss_browser_detail(name)
         store.ss_browser_detail = d
@@ -103,6 +120,7 @@ default ss_browser_role = None
 default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
                              "has_effects": False, "instance_packs": []}
 default ss_browser_player = None
+default ss_browser_zoom = 1.0
 
 
 screen _ss_browser_key():
@@ -116,6 +134,17 @@ screen ss_browser():
     modal True
     zorder 200
     key "K_ESCAPE" action Hide("ss_browser")
+
+    # Wheel = zoom the preview. Declared before the body so the lists are offered
+    # the event first (a `mousewheel True` viewport only takes it while the
+    # pointer is inside), which leaves the wheel elsewhere to scale the sprite.
+    # + / - / 0 do the same from the keyboard.
+    key "mousedown_4" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "mousedown_5" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
+    key "K_EQUALS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "K_PLUS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "K_MINUS" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
+    key "K_0" action SetVariable("ss_browser_zoom", 1.0)
 
     add Solid("#000000d8")
 
@@ -147,8 +176,13 @@ screen ss_browser():
                         # otherwise hide the main pack (e.g. Ringo_tyu -> Ringo
                         # demotes Ringo). ss_list_assets() stays primary-only for
                         # name resolution / diagnostics; the browser shows all.
+                        # The LABEL is escaped, the action keeps the raw name:
+                        # Ren'Py interpolates [..] / {..} in a button's text, so a
+                        # pack called "[NG]_medalDANCE" would otherwise raise
+                        # NameError: name 'NG' is not defined and take the whole
+                        # browser down.
                         for _n in sorted({_r.stem for _r in _ss_get_index().records()}):
-                            textbutton _n action Function(_ss_browser_select, _n) text_size 14
+                            textbutton _ss_browser_escape(_n) action Function(_ss_browser_select, _n) text_size 14
 
             # --- center: live preview + animation list ---------------------
             vbox:
@@ -161,8 +195,10 @@ screen ss_browser():
                         ysize 360
                         background Solid("#222222")
                         if ss_browser_player is not None:
-                            # Drag the preview to reposition it. A definite size
-                            # (SSPlayer size=) makes the Drag grabbable. Mirrors the
+                            # Drag the preview to reposition it, wheel to scale it.
+                            # A definite size (SSPlayer size=) makes the Drag
+                            # grabbable, and the zoom scales the whole rendered
+                            # sprite, so its hit area grows with it. Mirrors the
                             # demo picker (asset_picker.rpy).
                             draggroup:
                                 drag:
@@ -170,10 +206,13 @@ screen ss_browser():
                                     draggable True
                                     drag_offscreen True
                                     xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    add ss_browser_player
+                                    add ss_browser_player at Transform(zoom=ss_browser_zoom)
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
-                    text "drag the preview to reposition" size 11
+                    # Percent, not a "x1.25" factor: at this size the decimal point
+                    # is easy to miss, and "125%" cannot be misread.
+                    $ _zoom_disp = "%d%%" % round(ss_browser_zoom * 100)
+                    text "drag to move | wheel (or + / -) to zoom: [_zoom_disp] | 0 resets" size 11
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]
                     $ _fx = ss_browser_detail["has_effects"]
@@ -190,7 +229,8 @@ screen ss_browser():
                         vbox:
                             spacing 1
                             for _a in ss_browser_detail["anims"]:
-                                textbutton _a action Function(_ss_browser_select, ss_browser_pack, _a) text_size 13
+                                # Escaped label, raw name to the action (as above).
+                                textbutton _ss_browser_escape(_a) action Function(_ss_browser_select, ss_browser_pack, _a) text_size 13
                 else:
                     text "Select a pack on the left." xalign 0.5 yalign 0.5
 
