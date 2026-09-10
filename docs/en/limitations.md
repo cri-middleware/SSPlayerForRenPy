@@ -14,6 +14,7 @@ This page covers what is specific to **this** player. The constraints that come 
 
 > [!WARNING]
 > - **Blend modes** — blending goes through Ren'Py's `config.gl_blend_func`, so modes with no GL equivalent (Division, Overlay) fall back to Mix.
+> - **Atlases past the display's texture limit** — a texture larger than `config.max_texture_size` (4096x4096 by default, and never more than the GPU allows) is loaded as a grid of tiles, which no mesh can sample. Parts on such an atlas are drawn through the simpler transform path instead — the shape is right, but mesh deformation and UV transforms are not applied — and Effect particles on one are skipped; a line in `log.txt` names the atlas. Re-export the pack with a smaller atlas, or raise `config.max_texture_size` in `options.rpy`, which also enlarges the framebuffer Ren'Py allocates (4096 to 8192 takes it from 64MB to 256MB of VRAM).
 > - **Whole-part color tint on Mesh / Instance parts** — `parts_color` is applied per-vertex on Normal / Shape parts; a whole-part tint on Mesh parts is currently approximated (alpha only).
 > - **Masks on Effect particles** — mask / clipping applies to Normal, Mesh, and Shape parts; particles emitted by Effect parts are drawn unclipped even where the editor clips them.
 > - **Part overrides inside Instance parts** — a color / cell / visibility override reaches the parts of the animation you call it on, not the parts inside an Instance part (that nested child animation runs as a separate player). Force-hiding the Instance part itself does stop its contents from being drawn.

@@ -976,6 +976,21 @@ init -10 python:
         _SS_TEXTURE_WRAP = (_SS_GL_REPEAT, _SS_GL_REPEAT)
     except Exception:
         _SS_TEXTURE_WRAP = None
+    # An atlas over the texture limit is loaded as a Render of tiles rather than
+    # one texture, which no model can bind — see SSPlayer._atlas_render.
+    from renpy.display.render import Render as _SS_Render
+
+    def _ss_texture_limit():
+        """Ren'Py's per-texture limit as ``"WxH"`` (for the oversized-atlas
+        warning): the live drawer value if it is visible, else what the config
+        asks for — the drawer clamps that to what the GPU reports and logs the
+        result as "Maximum texture size"."""
+        loader = getattr(renpy.display.draw, "texture_loader", None)
+        w = getattr(loader, "max_texture_width", None)
+        h = getattr(loader, "max_texture_height", None)
+        if not w or not h:
+            w, h = renpy.config.max_texture_size
+        return "%dx%d" % (w, h)
 
     # Batch draw: pack per-vertex colour into custom Mesh2
     # vertex layouts so a run of same-texture Normal parts — and a whole effect
@@ -2378,18 +2393,58 @@ init -10 python:
                 self._mask_white = Solid("#ffffffff", xysize=(2, 2))
             return renpy.render(self._mask_white, 2, 2, st, at)
 
+        def _atlas_render(self, tex_path, st, at, width, height):
+            """The atlas render for ``tex_path``, or None when Ren'Py had to
+            load it as tiles instead of one texture.
+
+            Ren'Py splits any surface past the texture limit
+            (``config.max_texture_size``, clamped to what the GPU reports —
+            4096x4096 by default, logged as "Maximum texture size") into a
+            *Render of tiled textures*. A model's tex0 has to be one texture, so
+            binding a tiled atlas either kills the game with ``TypeError: Cannot
+            convert renpy.display.render.Render to renpy.gl2.gl2model.GL2Model``
+            — thrown inside GL2's draw pass, long after render() returned, where
+            no try/except in this file can reach it — or, when Ren'Py trimmed the
+            atlas' transparent border first, silently squeezes the whole atlas
+            into one limit-sized texture every time the cache drops it. Neither
+            is a draw. Returning None keeps the caller on its own fallback: the
+            transform backend takes the tiled render as it is.
+
+            The pack is the thing to fix — re-export it with an atlas inside the
+            limit. Raising ``config.max_texture_size`` also works, at the cost of
+            a full-size framebuffer (a 4096 -> 8192 bump is 64MB -> 256MB of
+            VRAM), and only up to what the GPU itself allows."""
+            cr = renpy.render(self._base_image(tex_path), width, height, st, at)
+            # One texture arrives as a single model child; tiles arrive as a
+            # nested Render.
+            for c in cr.children:
+                if isinstance(c[0], _SS_Render):
+                    tw, th = cr.get_size()
+                    self._warn_once(("atlas-tiled", tex_path),
+                                    "atlas %s is %dx%d, past this display's %s "
+                                    "texture limit, so Ren'Py loads it as tiles "
+                                    "and no mesh can sample it: parts fall back "
+                                    "to the transform backend (no deform / UV "
+                                    "transforms) and effects are skipped. "
+                                    "Re-export the pack with a smaller atlas, or "
+                                    "raise config.max_texture_size."
+                                    % (tex_path, tw, th, _ss_texture_limit()))
+                    return None
+            return cr
+
         def _tex0_render(self, thash, st, at, width, height):
             """tex0 source for a mesh/shape draw: the bound atlas for a real
             ``texture_hash``, or a 2x2 white for a textureless Shape part
             (``thash == 0``) — the PartColor (rate forced 1.0) then supplies the
             fill. Returns the render, or None when a non-zero hash can't resolve
-            (so the caller can fall back)."""
+            or its atlas is too big to be one texture (so the caller can fall
+            back)."""
             if thash == 0:
                 return self._white_render(st, at)
             tex = self._texture_path(thash)
             if not tex:
                 return None
-            return renpy.render(self._base_image(tex), width, height, st, at)
+            return self._atlas_render(tex, st, at, width, height)
 
         def _build_coverages(self, cov_by_id, items, ox, oy, st, at,
                              width, height):
@@ -2463,8 +2518,9 @@ init -10 python:
             if npts < 3 or ntri < 1:
                 return
             tex = self._texture_path(w.texture_hash) if w.has_texture else ""
-            if tex:
-                cr = renpy.render(self._base_image(tex), width, height, st, at)
+            cr = self._atlas_render(tex, st, at, width, height) if tex else None
+            textured = cr is not None
+            if textured:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return
@@ -2472,7 +2528,11 @@ init -10 python:
                 inv_th = (1.0 / th) if th > 0 else 1.0
                 threshold = (255.0 - w.mask_value) / 255.0
             else:
-                cr = self._white_render(st, at)   # texture-less: whole geometry
+                # Texture-less writer — or one on a tiled atlas we cannot sample
+                # (_atlas_render warned): its whole geometry writes coverage.
+                # Covering too much keeps the target visible; dropping the writer
+                # would clip the target away entirely.
+                cr = self._white_render(st, at)
                 threshold = -1.0
 
             mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, npts, ntri)
@@ -2483,7 +2543,7 @@ init -10 python:
             for (x, y) in pts:
                 g_app((x - bx) * sx)
                 g_app((y - by) * sy)
-            if tex:
+            if textured:
                 attrs = []
                 a_app = attrs.append
                 for (u, v) in w.uvs:
@@ -2502,7 +2562,7 @@ init -10 python:
             wr = renpy.Render(cw, ch)
             wr.blit(cr, (0, 0))                  # tex0 (cutout source / white)
             wr.mesh = mesh
-            if tex and _SS_TEXTURE_WRAP is not None:
+            if textured and _SS_TEXTURE_WRAP is not None:
                 wr.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
             wr.add_shader("ss.mask_write")
             chan = w.bit // 8
@@ -2707,7 +2767,9 @@ init -10 python:
                                 "effect cellmap hash %d unresolved" % eb.cellmap_hash)
                 return
             try:
-                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                cr = self._atlas_render(tex, st, at, width, height)
+                if cr is None:
+                    return       # tiled atlas (warned): particles are mesh-only
                 blend_prop = _ss_effect_blend_property(eb.blend)
                 if (_SS_FX_LAYOUT is not None and SS_BATCH_DRAW
                         and self._draw_fx_batched(r, eb, cr, ox, oy, width,
