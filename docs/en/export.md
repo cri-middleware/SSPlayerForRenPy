@@ -14,7 +14,7 @@ Common to every platform: the native "Brain" library must be present under
 bundles it into the package and `ssruntime.py` resolves it at runtime. Shipping
 your **assets** is your game's responsibility (they are your content, not the
 library's): classify your `.ssab` packs (and `.ssqb` sequence packs, if any) —
-and, for SS Audio timeline events, the uncompressed `.wav` / `.mp3` — in your own
+and, for SS Audio timeline events, the uncompressed `.wav` or `.mp3` — in your own
 `options.rpy`. The Web export in particular drops unknown extensions unless you
 do. Add `build.classify('**.ssab', 'all')` and `'**.ssqb'` (plus `'**.wav'` /
 `'**.mp3'` if you use audio); the demo does this in `game/options.rpy`.

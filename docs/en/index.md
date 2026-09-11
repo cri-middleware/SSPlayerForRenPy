@@ -20,7 +20,7 @@ This documentation is structured by user purpose.
 - **User Guide**
     - [Setup Guide](setup.md): How to integrate the player into your game project.
     - [Asset Import](import.md): How to convert `.sspj` animation data.
-    - [Usage & Control](usage.md): How to call and control animations from Ren'Py scripts.
+    - [Usage Guide](usage.md): How to call and control animations from Ren'Py scripts.
     - [Exporting your Game](export.md): How to export to each platform (desktop / mobile / web) with the stock Ren'Py tooling.
 - **Developer Guide**
     - [Build Guide](build.md): Setting up a custom environment and building the native library.
