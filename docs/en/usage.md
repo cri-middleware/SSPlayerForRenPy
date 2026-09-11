@@ -219,7 +219,7 @@ A part's pose can be a **reflection**, not merely a rotation and a scale. That h
 
 **The position is always exact, and so is the direction the part faces** — `rotation` is the angle of the part's own +X axis whether or not the part is mirrored. What a child cannot receive is the reflection itself: `xscale` / `yscale` are magnitudes, so the sign that carries the mirror is dropped and **a child is never mirrored**, with or without `drive_scale`.
 
-One consequence is worth knowing, because it does not look like a scale problem. A reflection is described as a rotation plus a flip of the Y axis, so a part that is *purely* mirrored left-to-right, with no rotation of its own, is reported as **rotated 180°**. Take the Y flip away and a half-turn is what remains: the child is drawn **upside-down rather than mirrored**. In terms of the values you actually get back, a part that is only flipped horizontally reports `rotation` as `±180` rather than `0`, with `xscale` and `yscale` both still positive — **exactly what a part genuinely rotated by half a turn reports**, so these three values cannot tell the two apart.
+One consequence is worth knowing, because it does not look like a scale problem. A reflection is described as a rotation plus a flip of the Y axis, so a part that is *purely* mirrored left-to-right, with no rotation of its own, reports `rotation` as `±180` rather than `0`, with `xscale` and `yscale` both still positive. Take the Y flip away and a half-turn is what remains: the child is drawn **upside-down rather than mirrored**. That triple is **exactly what a part genuinely rotated by half a turn reports**, so these three values cannot tell the two apart.
 
 This follows from describing a pose as a rotation and a scale at all, so it is something to design around rather than a defect to wait on:
 
@@ -358,7 +358,7 @@ image boss = SSPlayer(
 > [!NOTE]
 > Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
 
-*Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `script.rpy` of the demo project.*
+*Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `scene_viewer.rpy` of the demo project.*
 
 ---
 

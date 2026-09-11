@@ -50,8 +50,8 @@ extra:
 nav:
   - 🏠 ホーム: index.md
   - 🚀 導入ガイド: setup.md
-  - ▶️ 再生と制御: usage.md
   - 🗂️ アセットのコンバート: import.md
+  - ▶️ 再生と制御: usage.md
   - 📦 ゲームのエクスポート: export.md
   - 🛠️ ビルドガイド（開発者向け）: build.md
   - ⚠️ 仕様と制約事項: limitations.md

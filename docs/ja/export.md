@@ -14,7 +14,7 @@ SpriteStudio Player for Ren'Py を組み込んだゲームを各プラットフ�
 必要があります（Ren'Py がパッケージへ同梱し、`ssruntime.py` が実行時に解決します）。
 **アセット**の同梱はゲーム側の責務です（アセットはライブラリではなくゲームの
 コンテンツだからです）。`.ssab` パック（`.ssqb` シーケンスパックがあればそれも。また
-SS Audio タイムラインイベントを使う場合は非圧縮の `.wav` / `.mp3`）を、ご自身の
+SS Audio タイムラインイベントを使う場合は非圧縮の `.wav` または `.mp3`）を、ご自身の
 `options.rpy` で classify してください。特に Web エクスポートは、明示分類しないと
 未知の拡張子を落とします。`build.classify('**.ssab', 'all')` と `'**.ssqb'`（オーディオを
 使うなら `'**.wav'` / `'**.mp3'` も）を追加してください（本デモは `game/options.rpy` で
@@ -74,7 +74,9 @@ Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使いま�
 > ため、ロード済みイメージである必要があります。Embed & Sign はリンク（dyld が起動時に
 > ロード）とバンドルへの署名付きコピーを行います（renios が `MetalANGLE.xcframework` に
 > 対して行うのと同じ扱い）。**静的** xcframework はリンクはできますが dead-strip されて
-> `CDLL(None)` が実行時に失敗するので、動的版を使います。
+> `CDLL(None)` が実行時に失敗するので、動的版を使います。スライスは（素の
+> dylib ではなく）`.framework` バンドルなので、Embed & Sign が App Store の
+> バンドル構造検証を通ります。
 
 1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（→ iOS → Xcode プロジェクトを作成）、
    または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
