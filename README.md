@@ -29,13 +29,20 @@ For detailed specifications, import procedures, and API references, please visit
 - [Setup Guide](docs/en/setup.md)
 - [Asset Import](docs/en/import.md)
 - [Usage & Control](docs/en/usage.md)
-- [Build Guide](docs/en/build.md)
+- [Limitations & Scope](docs/en/limitations.md)
 
 ---
 
 ## 🎮 1. Quick Start
 
+**Using it in your game?** Read on — drop the folder in, convert your `.sspj`, add one line.
+Everything after that (events, per-part overrides, `SSCharacter`) is the same path further in,
+in the [documentation](./docs/en/index.md).
+**Working on the Player, or the Rust core under it?** [Section 2](#-2-full-build-environment-for-sdkplayer-developers).
+
 ### Setup
+
+Needs **Ren'Py 8.x** (the Python 3 line), and animations authored in **SpriteStudio 7.5 or later**.
 
 This is the easiest way to integrate the player using a pre-built package.
 
@@ -55,7 +62,10 @@ and the Auto Importer converts it on the next reload (**Shift+R**) — there is 
 [Asset Import](docs/en/import.md) also covers the two routes that do not need Ren'Py running:
 `SSConverterGUI` on the desktop, and `ssconverter-cli` in CI.
 
-### Verifying It Works
+### See it running from a checkout
+
+> 🚧 Until the first release, this is how to watch the player work. It is a checkout, not part
+> of the setup above — you do not need it to use the package.
 
 Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
 
@@ -100,6 +110,12 @@ scripts\build-runtime.ps1
 ```
 
 - Run `scripts/build-runtime.*` in place of the `scripts/download-sdk.*` step from Verifying It Works — this builds the core yourself instead of fetching the pre-built one. The following `fetch-renpy-sdk` / `deploy-examples` / `run-demo` steps are the same as in [Verifying It Works](#-1-quick-start).
+
+## 🔗 Related Repositories
+
+- [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/) — the documentation portal for the SDK and every official player
+- [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — the core SDK providing `libssruntime` and `libssconverter`
+- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — desktop GUI for converting `.sspj` to `.ssab` without a player
 
 ## 📄 License
 

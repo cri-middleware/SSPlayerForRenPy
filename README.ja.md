@@ -20,7 +20,7 @@
 
 詳細な仕様、インポート手順、APIリファレンスなどの全容については、ドキュメントサイト（MkDocs）をご覧ください。
 
-- [**ドキュメントサイト (ホスト版)**](https://cri-middleware.github.io/SSPlayerForRenPy/) — 🚧 初回リリース後に公開
+- [**ドキュメントサイト (ホスト版)**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/) — 🚧 初回リリース後に公開
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
 - [**Documentation (English)**](./docs/en/index.md)
 - [**SpriteStudio Docs（ポータル）**](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と全公式 Player の入口 — 🚧 初回リリース後に公開
@@ -29,13 +29,19 @@
 - [導入ガイド (Setup)](docs/ja/setup.md)
 - [データのコンバート (Import)](docs/ja/import.md)
 - [再生と制御 (Usage)](docs/ja/usage.md)
-- [ビルド・カスタマイズガイド (Build)](docs/ja/build.md)
+- [制限事項と対応範囲](docs/ja/limitations.md)
 
 ---
 
 ## 🎮 1. クイックスタート
 
+**ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 1 行書く。
+その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
+**Player 自体や、その下の Rust コアを変更する場合**は [2 章](#-2-sdk・player開発者向け-フルビルド環境)へ。
+
 ### 導入方法
+
+**Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.5 以上**で作成されたアニメーションが前提です。
 
 ビルド済みのパッケージを利用し、負担なく手軽に導入できる方法です。
 
@@ -52,7 +58,10 @@ screen demo():
 
 **自分のアニメーションも同じ流れで入ります。** SpriteStudio のプロジェクトを `SpriteStudio_Source/` に置けば、次のリロード（**Shift+R**）で Auto Importer が変換します。手動の書き出し手順はありません。Ren'Py を起動せずに変換する 2 つの経路（デスクトップの `SSConverterGUI`、CI 向けの `ssconverter-cli`）も [アセットの取り込み](docs/ja/import.md) にあります。
 
-### 動作確認
+### チェックアウトから動かしてみる
+
+> 🚧 初回リリースまでは、これが動いているところを見る方法です。上の導入手順の一部ではなく
+> チェックアウトなので、パッケージを使うだけなら不要です。
 
 同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
 
@@ -97,6 +106,12 @@ scripts\build-runtime.ps1
 ```
 
 - 動作確認の `scripts/download-sdk.*`（ビルド済みコアの取得）の代わりに `scripts/build-runtime.*` を実行し、コアを自前でビルドします。以降の `fetch-renpy-sdk` / `deploy-examples` / `run-demo` は[動作確認](#-1-クイックスタート)と同じ手順です。
+
+## 🔗 関連リポジトリ
+
+- [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と公式 Player のドキュメントポータル
+- [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — `libssruntime` / `libssconverter` を提供する SDK 本体
+- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — Player なしで `.sspj` を変換できるデスクトップ GUI
 
 ## 📄 ライセンス (License)
 
