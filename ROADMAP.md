@@ -63,6 +63,30 @@ animation clock.
   so the dispatch site already exists in `render()`.
 - *Reference*: `SSPlayerForGodot`'s `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
 
+### ☐ Screen-language integration
+
+A player is already a `Displayable`, so it drops into a `screen` — but it behaves like a
+picture there, not like a control. Three pieces, in the order they build on each other.
+
+- *Render size*. `render()` returns `self._size` when the constructor was given one and the
+  full available `(width, height)` otherwise, so a player inside a `vbox` / `hbox` claims the
+  whole area. Measure the animation's content box and return that as the natural size, with a
+  `fit` (`contain` / `cover` / `none`) + `align` pair for how the animation sits in a box it
+  was not authored for — the family's vocabulary, with `SSPlayerForReactNative`'s
+  implementation as the reference.
+- *Focus mask*. Ren'Py's `focus_mask` accepts a callable, which is exactly the hook a per-part
+  hit test fits: an irregular button then stops taking clicks across its bounding box. It
+  needs a **part rect read-out** first — `ss_part_rect(part)`, built from the `PartState`
+  fields the runtime already delivers every frame (`size_x` / `size_y`, `anchor`, `pivot`)
+  plus the `ss_part_transform()` this player already has — and then `ss_hit_test_part(x, y)`
+  over it.
+- *Button states*. `imagebutton` takes an image per state; a player takes none. Map
+  `idle` / `hover` / `selected_idle` / `selected_hover` / `insensitive` onto an animation or a
+  label so a player can back a `button` without the screen re-issuing `ss_set_animation` on
+  every hover.
+- *Reference*: this is the Ren'Py face of the same item the sibling ports carry — Godot's
+  `Control` node, Unity's uGUI `Graphic`, Flutter's intrinsic sizing + `hitTest`.
+
 ### 🕒 Flip and offset — *low priority*
 
 Mirror playback horizontally / vertically, and shift the drawn animation, without moving the
@@ -95,3 +119,11 @@ Animation blending / crossfade (`ss_runtime_crossfade`, the blend-source API) is
 the runtime but implemented by no official player yet, so it is tracked in the SDK roadmap
 rather than here. The same applies to Text and NineSlice parts, and to nested timeline
 events inside Instance / Effect parts — see [Limitations](./docs/en/limitations.md).
+
+Text and NineSlice are the two part kinds authored for UI, and the UI work above stops short
+of both. Text is settled SDK-side as a **player responsibility**, so drawing it — and
+substituting the string at runtime, which a localized UI label needs — is this side's work
+whenever it is picked up. Stretching a NineSlice part to a screen's box is not: the runtime
+evaluates its size from keyframes and hands over finished vertices, and the Override Layer
+covers colour / cell / visibility only, so it waits on the SDK roadmap's **Per-part size
+override** (Phase 3).
