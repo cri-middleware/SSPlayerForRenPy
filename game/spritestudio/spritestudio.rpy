@@ -3006,6 +3006,26 @@ init -10 python:
         def ss_is_pausing(self):
             return bool(self._core and self._core.is_pausing())
 
+        def ss_is_finished(self):
+            """Whether every configured loop has played.
+
+            A **state**, not a pulse: it latches on completion and stays True
+            until the next `ss_play()` / `ss_set_animation()`. The rising edge
+            is the `on_animation_finished` callback; this is the same thing
+            asked about afterwards, for a screen or an interaction that missed
+            the tick it fired on.
+
+            Not `not ss_is_playing()`: a commanded `ss_stop()` also stops
+            playing but is **not** a completion, so only this one tells "the run
+            ended on its own" from "something stopped it". Never True under an
+            infinite loop count, and False before the core exists.
+
+            It follows the **sequence**, not each clip in it: chaining to the
+            next animation re-arms the Brain's flag, so this reads True once the
+            sequence is spent — the same moment `on_animation_finished` fires.
+            """
+            return bool(self._core and self._core.is_finished())
+
         def ss_get_frame_no(self):
             return self._core.frame_no if self._core else 0.0
 
