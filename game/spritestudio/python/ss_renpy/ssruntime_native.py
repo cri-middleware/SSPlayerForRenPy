@@ -56,8 +56,8 @@ UNIT_PIXEL = 0
 UNIT_DOT = 1
 
 # playback_direction
-PLAY_FORWARD = 0
-PLAY_REVERSE = 1
+DIRECTION_FORWARD = 0
+DIRECTION_BACKWARD = 1
 
 # playback_style (ss_runtime_set_playback_direction's second arg)
 STYLE_NORMAL = 0
@@ -713,7 +713,7 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_animation_section(self._ctx, int(start), int(end))
 
     def set_playback_direction(self, direction: int, style: int = STYLE_NORMAL):
-        """``direction`` = PLAY_FORWARD/REVERSE; ``style`` = STYLE_NORMAL/PINGPONG."""
+        """``direction`` = DIRECTION_FORWARD/BACKWARD; ``style`` = STYLE_NORMAL/PINGPONG."""
         self._lib.ss_runtime_set_playback_direction(
             self._ctx, int(direction), int(style))
 
@@ -817,13 +817,13 @@ class _NativeRuntime:
 
     @property
     def playback_direction(self) -> int:
-        """The *configured* direction (PLAY_FORWARD / PLAY_REVERSE).
+        """The *configured* direction (DIRECTION_FORWARD / DIRECTION_BACKWARD).
 
         The setting, not the instantaneous heading — on a ping-pong return leg
         this still reads FORWARD while :attr:`is_playing_forward` reads False.
         Assumes forward when the runtime does not export the query."""
         return self._mode_getter("ss_runtime_get_playback_direction",
-                                 PLAY_FORWARD)
+                                 DIRECTION_FORWARD)
 
     @property
     def playback_style(self) -> int:
