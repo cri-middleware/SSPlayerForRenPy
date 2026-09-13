@@ -22,8 +22,8 @@ UNIT_PIXEL = 0
 UNIT_DOT = 1
 
 # playback_direction
-PLAY_FORWARD = 0
-PLAY_REVERSE = 1
+DIRECTION_FORWARD = 0
+DIRECTION_BACKWARD = 1
 
 # playback_style (ss_runtime_set_playback_direction's second arg)
 STYLE_NORMAL = 0
