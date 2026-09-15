@@ -302,12 +302,12 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_set_render_mode.restype = None
     f.ss_runtime_get_render_mode.argtypes = [P]
     f.ss_runtime_get_render_mode.restype = C.c_uint8
-    f.ss_context_set_coordinate_system.argtypes = [P, C.c_int32]
-    f.ss_context_set_coordinate_system.restype = None
-    f.ss_context_set_origin.argtypes = [P, C.c_int32]
-    f.ss_context_set_origin.restype = None
-    f.ss_context_set_unit.argtypes = [P, C.c_int32]
-    f.ss_context_set_unit.restype = None
+    f.ss_runtime_set_coordinate_system.argtypes = [P, C.c_int32]
+    f.ss_runtime_set_coordinate_system.restype = None
+    f.ss_runtime_set_origin.argtypes = [P, C.c_int32]
+    f.ss_runtime_set_origin.restype = None
+    f.ss_runtime_set_unit.argtypes = [P, C.c_int32]
+    f.ss_runtime_set_unit.restype = None
 
     # frame data (FlatBuffers) + SoA getters
     f.ss_runtime_get_frame_data.argtypes = [
@@ -354,12 +354,12 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_set_frame_no.restype = None
     f.ss_runtime_next_frame.argtypes = [P]
     f.ss_runtime_prev_frame.argtypes = [P]
-    f.ss_runtime_set_loop.argtypes = [P, C.c_int]
-    f.ss_runtime_set_loop.restype = None
+    f.ss_runtime_set_loop_count.argtypes = [P, C.c_int]
+    f.ss_runtime_set_loop_count.restype = None
     f.ss_runtime_set_frame_rate.argtypes = [P, C.c_int]
     f.ss_runtime_set_frame_rate.restype = None
-    f.ss_runtime_set_animation_speed.argtypes = [P, C.c_float]
-    f.ss_runtime_set_animation_speed.restype = None
+    f.ss_runtime_set_speed_scale.argtypes = [P, C.c_float]
+    f.ss_runtime_set_speed_scale.restype = None
     f.ss_runtime_set_playback_direction.argtypes = [P, C.c_int, C.c_int]
     f.ss_runtime_set_playback_direction.restype = None
     f.ss_runtime_set_animation_section.argtypes = [P, C.c_int, C.c_int]
@@ -368,9 +368,9 @@ def _declare(lib: C.CDLL) -> None:
     # state getters
     f.ss_runtime_get_frame_no.argtypes = [P]
     f.ss_runtime_get_frame_no.restype = C.c_float
-    f.ss_runtime_get_animation_speed.argtypes = [P]
-    f.ss_runtime_get_animation_speed.restype = C.c_float
-    for name in ("ss_runtime_is_looped", "ss_runtime_is_playing",
+    f.ss_runtime_get_speed_scale.argtypes = [P]
+    f.ss_runtime_get_speed_scale.restype = C.c_float
+    for name in ("ss_runtime_just_looped", "ss_runtime_is_playing",
                  "ss_runtime_is_pausing"):
         fn = getattr(f, name)
         fn.argtypes = [P]
@@ -388,8 +388,8 @@ def _declare(lib: C.CDLL) -> None:
     except AttributeError:
         pass
     for name in ("ss_runtime_get_start_frame", "ss_runtime_get_end_frame",
-                 "ss_runtime_get_fps", "ss_runtime_get_loops",
-                 "ss_runtime_get_remain_loops"):
+                 "ss_runtime_get_frame_rate", "ss_runtime_get_loop_count",
+                 "ss_runtime_get_remaining_loops"):
         fn = getattr(f, name)
         fn.argtypes = [P]
         fn.restype = C.c_int32
@@ -613,9 +613,9 @@ class _NativeRuntime:
                   unit=UNIT_PIXEL):
         L, ctx = self._lib, self._ctx
         L.ss_runtime_set_render_mode(ctx, render_mode)
-        L.ss_context_set_coordinate_system(ctx, coordinate_system)
-        L.ss_context_set_origin(ctx, origin)
-        L.ss_context_set_unit(ctx, unit)
+        L.ss_runtime_set_coordinate_system(ctx, coordinate_system)
+        L.ss_runtime_set_origin(ctx, origin)
+        L.ss_runtime_set_unit(ctx, unit)
         return self
 
     def load_ssab_bytes(self, data: bytes, *, borrow: bool = True):
@@ -688,12 +688,12 @@ class _NativeRuntime:
     def stop(self):
         self._lib.ss_runtime_stop(self._ctx)
 
-    def set_loop(self, loops: int):
-        self._lib.ss_runtime_set_loop(self._ctx, loops)
+    def set_loop_count(self, loop_count: int):
+        self._lib.ss_runtime_set_loop_count(self._ctx, loop_count)
         return self
 
-    def set_animation_speed(self, rate: float):
-        self._lib.ss_runtime_set_animation_speed(self._ctx, rate)
+    def set_speed_scale(self, rate: float):
+        self._lib.ss_runtime_set_speed_scale(self._ctx, rate)
 
     def set_frame_no(self, frame: float):
         self._lib.ss_runtime_set_frame_no(self._ctx, frame)
@@ -755,15 +755,15 @@ class _NativeRuntime:
         return self._lib.ss_runtime_get_frame_no(self._ctx)
 
     @property
-    def animation_speed(self) -> float:
-        """The speed in effect, as a multiple of :attr:`fps`.
+    def speed_scale(self) -> float:
+        """The speed in effect, as a multiple of :attr:`frame_rate`.
 
         What ``set_animation_speed`` *stored*, not what it was handed: a zero or
         negative rate clamps to ``0.0`` (a stop -- reverse playback is
         ``set_playback_direction``'s business), so a host reading this back sees
         the stop it actually got instead of assuming it got reverse playback.
         """
-        return self._lib.ss_runtime_get_animation_speed(self._ctx)
+        return self._lib.ss_runtime_get_speed_scale(self._ctx)
 
     @property
     def is_playing(self) -> bool:
@@ -794,9 +794,9 @@ class _NativeRuntime:
             return False
 
     @property
-    def is_looped(self) -> bool:
+    def just_looped(self) -> bool:
         """True if the last :meth:`update` crossed a loop boundary (per-update)."""
-        return bool(self._lib.ss_runtime_is_looped(self._ctx))
+        return bool(self._lib.ss_runtime_just_looped(self._ctx))
 
     @property
     def is_playing_forward(self) -> bool:
@@ -852,8 +852,8 @@ class _NativeRuntime:
             return default
 
     @property
-    def fps(self) -> int:
-        return int(self._lib.ss_runtime_get_fps(self._ctx))
+    def frame_rate(self) -> int:
+        return int(self._lib.ss_runtime_get_frame_rate(self._ctx))
 
     @property
     def start_frame(self) -> int:
@@ -869,8 +869,8 @@ class _NativeRuntime:
         return max(0, self.end_frame - self.start_frame + 1)
 
     @property
-    def remain_loops(self) -> int:
-        return int(self._lib.ss_runtime_get_remain_loops(self._ctx))
+    def remaining_loops(self) -> int:
+        return int(self._lib.ss_runtime_get_remaining_loops(self._ctx))
 
     # -- events (see ss_renpy.events) -------------------------------------
     def passed_event_count(self) -> int:

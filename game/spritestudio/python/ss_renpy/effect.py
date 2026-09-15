@@ -59,7 +59,7 @@ class EffectRig:
         if not slot:
             return []
         ev = self._rt.active_effect_event(part_index)
-        fps = float(self._rt.fps or 30)
+        fps = float(self._rt.frame_rate or 30)
         # Zero-copy: the plan view is drained by build_effect_batches in one
         # pass (no retention), so we skip the per-frame copy on this hot path.
         visible, buf = self._rt.effect_slot_step_view(
@@ -86,7 +86,7 @@ class EffectRig:
         if not slot:
             return
         ev = self._rt.active_effect_event(part_index)
-        fps = float(self._rt.fps or 30)
+        fps = float(self._rt.frame_rate or 30)
         self._rt.effect_slot_step_view(
             slot, ev, parent_frame, dt, fps, parent_looped,
             y_flip=True, vert_stride=2)

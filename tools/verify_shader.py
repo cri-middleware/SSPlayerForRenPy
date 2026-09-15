@@ -104,9 +104,9 @@ def check_pack(lib, path: str, anim=None, expect_shaders=True) -> bool:
         if not rt.setup_animation(a0):
             print("    FAIL: setup_animation(%r)" % a0)
             return False
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
-        fps = rt.fps or 30
+        fps = rt.frame_rate or 30
         dt = 1.0 / fps
         total = max(1, meta.animations()[0].total_frame)
 
@@ -123,7 +123,7 @@ def check_pack(lib, path: str, anim=None, expect_shaders=True) -> bool:
             if not fb:
                 continue
             fd = framedata.parse(fb)
-            items = collect_ordered(rt, fd, None, None, f, dt, rt.is_looped,
+            items = collect_ordered(rt, fd, None, None, f, dt, rt.just_looped,
                                     False)
             for tag, mp in items:
                 if tag != "mesh":

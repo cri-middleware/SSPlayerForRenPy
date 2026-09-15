@@ -14,7 +14,7 @@ library and the overall packs:
   3. payloads decode to native values — UserData integer/string, Signal
      command_id + typed params, Audio sound_name + loop_num;
   4. ``is_finished`` trips once the configured loops have played; looping
-     replays the events and ``is_looped`` trips at the boundary.
+     replays the events and ``just_looped`` trips at the boundary.
 
 Exits non-zero if any check fails. Needs the native library built
 (``scripts/build-runtime.sh``); pure stdlib otherwise.
@@ -121,7 +121,7 @@ def verify_pack(pack: str) -> list[str]:
     if not rt.setup_animation(anim.name):
         rt.close()
         return [f"{name}: setup_animation failed"]
-    rt.set_loop(1)
+    rt.set_loop_count(1)
     rt.play()
 
     collected, forward_after_first = _playthrough(
@@ -129,7 +129,7 @@ def verify_pack(pack: str) -> list[str]:
 
     # (2) exactly-once + frame_index correctness over one non-looping pass.
     if not rt.is_finished:
-        fails.append(f"{name}: is_finished never tripped over a set_loop(1) pass")
+        fails.append(f"{name}: is_finished never tripped over a set_loop_count(1) pass")
     # Forward playback must report forward (the audio gate).
     if forward_after_first is not True:
         fails.append(f"{name}: is_playing_forward was {forward_after_first!r} "
@@ -179,12 +179,12 @@ def verify_pack(pack: str) -> list[str]:
                   f"name={a.sound_name!r} loop={a.loop_num} file={a.file_path!r} "
                   f"hash={a.sound_name_hash}/{a.sound_list_name_hash}")
 
-    # (4) looping replays the events and is_looped trips at the wrap. We run a
+    # (4) looping replays the events and just_looped trips at the wrap. We run a
     # fixed budget covering two full clip spans rather than stopping on a flag:
-    # is_finished only trips after *both* loops, and is_looped is the per-wrap
+    # is_finished only trips after *both* loops, and just_looped is the per-wrap
     # pulse we are actually measuring here.
     rt.stop()
-    rt.set_loop(2)
+    rt.set_loop_count(2)
     rt.play()
     looped_seen = False
     loop2 = []
@@ -193,16 +193,16 @@ def verify_pack(pack: str) -> list[str]:
     for _ in range(span * 2 + 8):
         rt.update(dt)
         loop2.extend(resolver.collect(rt))
-        if rt.is_looped:
+        if rt.just_looped:
             looped_seen = True
     if not looped_seen:
-        fails.append(f"{name}: is_looped never tripped over a 2-loop play")
+        fails.append(f"{name}: just_looped never tripped over a 2-loop play")
     # The second loop must replay events: strictly more than one loop's worth.
     if len(loop2) <= n_events:
         fails.append(f"{name}: 2-loop fired {len(loop2)} <= one loop "
                      f"({n_events}); events did not replay")
     else:
-        print(f"    2-loop replayed {len(loop2)} record(s); is_looped tripped")
+        print(f"    2-loop replayed {len(loop2)} record(s); just_looped tripped")
 
     rt.close()
     return fails

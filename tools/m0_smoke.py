@@ -60,11 +60,11 @@ def main(argv: list[str]) -> int:
         if not rt.setup_animation(anim_name):
             print(f"!! setup_animation({anim_name!r}) returned False")
             return 1
-        print(f"== setup_animation({anim_name!r}) OK; fps={rt.fps}")
-        rt.set_loop(-1)
+        print(f"== setup_animation({anim_name!r}) OK; fps={rt.frame_rate}")
+        rt.set_loop_count(-1)
         rt.play()
 
-        dt = 1.0 / (rt.fps or 60)
+        dt = 1.0 / (rt.frame_rate or 60)
         max_batches = 0
         for step in range(5):
             frame_no = rt.update(dt)
