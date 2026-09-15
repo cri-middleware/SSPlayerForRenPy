@@ -203,12 +203,12 @@ def render_animation(ssab_path: str, anim: str | None, out_dir: str,
     rt.load_ssab_bytes(data)
     if not rt.setup_animation(a0.name):
         raise SystemExit(f"setup_animation({a0.name!r}) failed")
-    fps = rt.fps or a0.fps or 30
+    fps = rt.frame_rate or a0.fps or 30
     total = max(1, a0.total_frame)
     dt = 1.0 / fps
 
     # Pass 1: capture per-frame quad lists + global bbox.
-    rt.set_loop(-1)
+    rt.set_loop_count(-1)
     rt.play()
     frames_quads = []
     minx = miny = math.inf

@@ -331,9 +331,9 @@ class SSInternalPlayer:
 
         A **pulse**, not a state: the runtime clears it at the top of every
         update, so it only reads true inside the tick that crossed — which is
-        why it is not called ``is_looped``. Reading it a tick late reads False.
+        why it is not called ``just_looped``, here or in the Brain. Reading it a tick late reads False.
         """
-        return bool(self._rt.is_looped) if self._rt else False
+        return bool(self._rt.just_looped) if self._rt else False
 
     def is_playing_forward(self) -> bool:
         """Whether the head is advancing forward (direction + ping-pong leg;
@@ -374,7 +374,7 @@ class SSInternalPlayer:
         effect part company the moment either is passed. The Player-facing
         getter reports the effect (SDK doc: 30_core/20_playback_control.md).
         """
-        return self._rt.animation_speed if self._rt else self._speed
+        return self._rt.speed_scale if self._rt else self._speed
 
     @property
     def frame_no(self) -> float:
@@ -396,8 +396,8 @@ class SSInternalPlayer:
         """Frames per second in effect: the pack's authored rate unless
         :meth:`set_frame_rate` overrode it."""
         # `_rt` is the thin binding over the C ABI, whose name is
-        # `ss_runtime_get_fps`; the Player-facing stem is `frameRate`.
-        return self._rt.fps if self._rt else 0
+        # `ss_runtime_get_frame_rate`; the Player-facing stem is `frameRate`.
+        return self._rt.frame_rate if self._rt else 0
 
     @property
     def loop_count(self) -> int:
@@ -462,9 +462,9 @@ class SSInternalPlayer:
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
         # first setup is guaranteed to reach the Brain.
-        self._rt.set_loop(self._loop)
+        self._rt.set_loop_count(self._loop)
         if self._speed != 1.0:
-            self._rt.set_animation_speed(self._speed)
+            self._rt.set_speed_scale(self._speed)
         if not self._skip_frames:
             self._rt.set_skip_frames(False)
         # NOT carried: the section, and only the section. It is a range of frame
@@ -616,19 +616,19 @@ class SSInternalPlayer:
     def set_loop_count(self, count: int) -> None:
         self._loop = count
         if self._rt:
-            self._rt.set_loop(count)
+            self._rt.set_loop_count(count)
 
     def set_speed_scale(self, speed: float) -> None:
-        """Scale playback by ``speed``, a multiple of :attr:`fps`.
+        """Scale playback by ``speed``, a multiple of :attr:`frame_rate`.
 
         ``0.0`` and negatives are a **stop** in the Brain, not reverse playback
-        (that is :meth:`set_playback_direction`); read :attr:`animation_speed`
+        (that is :meth:`set_playback_direction`); read :attr:`speed_scale`
         to see the value that took effect. :attr:`speed` keeps what was asked
         for, because the host layer replays it onto a rebuilt core.
         """
         self._speed = speed
         if self._rt:
-            self._rt.set_animation_speed(speed)
+            self._rt.set_speed_scale(speed)
 
     def set_frame_no(self, frame: float) -> None:
         if self._rt:
@@ -696,7 +696,7 @@ class SSInternalPlayer:
         rt = self._rt
         dt_s = dt_ms / 1000.0
         frame_no = rt.update_ms(dt_ms)
-        looped = rt.is_looped
+        looped = rt.just_looped
 
         events_out: list = []
         if self._enable_events and self._evt is not None and self._evt.available:

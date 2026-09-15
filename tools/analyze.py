@@ -82,11 +82,11 @@ def audit_pack(lib, path: str) -> dict:
         if not rt.setup_animation(a0.name):
             result["verdict"] = f"setup_animation({a0.name!r}) failed"
             return result
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
 
         total = max(1, a0.total_frame)
-        fps = rt.fps or a0.fps or 30
+        fps = rt.frame_rate or a0.fps or 30
         dt = 1.0 / fps
         kinds_seen: dict[int, int] = {}
         sample_quads = []

@@ -86,8 +86,12 @@ class _WebRuntime:
                 // range edge, so without this the child throws every such tick.
                 if (!isFinite(frame_no)) return "";
                 try {
-                    var ptr = ctx.get_frame_data_buf(frame_no);
-                    var len = ctx.get_frame_data_len(frame_no);
+                    // One evaluation: `prepare_frame_data` builds the frame and
+                    // returns its length, and the buffer pointer is then a pure
+                    // read. The old buf/len pair each ran a full evaluation, so
+                    // this tick cost the Brain twice.
+                    var len = ctx.prepare_frame_data(frame_no);
+                    var ptr = ctx.get_frame_data_buf();
                     if (len > 0) {
                         var u8 = new Uint8Array(window.ssruntime_wasm.memory.buffer, ptr, len);
                         return window.ss_base64_encode(u8);
@@ -181,12 +185,12 @@ class _WebRuntime:
     def stop(self):
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].stop();")
 
-    def set_loop(self, loops: int):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_loop({loops});")
+    def set_loop_count(self, loop_count: int):
+        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_loop_count({loop_count});")
         return self
 
-    def set_animation_speed(self, rate: float):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_animation_speed({_jsnum(rate)});")
+    def set_speed_scale(self, rate: float):
+        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_speed_scale({_jsnum(rate)});")
 
     def set_frame_no(self, frame: float):
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_frame_no({_jsnum(frame)});")
@@ -223,9 +227,9 @@ class _WebRuntime:
         return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_frame_no().toString()"))
 
     @property
-    def animation_speed(self) -> float:
-        """See :attr:`ss_renpy.ssruntime_native.SSRuntime.animation_speed`."""
-        return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_animation_speed().toString()"))
+    def speed_scale(self) -> float:
+        """See :attr:`ss_renpy.ssruntime_native.SSRuntime.speed_scale`."""
+        return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_speed_scale().toString()"))
 
     @property
     def is_playing(self) -> bool:
@@ -251,8 +255,8 @@ class _WebRuntime:
             f"catch(e){{return 0;}}}})(window.ss_ctxs[{self._ctx_id}])") == 1
 
     @property
-    def is_looped(self) -> bool:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_looped() ? 1 : 0") == 1
+    def just_looped(self) -> bool:
+        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].just_looped() ? 1 : 0") == 1
 
     @property
     def is_playing_forward(self) -> bool:
@@ -295,8 +299,8 @@ class _WebRuntime:
             f"(window.ss_ctxs[{self._ctx_id}])")
 
     @property
-    def fps(self) -> int:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_fps()")
+    def frame_rate(self) -> int:
+        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_frame_rate()")
 
     @property
     def start_frame(self) -> int:
@@ -311,8 +315,8 @@ class _WebRuntime:
         return max(0, self.end_frame - self.start_frame + 1)
 
     @property
-    def remain_loops(self) -> int:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_remain_loops()")
+    def remaining_loops(self) -> int:
+        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_remaining_loops()")
 
     def passed_event_count(self) -> int:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_count()")

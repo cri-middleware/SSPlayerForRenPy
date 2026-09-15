@@ -33,7 +33,7 @@ The sibling `*.rpy` are the drop-in ergonomics, each self-contained, dev-gated a
 *   The first `SSPlayer` argument is a gamedir-relative `.ssab` path; textures and instance sub-packs sit beside it, and loading goes through `renpy.loader`, so it works loose or inside a `.rpa`.
 *   **FFI:** release every Rust handle via `ss_*_destroy` (the bindings do it on `__del__`). Textures are the exception — Ren'Py owns them.
 *   **Hot path:** no per-frame Python allocations; consume `FramePlan` / `DrawBatch` directly. `_prewarm_textures` staggers uploads, `SS_PROFILE=1` logs the split.
-*   **Coordinates:** use `ss_context_set_coordinate_system`; never add a second Y-flip.
+*   **Coordinates:** use `ss_runtime_set_coordinate_system`; never add a second Y-flip.
 *   **Versions:** `ss_renpy.__version__` (`game/spritestudio/python/ss_renpy/__init__.py`, PEP 440, e.g. `7.0.0b1`) is the package version and the single source of truth — it ships inside the folder creators get, and the release reads it for the tag and the zip name. It is independent of the SDK. `scripts/SDK_VERSION.txt` and `scripts/RENPY_VERSION.txt` pin the other two, and `libs/<platform>/` must match the SDK pin (bump → re-run `download-sdk`, often `generate-runtime-code`).
 *   **Scripts** are `scripts/*.sh` with `.ps1` twins, `key=value` options and `--help`: `build-runtime` / `download-sdk`, `download-flatbuffers` + `generate-runtime-code`, `deploy-examples`, `run-demo`, `run-tests`, `fetch-renpy-*`, `deploy-{desktop,android,ios,web}` (iOS is POSIX-only), `prepare-docs` / `build-docs` / `build-pages`, `build-release` / `release-version`.
 

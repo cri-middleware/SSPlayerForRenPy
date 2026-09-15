@@ -138,9 +138,9 @@ def verify_pack(lib, path: str) -> dict:
         if not rt.setup_animation(a0.name):
             res["errors"].append(f"setup_animation({a0.name!r}) failed")
             return res
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
-        fps = rt.fps or a0.fps or 30
+        fps = rt.frame_rate or a0.fps or 30
         total = max(1, a0.total_frame)
         dt = 1.0 / fps
 

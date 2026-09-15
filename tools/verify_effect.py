@@ -62,7 +62,7 @@ def check_pack(lib, path: str) -> bool:
         if not rt.setup_animation(a0.name):
             print(f"    FAIL: setup_animation({a0.name!r})")
             return False
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
 
         for p in eff_parts:
@@ -74,7 +74,7 @@ def check_pack(lib, path: str) -> bool:
             else:
                 slots[p.index] = slot
 
-        fps = rt.fps or a0.fps or 30
+        fps = rt.frame_rate or a0.fps or 30
         dt = 1.0 / fps
         total = max(1, a0.total_frame)
         visible_parts = set()
@@ -87,7 +87,7 @@ def check_pack(lib, path: str) -> bool:
             frame_no = rt.update(dt)
             rt.get_frame_data(frame_no)               # evaluate world matrices
             wm, wn = rt.world_matrices()
-            looped = rt.is_looped
+            looped = rt.just_looped
             for p in eff_parts:
                 slot = slots.get(p.index)
                 if slot is None:
