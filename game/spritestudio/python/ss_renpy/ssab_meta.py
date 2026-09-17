@@ -381,6 +381,46 @@ class SsabMeta:
                 m[t.name_hash] = t.name
         return m
 
+    def replaceable_texture_names(self) -> list[str]:
+        """Names accepted by a runtime *texture replacement* (a Player-side
+        override), cellmaps first then ``external_textures``.
+
+        A cellmap is named WITHOUT its file extension (``common``); an external
+        texture is a file NAME (``common.png``). They are different strings that
+        hash into the two distinct spaces ``DrawBatch.texture_hash`` draws from
+        (SDK doc: 40_components/70_external_resources.md), so both are listed —
+        every entry is legitimately replaceable. Mirrors the sibling players'
+        ``get_cellmap_names``; dedup guards only against a repeated name."""
+        out: list[str] = []
+        seen: set[str] = set()
+        for c in self.cellmaps():
+            if c.name and c.name not in seen:
+                seen.add(c.name)
+                out.append(c.name)
+        for t in self.external_textures():
+            if t.name and t.name not in seen:
+                seen.add(t.name)
+                out.append(t.name)
+        return out
+
+    def resolve_texture_image(self, name: str) -> str:
+        """Pack-relative image path for a replaceable-texture ``name`` (``""``
+        when unknown).
+
+        A cellmap name resolves to its ``image_path``; an external-texture name
+        IS its file path. Cellmaps are searched first, then ``external_textures``
+        — the same order as :meth:`replaceable_texture_names` and the sibling
+        players' name->hash resolution."""
+        if not name:
+            return ""
+        for c in self.cellmaps():
+            if c.name == name:
+                return c.image_path
+        for t in self.external_textures():
+            if t.name == name:
+                return t.name
+        return ""
+
     # -- audio (SDK doc: 40_components/90_audio.md) ---------------------
     def sound_files(self) -> list[SoundFileInfo]:
         """Every ``SoundFile`` across the pack's ``SoundList``s, in file order.

@@ -1388,6 +1388,17 @@ init -10 python:
             # save/load without this record. Plain data (ints, strings, tuples),
             # so it pickles with the displayable. See _reapply_overrides.
             self._overrides = {}
+            # Runtime texture replacements: {resolved_path -> displayable}. A
+            # Player-side override (SDK doc: 40_components/70_external_resources
+            # .md), NOT the per-part Override Layer above. Keyed by the SAME path
+            # _texture_path() yields, so _base_image() shadows the pack's atlas
+            # wherever that texture binds; a cleared key falls back to the pack's
+            # own image. Both texture_hash spaces (cellmap name / TCHG file name)
+            # collapse to one path here, so one entry covers both. The path keys
+            # are rebuild-stable, so this survives pickling (unlike the caches
+            # __getstate__ drops); the values are displayables Ren'Py can save.
+            # See ss_set_cellmap_texture.
+            self._tex_override = {}
 
         def __getstate__(self):
             """Drop the native-backed core + caches for pickling/saves; they are
@@ -1668,7 +1679,15 @@ init -10 python:
             return path
 
         def _base_image(self, tex_path):
-            # Image lifetime is owned by the RenPyResourceManager (Ren'Py cache).
+            # A runtime texture replacement (ss_set_cellmap_texture) shadows the
+            # pack's own atlas for this resolved path; otherwise the image
+            # lifetime is owned by the RenPyResourceManager (Ren'Py cache). This
+            # is the one chokepoint every draw path funnels through (transform /
+            # mesh / shape / mask writer / effect), so a single lookup here makes
+            # the swap take effect everywhere the texture binds.
+            ov = self._tex_override.get(tex_path)
+            if ov is not None:
+                return ov
             return self._rm.image(tex_path)
 
         def _warn_once(self, key, msg):
@@ -3601,6 +3620,61 @@ init -10 python:
             """Names of the cells in ``cellmap_name`` (cell-override targets)."""
             self._ensure()
             return self._core.cell_names(cellmap_name)
+
+        # -- runtime texture replacement -----------------------------------
+        # A whole-texture swap from your program (costume / expression change),
+        # distinct from the per-part Override Layer above: it repoints the atlas
+        # a cellmap (or TCHG target) binds, not a part's cell/colour/visibility
+        # (SDK doc: 40_components/70_external_resources.md — "a Player-side
+        # override", explicitly not the Override Layer API).
+        def ss_texture_names(self):
+            """Names you can pass to :meth:`ss_set_cellmap_texture`.
+
+            Every cellmap (named WITHOUT its ``.ssce`` extension, e.g. ``common``)
+            plus every texture a *texture change* (``TCHG``) can select (a file
+            name, e.g. ``common.png``). Both hash spaces are listed because both
+            are legitimately replaceable; a cellmap's own image appears under its
+            cellmap name, its TCHG-target file (if any) under the file name."""
+            self._ensure()
+            return self._core.replaceable_texture_names()
+
+        def ss_set_cellmap_texture(self, name, texture):
+            """Replace, at runtime, the atlas a cellmap (or TCHG target) binds.
+
+            ``name`` is a cellmap name (no ``.ssce``) or a texture file name —
+            list the valid ones with :meth:`ss_texture_names`. ``texture`` is
+            anything ``renpy.displayable`` accepts (an image name, ``"file.png"``
+            or a Displayable); pass ``None`` to restore the pack's own atlas.
+            Returns False for an unknown ``name`` rather than raising.
+
+            The swap applies wherever this texture binds in THIS player,
+            including instance sub-animations that share the same file (they draw
+            through the same resolver) — but not a separate ``SSPlayer``. The
+            replacement is assumed to share the original's size and layout: the
+            UVs are unchanged, so a different resolution samples a different
+            region (SDK doc: 40_components/70_external_resources.md). Callable
+            before the first show or any time after; persists across save/load."""
+            self._ensure()
+            path = self._core.resolve_texture_name(name)
+            if not path:
+                return False
+            if texture is None:
+                self._tex_override.pop(path, None)
+            else:
+                self._tex_override[path] = renpy.displayable(texture)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_get_cellmap_texture(self, name):
+            """The displayable currently overriding ``name`` (set by
+            :meth:`ss_set_cellmap_texture`), or ``None`` when it is not
+            overridden. Like the sibling players this returns only the override
+            value, never the pack's original atlas."""
+            self._ensure()
+            path = self._core.resolve_texture_name(name)
+            if not path:
+                return None
+            return self._tex_override.get(path)
 
     # Backwards-compatible alias for the original public class name.
     SpriteStudioDisplayable = SSPlayer
