@@ -323,9 +323,46 @@ Part Color and cell overrides conflict with the animation, so they take a `prior
 
 > **On when an override is reflected in the drawing**: setting or clearing an override redraws the sprite immediately, even while playback is stopped or paused — you do not have to nudge the frame to make it appear.
 
+> [!NOTE]
+> **Whole texture vs. one part.** The *cell* override here repoints a single part to a different cell of the same texture. To swap the **entire** texture at runtime — a costume or palette change that applies to every part sampling it — use `ss_set_cellmap_texture()` instead; see section 7, *Runtime Texture Replacement*, below.
+
 ---
 
-## 7. Handling Animation Events (User Data / Signals)
+## 7. Runtime Texture Replacement (Costume / Expression Changes)
+
+Swap the texture an animation samples from — **at runtime, from your script** — without touching the original data. This is how you do a costume change or a dynamic facial expression: prepare a second atlas with the **same layout** and bind it in place of the pack's own.
+
+This is different from the Part Overrides above. A *cell* override repoints **one part** to a different cell of the same texture; a texture replacement swaps **the whole texture** wherever it is drawn.
+
+```renpy
+$ ringo = SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="wait1")
+
+# Bind a different atlas in place of the "Ringo" cellmap.
+$ ringo.ss_set_cellmap_texture("Ringo", "ss_assets/Ringo/Ringo_night.png")
+
+# Restore the pack's own atlas.
+$ ringo.ss_set_cellmap_texture("Ringo", None)
+```
+
+| Method | Description |
+|---|---|
+| `ss_texture_names()` | The texture names you can replace (every cellmap, plus any texture-change target) |
+| `ss_set_cellmap_texture(name, texture)` | Replace the atlas `name` binds; `texture` is any displayable (an image name, `"file.png"`, or a Displayable). `None` restores the original |
+| `ss_get_cellmap_texture(name)` | The displayable currently overriding `name`, or `None` when it is not overridden |
+
+The `name` is a **cellmap name** (written without `.ssce`, e.g. `"Ringo"`) or a **texture file name** (e.g. `"common.png"`); enumerate the valid ones with `ss_texture_names()`. An unknown name returns `False`.
+
+### Notes
+
+- **Same size and layout.** The replacement is assumed to be an atlas of the same size and cell layout as the original — the cell rectangles and UVs are unchanged, so a texture of a different resolution samples a different region. Swap in a re-skin, not an arbitrary picture.
+- **Whole-texture, not per-part.** The swap takes effect everywhere that texture is drawn in this player, including instance sub-animations that bind the same file. To repoint a single part, use a cell override instead.
+- **Texture changes are covered.** When the animation itself switches textures on the timeline (an authored *texture change*), replacing the cellmap also covers those frames — the cellmap and its texture-change target resolve to the same image here.
+- **Survives save / load.** A replacement set from your script is restored when a saved game is loaded, so a costume change persists.
+- Setting or clearing a replacement redraws the sprite immediately, even while playback is stopped or paused.
+
+---
+
+## 8. Handling Animation Events (User Data / Signals)
 You can receive information on "User Data" and "Signals" configured on the SpriteStudio side within Ren'Py. This makes it possible to play sound effects on specific frames or synchronize script progression.
 
 ### Receiving via Callbacks (Event-Driven)
@@ -363,7 +400,7 @@ image boss = SSPlayer(
 
 ---
 
-## 8. Utilities
+## 9. Utilities
 
 ### One-Shot Playback Made Easy (`ss_play_once`)
 Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
@@ -378,7 +415,7 @@ In developer mode, "runtime loaded / N pack(s)" is output to the log on startup.
 
 ---
 
-## 9. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
+## 10. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
 
 Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
 

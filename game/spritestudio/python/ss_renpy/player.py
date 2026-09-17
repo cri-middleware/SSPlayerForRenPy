@@ -976,6 +976,26 @@ class SSInternalPlayer:
         """Names of the cells in ``cellmap_name`` (cell-override targets)."""
         return self._meta.cell_names(cellmap_name)
 
+    def replaceable_texture_names(self) -> List[str]:
+        """Names accepted by :meth:`resolve_texture_name` — every cellmap plus
+        every texture a ``TCHG`` can select (SDK doc:
+        40_components/70_external_resources.md). The host surfaces these as the
+        runtime texture-replacement targets."""
+        return self._meta.replaceable_texture_names()
+
+    def resolve_texture_name(self, name: str) -> str:
+        """Host-relative image path for a replaceable-texture ``name`` (or "").
+
+        The SAME string :meth:`texture_path` returns for that image, so the host
+        can key a texture-replacement override by it and every
+        ``DrawBatch.texture_hash`` that binds this image will resolve to the
+        override. The two hash spaces (cellmap name and TCHG file name) collapse
+        to one path here, so keying by path covers both."""
+        img = self._meta.resolve_texture_image(name)
+        if not img:
+            return ""
+        return (self.base_dir + "/" + img) if self.base_dir else img
+
     # -- teardown ------------------------------------------------------
     def close(self) -> None:
         for rig in (self._instances, self._effects):

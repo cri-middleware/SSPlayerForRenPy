@@ -34,6 +34,7 @@ This player is designed to bring the full expressive power of SpriteStudio to th
 *   **Full Feature Support:** It fully supports advanced SpriteStudio features out of the box, including bone hierarchies, meshes & deformations, and particle effects.
 *   **High-Speed Native Processing:** Powered by `libssruntime` (Rust) and deeply integrated with Ren'Py's rendering pipeline, it renders animations lightweight and fast without relying on heavy video files.
 *   **Transparency & Blending:** Supports seamless fading and additive blending for effects, enabling the rich visual presentation essential for modern visual novels.
+*   **Dynamic Costume Changes:** Swap the texture an animation samples from at runtime, so a single asset can drive color variations, costume changes, and facial expressions from a line of script.
 
 ## Related Repositories
 
