@@ -196,18 +196,29 @@ class AnimationData(object):
         return 0
 
     # AnimationData
-    def Canvas(self):
+    def CanvasSize(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ss.format.Rect import Rect
-            obj = Rect()
+            from ss.format.Vec2 import Vec2
+            obj = Vec2()
+            obj.Init(self._tab.Bytes, x)
+            return obj
+        return None
+
+    # AnimationData
+    def Pivot(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
+        if o != 0:
+            x = self._tab.Indirect(o + self._tab.Pos)
+            from ss.format.Vec2 import Vec2
+            obj = Vec2()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
 def AnimationDataStart(builder):
-    builder.StartObject(12)
+    builder.StartObject(13)
 
 def Start(builder):
     AnimationDataStart(builder)
@@ -308,11 +319,17 @@ def AnimationDataAddFps(builder, fps):
 def AddFps(builder, fps):
     AnimationDataAddFps(builder, fps)
 
-def AnimationDataAddCanvas(builder, canvas):
-    builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(canvas), 0)
+def AnimationDataAddCanvasSize(builder, canvasSize):
+    builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(canvasSize), 0)
 
-def AddCanvas(builder, canvas):
-    AnimationDataAddCanvas(builder, canvas)
+def AddCanvasSize(builder, canvasSize):
+    AnimationDataAddCanvasSize(builder, canvasSize)
+
+def AnimationDataAddPivot(builder, pivot):
+    builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(pivot), 0)
+
+def AddPivot(builder, pivot):
+    AnimationDataAddPivot(builder, pivot)
 
 def AnimationDataEnd(builder):
     return builder.EndObject()

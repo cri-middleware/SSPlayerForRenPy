@@ -33,7 +33,7 @@ class SsAnimeBinary(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
-        return 1
+        return 0
 
     # SsAnimeBinary
     def Name(self):
@@ -281,7 +281,7 @@ def Start(builder):
     SsAnimeBinaryStart(builder)
 
 def SsAnimeBinaryAddVersion(builder, version):
-    builder.PrependUint32Slot(0, version, 1)
+    builder.PrependUint32Slot(0, version, 0)
 
 def AddVersion(builder, version):
     SsAnimeBinaryAddVersion(builder, version)
