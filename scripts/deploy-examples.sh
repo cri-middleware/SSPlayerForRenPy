@@ -10,7 +10,7 @@
 #   game/spritestudio/libs/   <- build-runtime.{sh,ps1}
 # Both are gitignored.
 #
-# Usage: scripts/deploy-examples.sh [release|debug]   (ssconverter-cli build mode; default release)
+# Usage: scripts/deploy-examples.sh   (no options)
 #
 # SDK location: $SSSDK, else ./SpriteStudio-SDK (submodule), else ../SpriteStudio-SDK.
 set -euo pipefail
@@ -18,10 +18,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GAME_DIR="$ROOT_DIR/game"
 
-MODE="release"
 for arg in "$@"; do
   case "$arg" in
-    release|debug) MODE="$arg" ;;
     -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "deploy-examples.sh: unknown arg '$arg'" >&2; exit 2 ;;
   esac
