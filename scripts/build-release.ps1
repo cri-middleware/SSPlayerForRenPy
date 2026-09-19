@@ -73,7 +73,10 @@ function Show-Usage {
     Write-Host "                          downloading it off the Release."
     Write-Host "  verify=<yes|no>         Re-open the finished zips and check them (default: yes)."
     Write-Host "  clean=<yes|no>          Delete <out> before building (default: yes)."
-    Write-Host "  -h | --help             Show this help"
+        Write-Host "  in= skip=               Accepted and ignored here. The family's build-release"
+    Write-Host "                          scripts share out= clean= verify= in= sdk= skip=,"
+    Write-Host "                          so one command line drives all of them."
+Write-Host "  -h | --help             Show this help"
     Write-Host ""
     Write-Host "Output: <out>/ holds SSPlayerForRenPy-<version>.zip, the Web demo zip, the"
     Write-Host "version-less alias of each (the stable releases/latest/download/ names the"
@@ -92,8 +95,17 @@ foreach ($argument in $Arguments) {
         '^demo='   { $demo = $argument.Substring(5).ToLower() }
         '^verify=' { $verify = $argument.Substring(7).ToLower() }
         '^clean='  { $clean = $argument.Substring(6).ToLower() }
+        # Accepted so one command line drives build-release in every repository
+        # of the family; this one has no use for them.
+        '^(in|skip)=' {
+            [Console]::Error.WriteLine("${app}: " + ($argument -replace '=.*$', '') + "= does not apply here; ignored")
+        }
         default {
-            Write-Error "${app}: unknown argument '$argument' (options are key=value; see $app --help)"
+            # Plain stderr and the code, matching the .sh twin (2 = bad usage).
+            # Write-Error throws under $ErrorActionPreference = "Stop", so an
+            # `exit 2` after one never runs and the shell sees 1.
+            [Console]::Error.WriteLine("${app}: unknown argument '$argument' (options are key=value; see $app --help)")
+            exit 2
         }
     }
 }
