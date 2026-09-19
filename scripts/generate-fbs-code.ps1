@@ -39,4 +39,4 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-Write-Host "generate-runtime-code.ps1: done."
+Write-Host "generate-fbs-code.ps1: done."

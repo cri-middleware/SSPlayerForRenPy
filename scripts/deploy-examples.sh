@@ -86,4 +86,5 @@ convert () { # <test-folder-relative-to-sdk> <project-name> <dest-abs>
 convert "tests/overall" "overall" "$GAME_DIR/ss_assets/overall"
 convert "tests/Ringo" "Ringo" "$GAME_DIR/ss_assets/Ringo"
 convert "tests/ParticleEffect" "ParticleEffect" "$GAME_DIR/ss_assets/ParticleEffect"
-echo "deploy-examples.sh: done -> game/ss_assets/{overall,Ringo,ParticleEffect}/"
+convert "tests/Doll" "Doll" "$GAME_DIR/ss_assets/Doll"
+echo "deploy-examples.sh: done -> game/ss_assets/{overall,Ringo,ParticleEffect,Doll}/"

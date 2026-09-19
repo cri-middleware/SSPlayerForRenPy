@@ -107,7 +107,7 @@ def parse(fb) -> FrameData:
 # contiguous vectors, so the whole array decodes in ONE struct call instead of
 # N × the per-element FlatBuffers accessor chain (Offset→Get→unpack→enforce),
 # which profiling showed dominated frame CPU. The field offsets below MIRROR the
-# generated PartState.py (regenerate via scripts/generate-runtime-code if the
+# generated PartState.py (regenerate via scripts/generate-fbs-code if the
 # schema changes); the vector *base* is taken from the generated accessor so only
 # the intra-struct layout is duplicated, and a one-time self-check vs the accessor
 # disables the fast path automatically if it ever drifts.
@@ -630,7 +630,7 @@ def _read_corner(kv) -> VertexColor:
 # vector, so the whole PartsColor array decodes in ONE struct pass instead of
 # N parts x 4 corners x ~5 accessor chains (profiling showed part_colors
 # dominating FramePlan CPU on colour-heavy packs). Layout MIRRORS the generated
-# PartAttributePartColor.py (regenerate via scripts/generate-runtime-code if the
+# PartAttributePartColor.py (regenerate via scripts/generate-fbs-code if the
 # schema changes): BlendType u8@0 (+3 pad), then Lt/Rt/Lb/Rb key-values at 4/12/
 # 20/28, each an RGBA byte quad (A,R,G,B) + f32 rate. A one-time self-check vs the
 # accessor path disables the fast path automatically if the layout ever drifts.
@@ -949,7 +949,7 @@ def _draw_order_array(fd: FrameData):
 # DrawBatch is a fixed 16-byte FlatBuffers *struct*; iter_draw_plan walks the
 # batch vector TWICE (mask pre-scan + draw), reading up to 6 fields per batch, so
 # decode the whole vector once. Layout MIRRORS the generated DrawBatch.py
-# (regenerate via scripts/generate-runtime-code if the schema changes):
+# (regenerate via scripts/generate-fbs-code if the schema changes):
 # StartRank u16@0, Count u16@2, TextureHash u32@4, VertexCount u16@8,
 # IndexCount u16@10, BlendType u8@12, Kind u8@13, Flags u8@14 (+1 pad). A
 # one-time self-check vs the accessor disables the fast path if it ever drifts.

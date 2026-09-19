@@ -95,4 +95,5 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
 Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")
 Convert-Project "tests/Ringo" "Ringo"     (Join-Path $GameDir "ss_assets\Ringo")
 Convert-Project "tests/ParticleEffect" "ParticleEffect" (Join-Path $GameDir "ss_assets\ParticleEffect")
-Write-Host "deploy-examples.ps1: done -> game\ss_assets\{overall,Ringo,ParticleEffect}\"
+Convert-Project "tests/Doll" "Doll" (Join-Path $GameDir "ss_assets\Doll")
+Write-Host "deploy-examples.ps1: done -> game\ss_assets\{overall,Ringo,ParticleEffect,Doll}\"

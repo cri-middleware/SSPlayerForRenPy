@@ -107,11 +107,11 @@ When changes are made to the FlatBuffers schema (`.fbs` file) on the `SpriteStud
 
 **macOS / Linux:**
 ```bash
-scripts/generate-runtime-code.sh
+scripts/generate-fbs-code.sh
 ```
 **Windows:**
 ```powershell
-scripts\generate-runtime-code.ps1
+scripts\generate-fbs-code.ps1
 ```
 *Running this will automatically regenerate and overwrite the Python code under `game/spritestudio/python/ss/`.*
 *If you want to update the pure Python runtime library itself (`game/spritestudio/python/flatbuffers/`), please run `scripts/download-flatbuffers.*` to re-vendor it.*
