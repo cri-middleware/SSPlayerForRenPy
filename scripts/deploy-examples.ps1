@@ -9,15 +9,26 @@
 #   game\ss_assets\          <- deploy-examples.ps1 (this script)
 #   game\spritestudio\libs\  <- build-runtime.ps1
 #
-# Usage: scripts\deploy-examples.ps1 [-Mode release|debug]   (ssconverter-cli build mode)
+# Usage: scripts\deploy-examples.ps1   (no options)
 #
 # SDK location: $env:SSSDK, else .\SpriteStudio-SDK (submodule), else ..\SpriteStudio-SDK.
 
-param(
-    [ValidateSet("release", "debug")] [string]$Mode = "release"
-)
-
 $ErrorActionPreference = "Stop"
+
+foreach ($arg in $args) {
+    switch -Regex ($arg) {
+        '^(-h|--help)$' {
+            Get-Content $PSCommandPath | Select-Object -Skip 1 -First 13 |
+                ForEach-Object { $_ -replace '^# ?', '' }
+            exit 0
+        }
+        default {
+            [Console]::Error.WriteLine("deploy-examples.ps1: unknown arg '$arg'")
+            exit 2
+        }
+    }
+}
+
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $GameDir = Join-Path $RootDir "game"
 
