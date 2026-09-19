@@ -14,11 +14,11 @@ if [ -z "$SDK_DIR" ]; then
 fi
 
 if [ -z "$SDK_DIR" ] || [ ! -f "$SDK_DIR/Cargo.toml" ]; then
-  echo "generate-runtime-code.sh: SpriteStudio-SDK not found." >&2
+  echo "generate-fbs-code.sh: SpriteStudio-SDK not found." >&2
   exit 1
 fi
 
-command -v flatc >/dev/null || { echo "generate-runtime-code.sh: flatc not on PATH" >&2; exit 1; }
+command -v flatc >/dev/null || { echo "generate-fbs-code.sh: flatc not on PATH" >&2; exit 1; }
 
 OUT_DIR="$ROOT_DIR/game/spritestudio/python"
 echo "Generating Python bindings to $OUT_DIR/ss ..."
@@ -33,4 +33,4 @@ flatc --python -o "$OUT_DIR" \
     "$SDK_DIR/libs/ssruntime/fbs/effect_draw_plan.fbs" \
     "$SDK_DIR/libs/ssruntime/fbs/framedata.fbs"
 
-echo "generate-runtime-code.sh: done."
+echo "generate-fbs-code.sh: done."

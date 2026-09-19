@@ -107,11 +107,11 @@ scripts\build-runtime.ps1
 
 **macOS / Linux:**
 ```bash
-scripts/generate-runtime-code.sh
+scripts/generate-fbs-code.sh
 ```
 **Windows:**
 ```powershell
-scripts\generate-runtime-code.ps1
+scripts\generate-fbs-code.ps1
 ```
 ※実行すると `game/spritestudio/python/ss/` 以下のPythonコードが自動的に再生成・上書きされます。
 ※純粋なPython用ランタイムライブラリ自体 (`game/spritestudio/python/flatbuffers/`) を更新したい場合は、`scripts/download-flatbuffers.*` を実行してベンダーリングし直してください。
