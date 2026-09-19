@@ -6,40 +6,40 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class RectAndVec2ValueTable(object):
+class MinMax2AndVec2ValueTable(object):
     __slots__ = ['_tab']
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
-        x = RectAndVec2ValueTable()
+        x = MinMax2AndVec2ValueTable()
         x.Init(buf, n + offset)
         return x
 
     @classmethod
-    def GetRootAsRectAndVec2ValueTable(cls, buf, offset=0):
+    def GetRootAsMinMax2AndVec2ValueTable(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
     @classmethod
-    def RectAndVec2ValueTableBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
+    def MinMax2AndVec2ValueTableBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x53\x53\x41\x42", size_prefixed=size_prefixed)
 
-    # RectAndVec2ValueTable
+    # MinMax2AndVec2ValueTable
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # RectAndVec2ValueTable
+    # MinMax2AndVec2ValueTable
     def Size(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ss.format.Rect import Rect
-            obj = Rect()
+            from ss.format.MinMax2 import MinMax2
+            obj = MinMax2()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-    # RectAndVec2ValueTable
+    # MinMax2AndVec2ValueTable
     def ScaleFactorValue(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
@@ -50,26 +50,26 @@ class RectAndVec2ValueTable(object):
             return obj
         return None
 
-def RectAndVec2ValueTableStart(builder):
+def MinMax2AndVec2ValueTableStart(builder):
     builder.StartObject(2)
 
 def Start(builder):
-    RectAndVec2ValueTableStart(builder)
+    MinMax2AndVec2ValueTableStart(builder)
 
-def RectAndVec2ValueTableAddSize(builder, size):
+def MinMax2AndVec2ValueTableAddSize(builder, size):
     builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(size), 0)
 
 def AddSize(builder, size):
-    RectAndVec2ValueTableAddSize(builder, size)
+    MinMax2AndVec2ValueTableAddSize(builder, size)
 
-def RectAndVec2ValueTableAddScaleFactorValue(builder, scaleFactorValue):
+def MinMax2AndVec2ValueTableAddScaleFactorValue(builder, scaleFactorValue):
     builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(scaleFactorValue), 0)
 
 def AddScaleFactorValue(builder, scaleFactorValue):
-    RectAndVec2ValueTableAddScaleFactorValue(builder, scaleFactorValue)
+    MinMax2AndVec2ValueTableAddScaleFactorValue(builder, scaleFactorValue)
 
-def RectAndVec2ValueTableEnd(builder):
+def MinMax2AndVec2ValueTableEnd(builder):
     return builder.EndObject()
 
 def End(builder):
-    return RectAndVec2ValueTableEnd(builder)
+    return MinMax2AndVec2ValueTableEnd(builder)
