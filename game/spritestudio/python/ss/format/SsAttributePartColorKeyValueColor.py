@@ -33,8 +33,8 @@ class SsAttributePartColorKeyValueColor(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ss.format.U8Rect import U8Rect
-            obj = U8Rect()
+            from ss.format.U8Color import U8Color
+            obj = U8Color()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None

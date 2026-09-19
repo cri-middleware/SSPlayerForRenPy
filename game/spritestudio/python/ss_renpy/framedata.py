@@ -38,7 +38,7 @@ from ss.runtime.PartState import PartState
 from ss.runtime.SsAttributePartColorKeyValueColor import (
     SsAttributePartColorKeyValueColor,
 )
-from ss.runtime.U8Rect import U8Rect
+from ss.runtime.U8Color import U8Color
 from ss.runtime.UpdateAttributeFlags import UpdateAttributeFlags
 
 # DrawBatchKind (framedata.fbs)
@@ -619,7 +619,7 @@ def _default_vertex_color(alpha: float) -> VertexColor:
 
 
 def _read_corner(kv) -> VertexColor:
-    rect = kv.Rgba(U8Rect())
+    rect = kv.Rgba(U8Color())
     return VertexColor(
         (rect.R() / 255.0, rect.G() / 255.0, rect.B() / 255.0, rect.A() / 255.0),
         kv.Rate())
@@ -643,7 +643,7 @@ def _decode_pc_record(rec) -> tuple:
     """One ``_PC_REC`` tuple -> ``(blend, [lt, rt, lb, rb])`` VertexColors.
 
     ``rec`` is ``(blend, a,r,g,b,rate, a,r,g,b,rate, ...)`` — the RGBA bytes are
-    stored A,R,G,B (see U8Rect), so re-order to the (R,G,B,A) VertexColor tuple.
+    stored A,R,G,B (see U8Color), so re-order to the (R,G,B,A) VertexColor tuple.
     """
     corners = []
     o = 1

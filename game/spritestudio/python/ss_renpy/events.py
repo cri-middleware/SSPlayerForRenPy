@@ -40,7 +40,7 @@ class UserDataEvent:
     """A SpriteStudio UserData marker (``PartAttributeUserData``).
 
     Each optional slot is ``None`` when the marker does not carry that field.
-    ``rect`` is ``(x1, y1, x2, y2)``; ``point`` is ``(x, y)``.
+    ``rect`` is ``(left, top, right, bottom)``; ``point`` is ``(x, y)``.
     """
     part_index: int
     part_name: str | None = None
@@ -142,7 +142,7 @@ def _user_event(eu, part_names=()) -> UserDataEvent:
             integer = int(iv.Value())
         rc = v.Rect()
         if rc is not None:
-            rect = (rc.X1(), rc.Y1(), rc.X2(), rc.Y2())
+            rect = (rc.Left(), rc.Top(), rc.Right(), rc.Bottom())
         pt = v.Point()
         if pt is not None:
             point = (pt.V1(), pt.V2())
