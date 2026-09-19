@@ -6,88 +6,88 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class Rect(object):
+class Bounds(object):
     __slots__ = ['_tab']
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
-        x = Rect()
+        x = Bounds()
         x.Init(buf, n + offset)
         return x
 
     @classmethod
-    def GetRootAsRect(cls, buf, offset=0):
+    def GetRootAsBounds(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
     @classmethod
-    def RectBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
+    def BoundsBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x53\x53\x41\x42", size_prefixed=size_prefixed)
 
-    # Rect
+    # Bounds
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # Rect
-    def X1(self):
+    # Bounds
+    def Left(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
-    # Rect
-    def Y1(self):
+    # Bounds
+    def Top(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
-    # Rect
-    def X2(self):
+    # Bounds
+    def Right(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
-    # Rect
-    def Y2(self):
+    # Bounds
+    def Bottom(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
-def RectStart(builder):
+def BoundsStart(builder):
     builder.StartObject(4)
 
 def Start(builder):
-    RectStart(builder)
+    BoundsStart(builder)
 
-def RectAddX1(builder, x1):
-    builder.PrependFloat32Slot(0, x1, 0.0)
+def BoundsAddLeft(builder, left):
+    builder.PrependFloat32Slot(0, left, 0.0)
 
-def AddX1(builder, x1):
-    RectAddX1(builder, x1)
+def AddLeft(builder, left):
+    BoundsAddLeft(builder, left)
 
-def RectAddY1(builder, y1):
-    builder.PrependFloat32Slot(1, y1, 0.0)
+def BoundsAddTop(builder, top):
+    builder.PrependFloat32Slot(1, top, 0.0)
 
-def AddY1(builder, y1):
-    RectAddY1(builder, y1)
+def AddTop(builder, top):
+    BoundsAddTop(builder, top)
 
-def RectAddX2(builder, x2):
-    builder.PrependFloat32Slot(2, x2, 0.0)
+def BoundsAddRight(builder, right):
+    builder.PrependFloat32Slot(2, right, 0.0)
 
-def AddX2(builder, x2):
-    RectAddX2(builder, x2)
+def AddRight(builder, right):
+    BoundsAddRight(builder, right)
 
-def RectAddY2(builder, y2):
-    builder.PrependFloat32Slot(3, y2, 0.0)
+def BoundsAddBottom(builder, bottom):
+    builder.PrependFloat32Slot(3, bottom, 0.0)
 
-def AddY2(builder, y2):
-    RectAddY2(builder, y2)
+def AddBottom(builder, bottom):
+    BoundsAddBottom(builder, bottom)
 
-def RectEnd(builder):
+def BoundsEnd(builder):
     return builder.EndObject()
 
 def End(builder):
-    return RectEnd(builder)
+    return BoundsEnd(builder)

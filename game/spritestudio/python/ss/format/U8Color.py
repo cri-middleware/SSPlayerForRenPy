@@ -6,88 +6,88 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class U8Rect(object):
+class U8Color(object):
     __slots__ = ['_tab']
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
-        x = U8Rect()
+        x = U8Color()
         x.Init(buf, n + offset)
         return x
 
     @classmethod
-    def GetRootAsU8Rect(cls, buf, offset=0):
+    def GetRootAsU8Color(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
     @classmethod
-    def U8RectBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
+    def U8ColorBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x53\x53\x41\x42", size_prefixed=size_prefixed)
 
-    # U8Rect
+    # U8Color
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # U8Rect
+    # U8Color
     def A(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint8Flags, o + self._tab.Pos)
         return 0
 
-    # U8Rect
+    # U8Color
     def R(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint8Flags, o + self._tab.Pos)
         return 0
 
-    # U8Rect
+    # U8Color
     def G(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint8Flags, o + self._tab.Pos)
         return 0
 
-    # U8Rect
+    # U8Color
     def B(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint8Flags, o + self._tab.Pos)
         return 0
 
-def U8RectStart(builder):
+def U8ColorStart(builder):
     builder.StartObject(4)
 
 def Start(builder):
-    U8RectStart(builder)
+    U8ColorStart(builder)
 
-def U8RectAddA(builder, a):
+def U8ColorAddA(builder, a):
     builder.PrependUint8Slot(0, a, 0)
 
 def AddA(builder, a):
-    U8RectAddA(builder, a)
+    U8ColorAddA(builder, a)
 
-def U8RectAddR(builder, r):
+def U8ColorAddR(builder, r):
     builder.PrependUint8Slot(1, r, 0)
 
 def AddR(builder, r):
-    U8RectAddR(builder, r)
+    U8ColorAddR(builder, r)
 
-def U8RectAddG(builder, g):
+def U8ColorAddG(builder, g):
     builder.PrependUint8Slot(2, g, 0)
 
 def AddG(builder, g):
-    U8RectAddG(builder, g)
+    U8ColorAddG(builder, g)
 
-def U8RectAddB(builder, b):
+def U8ColorAddB(builder, b):
     builder.PrependUint8Slot(3, b, 0)
 
 def AddB(builder, b):
-    U8RectAddB(builder, b)
+    U8ColorAddB(builder, b)
 
-def U8RectEnd(builder):
+def U8ColorEnd(builder):
     return builder.EndObject()
 
 def End(builder):
-    return U8RectEnd(builder)
+    return U8ColorEnd(builder)
