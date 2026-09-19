@@ -2,6 +2,24 @@
 # Output: game/spritestudio/python/ss/
 
 $ErrorActionPreference = "Stop"
+$HelpApp = Split-Path -Leaf $PSCommandPath
+function Show-Usage {
+    Write-Host "Usage: ${HelpApp} [--help]"
+    Write-Host "  flatc --python over the SDK's .fbs schemas, into game/spritestudio/python/ss/."
+    Write-Host "  Needs flatc. The old bindings are removed first."
+}
+
+foreach ($arg in $args) {
+    switch -Regex ($arg) {
+        '^(-h|--help|help)$' { Show-Usage; exit 0 }
+        default {
+            [Console]::Error.WriteLine("${HelpApp}: unknown argument '$arg'")
+            Show-Usage
+            exit 2
+        }
+    }
+}
+
 $RootDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 $SdkDir = $env:SSSDK

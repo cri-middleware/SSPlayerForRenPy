@@ -5,6 +5,22 @@
 
 set -euo pipefail
 
+HELP_APP="$(basename "$0")"
+usage () {
+    cat <<USAGE
+Usage: ${HELP_APP} [--help]
+  flatc --python over the SDK's .fbs schemas, into game/spritestudio/python/ss/.
+  Needs flatc. The old bindings are removed first.
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help|help) usage; exit 0 ;;
+    *) echo "${HELP_APP}: unknown argument '${arg}'" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SDK_DIR="${SSSDK:-}"
 if [ -z "$SDK_DIR" ]; then
