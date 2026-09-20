@@ -438,7 +438,7 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 
 ### Auto Importer と連動する
 
-新しいパックを取り込むのに再起動は不要です。`SpriteStudio_Source/` に新規プロジェクトを置いて **Shift+R** でリロードすると、[Auto Importer](import.md) が変換して索引を更新します。ブラウザを開き直せば（**Shift+B**）、新しいパックが一覧に現れ、その場でプレビューできます。
+新しいパックを取り込むのに再起動は不要です。`SpriteStudio_Source/` に新規プロジェクトを置けば、次のリロードで [Auto Importer](import.md) が変換して索引を更新します。[ホットリロード](import.md#ホットリロード)がオンなら（起動ごとに **Shift+R** を 1 回）、そのリロードも自動で走ります。ブラウザを開き直せば（**Shift+B**）、新しいパックが一覧に現れ、その場でプレビューできます。
 
 > [!TIP]
 >

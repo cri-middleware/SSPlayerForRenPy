@@ -67,14 +67,21 @@ This feature automatically detects updates to `.sspj` files when Ren'Py starts, 
 
 1. Create a folder named **`SpriteStudio_Source`** in the root directory of your game project (at the same level as the `game/` folder).
 2. Inside the created `SpriteStudio_Source` folder, place the entire project dataset (`.sspj`, `.ssae`, images, etc.) created in SpriteStudio.
-3. Launch or reload (`Shift + R`) your Ren'Py project.
+3. Launch your Ren'Py project, or press `Shift + R` in one that is already running.
 
 **Result:**
 If a file update is detected during the startup initialization phase, the conversion will run automatically, and a folder with the same name as the project will be generated under **`game/ss_assets/`**.
 (Example: If you placed `SpriteStudio_Source/Ringo/Ringo.sspj`, the converted data will be output to `game/ss_assets/Ringo/`.)
 
+### Hot reload
+
+Press **`Shift + R`** once in the running game and you are done pressing it: the Auto Importer hands your `SpriteStudio_Source/` files to Ren'Py's autoreload, so from then on **saving in SpriteStudio re-imports and reloads the game on its own**. The change is picked up by modification time, only the updated project is re-converted, and the asset index is refreshed. Dropping a whole new project into the folder works the same way.
+
+> [!WARNING]
+> **`Shift + R` is Ren'Py's autoreload toggle, not a refresh button.** The first press turns autoreload **on** and reloads; press it again and it turns **off** without reloading — which is why the second press looks like it did nothing. Press it once per launch and leave it alone. The Auto Importer prints which side you are on at startup (`Hot reload ON` / `Hot reload OFF`). `Alt` (`Option`) `+ R` is the same command; `Ctrl + R` is not bound to it — `Ctrl` is Ren'Py's skip key.
+
 > [!TIP]
-> **See it in action — live iteration with an external tool.** Edit the animation in SpriteStudio, save it, then press **`Shift + R`** in the running Ren'Py. The Auto Importer re-detects the change by modification time, re-converts only the updated project, and refreshes the asset index so the result is reflected immediately (developer mode only).
+> **See it in action — live iteration with an external tool.** Edit the animation in SpriteStudio and save it: with hot reload on, the running Ren'Py re-converts only the updated project and shows the result on the spot (developer mode only).
 >
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/1-auto_import_live.webm" type="video/webm">
