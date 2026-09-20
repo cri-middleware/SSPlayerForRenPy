@@ -28,27 +28,38 @@ import os
 MARKER_NAME = ".ss_import_ok"
 
 
-def latest_source_mtime(source_dir: str) -> float:
-    """Newest mtime under ``source_dir`` (a project's ``.sspj`` and its
-    ``.ssae`` / ``.ssce`` / ``.png`` siblings), or ``0.0`` for an empty/absent
-    tree.
+def iter_source_files(source_dir: str):
+    """Yield every file a conversion of ``source_dir`` depends on — a project's
+    ``.sspj`` and its ``.ssae`` / ``.ssce`` / ``.png`` siblings.
 
     Hidden files and directories are pruned: their contents are not
     dot-prefixed, so a ``.git`` checkout beside the sources would otherwise
     bump the time and force reconversion every run.
+
+    One home for the set, because two things read it and must agree: the
+    freshness check below, and the autoreload watch list the auto-importer
+    registers (a file that can make an import stale has to be watched, or the
+    change lands with nothing noticing).
     """
-    latest = 0.0
     for root, dirs, files in os.walk(source_dir):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for f in files:
             if f.startswith("."):
                 continue
-            try:
-                mtime = os.path.getmtime(os.path.join(root, f))
-            except OSError:
-                continue  # vanished mid-scan / dangling symlink
-            if mtime > latest:
-                latest = mtime
+            yield os.path.join(root, f)
+
+
+def latest_source_mtime(source_dir: str) -> float:
+    """Newest mtime among :func:`iter_source_files`, or ``0.0`` for an
+    empty/absent tree."""
+    latest = 0.0
+    for path in iter_source_files(source_dir):
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue  # vanished mid-scan / dangling symlink
+        if mtime > latest:
+            latest = mtime
     return latest
 
 
