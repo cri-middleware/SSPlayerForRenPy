@@ -75,7 +75,7 @@ If a file update is detected during the startup initialization phase, the conver
 
 ### Hot reload
 
-Press **`Shift + R`** once in the running game and you are done pressing it: the Auto Importer hands your `SpriteStudio_Source/` files to Ren'Py's autoreload, so from then on **saving in SpriteStudio re-imports and reloads the game on its own**. The change is picked up by modification time, only the updated project is re-converted, and the asset index is refreshed. Dropping a whole new project into the folder works the same way.
+Press **`Shift + R`** once in the running game and you are done pressing it: the Auto Importer hands your `SpriteStudio_Source/` files to Ren'Py's autoreload, so from then on **saving in SpriteStudio re-imports and reloads the game on its own**. The change is picked up by modification time, only the updated project is re-converted, and the asset index is refreshed. Dropping a whole new project into the folder works the same way. Each import reports itself in the running game — `SpriteStudio: imported Ringo`, or the same line naming what failed and pointing at the console — so a save that did not land is never silent.
 
 > [!WARNING]
 > **`Shift + R` is Ren'Py's autoreload toggle, not a refresh button.** The first press turns autoreload **on** and reloads; press it again and it turns **off** without reloading — which is why the second press looks like it did nothing. Press it once per launch and leave it alone. The Auto Importer prints which side you are on at startup (`Hot reload ON` / `Hot reload OFF`). `Alt` (`Option`) `+ R` is the same command; `Ctrl + R` is not bound to it — `Ctrl` is Ren'Py's skip key.

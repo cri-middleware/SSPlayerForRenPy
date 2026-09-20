@@ -39,6 +39,28 @@ init -10 python:
         renpy.loader.reloading = True
         renpy.reload_script()
 
+    # A conversion nobody sees is the same as no conversion: the game reloads,
+    # the old artwork is still on screen, and nothing says why. print() goes to
+    # stdout — log.txt under the launcher — which is not where a creator is
+    # looking while iterating, so the outcome is also raised in-game; the bottom
+    # of this file delivers it.
+    def _ss_import_notice(imported, failed):
+        parts = []
+        if imported:
+            parts.append("imported " + ", ".join(sorted(imported)))
+        if failed:
+            parts.append("FAILED " + ", ".join(sorted(failed)) + " — see the console")
+        if parts:
+            renpy.session["_ss_import_notice"] = "SpriteStudio: " + "; ".join(parts)
+
+    def _ss_show_import_notice():
+        msg = renpy.session.pop("_ss_import_notice", None)
+        if msg:
+            try:
+                renpy.notify(msg)
+            except Exception:
+                pass  # a project without the stock `notify` screen
+
     def _ss_auto_import():
         if not config.developer:
             return
@@ -101,6 +123,8 @@ init -10 python:
 
         converter = None
         changed = False
+        imported = []
+        failed = []
 
         for sspj_path in sspj_files:
             project_name = os.path.splitext(os.path.basename(sspj_path))[0]
@@ -175,9 +199,11 @@ init -10 python:
                     except OSError as e:
                         print(f"[SpriteStudio] Warning: could not write import marker ({e})")
                     changed = True
+                    imported.append(project_name)
                 else:
                     err = converter.get_error()
                     print(f"[SpriteStudio] Error converting {project_name}: {err}")
+                    failed.append(project_name)
 
         # If we wrote any new/updated .ssab files this run, refresh Ren'Py's
         # file index. renpy.list_files() — which the asset browser (Shift+B) and
@@ -193,6 +219,8 @@ init -10 python:
                 print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
                       "newly imported packs may not appear in the browser until restart.")
 
+        _ss_import_notice(imported, failed)
+
         # The watch is only live in autoreload mode, and the key that turns that
         # on is a TOGGLE with nothing on screen to say which side it is on
         # (press once: on, and it reloads; press again: off, and it does not).
@@ -206,3 +234,14 @@ init -10 python:
 
     # Run once at init; the function itself gates on config.developer.
     _ss_auto_import()
+
+    # Show the outcome on the first interaction that follows, from wherever the
+    # game got back into play: a fresh launch enters through start_callbacks, a
+    # reload through the save it restores, and neither hook fires on both routes
+    # (measured — the reload path leaves start_callbacks unrun, and the notify
+    # raised from after_load never reaches the screen). The periodic callback
+    # runs inside the interaction itself, so it covers every route.
+    # renpy.session carries the notice across the utter restart in between and
+    # never reaches a save file, so it ships nowhere.
+    if config.developer and _ss_show_import_notice not in config.periodic_callbacks:
+        config.periodic_callbacks.append(_ss_show_import_notice)
