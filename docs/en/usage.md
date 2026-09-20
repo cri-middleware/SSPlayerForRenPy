@@ -438,7 +438,7 @@ Because the browser reads through the same zero-config resolver as `SSPlayer`, a
 
 ### Stays in sync with the Auto Importer
 
-You do not have to relaunch to pick up a brand-new pack. Drop a new project into `SpriteStudio_Source/`, press **Shift+R** to reload, and the [Auto Importer](import.md) converts it and refreshes the index — reopen the browser (**Shift+B**) and the new pack is in the list, ready to preview on the spot.
+You do not have to relaunch to pick up a brand-new pack. Drop a new project into `SpriteStudio_Source/` and the [Auto Importer](import.md) converts it and refreshes the index on the next reload — with [hot reload](import.md#hot-reload) on (one **Shift+R** per launch) that reload happens by itself. Reopen the browser (**Shift+B**) and the new pack is in the list, ready to preview on the spot.
 
 > [!TIP]
 >

@@ -14,7 +14,7 @@ An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spri
 - **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back.
 - **Still composes with ATL & `Transform`.** `SSPlayer` is a standard Ren'Py Displayable, so you keep ATL where it shines — position, slide, zoom, or fade the whole animated sprite exactly like any other image.
 - **Smooth motion, not locked to a frame rate.** **Sub-frame interpolation** renders each frame at the exact display time. Unlike video baked at a fixed frame rate, motion follows your display's refresh rate and playback speed for smoother movement.
-- **A seamless edit-to-runtime loop.** The **Auto Importer** watches `SpriteStudio_Source/` during development: edit a `.sspj`, reload Ren'Py (**Shift+R**), and only the changed project is re-converted automatically and shows up live in your game — no manual export step.
+- **A seamless edit-to-runtime loop.** The **Auto Importer** watches `SpriteStudio_Source/` during development: arm it with one **Shift+R**, then just save in SpriteStudio — only the changed project is re-converted, and the running game reloads itself to show it. No manual export step.
 
 ## 📚 Documentation
 
@@ -58,7 +58,8 @@ screen demo():
 *For details, see the [Setup Guide](docs/en/setup.md) and [Usage & Control](docs/en/usage.md).*
 
 **Your own animation gets in the same way.** Drop the SpriteStudio project into `SpriteStudio_Source/`
-and the Auto Importer converts it on the next reload (**Shift+R**) — there is no manual export step.
+and the Auto Importer converts it on the next reload — which, with [hot reload](docs/en/import.md#hot-reload)
+armed (one **Shift+R**), happens by itself. There is no manual export step.
 [Asset Import](docs/en/import.md) also covers the two routes that do not need Ren'Py running:
 `SSConverterGUI` on the desktop, and `ssconverter-cli` in CI.
 
