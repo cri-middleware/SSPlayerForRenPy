@@ -3,10 +3,7 @@
 本リポジトリのコードを改修してカスタマイズを行いたい開発者向けの手順です。
 
 > **プレイヤーを自分のゲームで使いたいだけの方**は、このガイドは不要です —
-> [導入ガイド (Setup)](setup.md) と [再生と制御 (Usage)](usage.md) を参照してください。
-> このページは*本リポジトリ内での作業*（プレイヤーのコードのカスタマイズや、
-> ネイティブライブラリの再ビルド）向けです。（下記の「カスタマー」も開発者
-> ＝ Ren'Py 側コードのみを編集する人の意味で、エンドユーザーではありません。）
+> [導入ガイド (Setup)](setup.md) と [再生と制御 (Usage)](usage.md) を参照してください。このページは*本リポジトリ内での作業*（プレイヤーのコードのカスタマイズや、ネイティブライブラリの再ビルド）向けです。（下記の「カスタマー」も開発者＝ Ren'Py 側コードのみを編集する人の意味で、エンドユーザーではありません。）
 
 目的に応じて、以下の2つのいずれかの環境を構築してください。
 
@@ -98,8 +95,7 @@ scripts\build-runtime.ps1
 ※リリースビルドを行いたい場合は、引数に `build=release` 等を指定します（詳しくはスクリプトの中身をご参照ください）。
 
 ### 2.4 デモの起動と開発のイテレーション
-カスタマー向けと同様に、データのコンバートとデモ起動を行います。
-**開発サイクルの回し方:**
+カスタマー向けと同様に、データのコンバートとデモ起動を行います。**開発サイクルの回し方:**
 ネイティブライブラリ (`SpriteStudio-SDK/libs/`) 側を書き換えた場合は、再度 `build-runtime.sh` を実行してバイナリを更新してから `run-demo.sh` を起動してください。
 
 ### 2.5 FlatBuffers バインディングの更新 (スキーマ変更時)
@@ -123,23 +119,18 @@ scripts\generate-fbs-code.ps1
 
 ## 3. 各プラットフォームへのエクスポート (ヘルパースクリプト)
 
-本リポジトリには、デモの各プラットフォーム向けエクスポートを実行し、SSPlayer 固有の
-後処理を自動で適用する `scripts/` 以下のヘルパースクリプトが含まれています。これは
-[エクスポートガイド](export.md) に記載した手動手順の**開発者向けの対応物**で、上記で
-取得した Ren'Py SDK を利用します。
+本リポジトリには、デモの各プラットフォーム向けエクスポートを実行し、SSPlayer 固有の後処理を自動で適用する `scripts/` 以下のヘルパースクリプトが含まれています。これは
+[エクスポートガイド](export.md) に記載した手動手順の**開発者向けの対応物**で、上記で取得した Ren'Py SDK を利用します。
 
-> これらのスクリプトは**本リポジトリ内での作業**用です。自分のゲームをエクスポートする
-> 制作者は標準の Ren'Py ランチャーを使ってください（[エクスポートガイド](export.md) 参照）。
+> これらのスクリプトは**本リポジトリ内での作業**用です。自分のゲームをエクスポートする制作者は標準の Ren'Py ランチャーを使ってください（[エクスポートガイド](export.md) 参照）。
 
 ### 3.1 前提条件
-- **対象**プラットフォームのネイティブライブラリが `game/spritestudio/libs/` に配置済み
-  であること — `scripts/download-sdk.*`（ビルド済み）または `scripts/build-runtime.*`
+- **対象**プラットフォームのネイティブライブラリが `game/spritestudio/libs/` に配置済みであること — `scripts/download-sdk.*`（ビルド済み）または `scripts/build-runtime.*`
   （ソース）。デスクトップ / モバイル / Web はそれぞれ専用が必要です。例:
   `build-runtime.* platform=android build=release`、`platform=ios`、`platform=web`。
 - Ren'Py SDK（`scripts/fetch-renpy-sdk.*`）。deploy スクリプトは無ければ自動取得します。
 - プラットフォーム固有ツールチェーン（一度だけ）:
-    - **Android**: `scripts/fetch-renpy-android.*`（RAPT）取得後、launcher GUI（→ Android）
-      から **Install SDK**、**Configure**（`android.json` にパッケージ名を設定。必須）、
+    - **Android**: `scripts/fetch-renpy-android.*`（RAPT）取得後、launcher GUI（→ Android）から **Install SDK**、**Configure**（`android.json` にパッケージ名を設定。必須）、
       **Generate Keys** を実施。
     - **iOS**: `scripts/fetch-renpy-ios.sh`（renios。macOS 専用）。
     - **Web**: `scripts/fetch-renpy-web.*`（Ren'Py の Web サポート）。
@@ -162,16 +153,12 @@ scripts\deploy-web.ps1     [dest_dir]
 # (iOS エクスポートは macOS 専用のため deploy-ios.ps1 はありません)
 ```
 
-- **デスクトップ**: ホスト OS 向けにビルド（`.sh`: mac / linux、`.ps1`: win）し、そのまま
-  実行できる形に展開します。ネイティブライブラリがあるプラットフォームのみ実行可能な形で
-  ビルドできます。
+- **デスクトップ**: ホスト OS 向けにビルド（`.sh`: mac / linux、`.ps1`: win）し、そのまま実行できる形に展開します。ネイティブライブラリがあるプラットフォームのみ実行可能な形でビルドできます。
 - **Android**: `--bundle` は `.aab`（Play アップロード用）、`--install` / `--launch` は
   `adb` で端末へ転送・起動します。
 - **iOS**: Xcode プロジェクトを生成 / 更新します。Brain は Xcode での一度きりの
   **Embed & Sign** が別途必要です（[エクスポートガイド](export.md) 参照）。
-- **Web**: 冪等です。エクスポートのたびに再実行し、正しい MIME タイプで HTTP 配信して
-  ください。
+- **Web**: 冪等です。エクスポートのたびに再実行し、正しい MIME タイプで HTTP 配信してください。
 
 各スクリプトが内部で扱う SSPlayer 固有の要件（ABI ごとの `.so`、動的な iOS xcframework、
-Web の WASM 注入、`.rpa` の順序）については [エクスポートガイド](export.md) を参照して
-ください。
+Web の WASM 注入、`.rpa` の順序）については [エクスポートガイド](export.md) を参照してください。
