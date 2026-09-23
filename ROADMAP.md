@@ -38,21 +38,6 @@ listed because the [Player Porting Guide](./SpriteStudio-SDK/libs/ssruntime/docs
 them as player responsibilities and other official players implement them, but this one does
 not yet.
 
-### ☐ Run-time texture swap
-
-Replace the texture bound to a cell map from game code, without touching the `.ssab`
-(costume changes, dynamic expressions). The porting guide's *External resources and
-textures* names this as the player's job, and it is distinct from the Override Layer API
-(`ss_set_part_cell_override` swaps a **cell**, not the texture behind it).
-
-- *Current state*: not available. Textures are resolved once, at load, through
-  `RenPyResourceManager`.
-- *Reference*: `SSPlayerForGodot`'s `set_cellmap_texture` / `get_cellmap_texture`;
-  `SSPlayerForWeb` carries the same item on its roadmap.
-- *Target*: a name-keyed pair on the displayable where passing `None` restores the original
-  from the `.ssab` definition — looking in `cellmaps` and then `external_textures`, both of
-  which `SsabMeta.texture_hash_map()` already indexes.
-
 ### ☐ Per-frame callback
 
 An `on_frame(player, frame_no)` constructor callback, fired once per processed tick after
@@ -87,6 +72,23 @@ picture there, not like a control. Three pieces, in the order they build on each
 - *Reference*: this is the Ren'Py face of the same item the sibling ports carry — Godot's
   `Control` node, Unity's uGUI `Graphic`, Flutter's intrinsic sizing + `hitTest`.
 
+### 🕒 Animation blending / crossfade
+
+Layer and cross-fade animations on one player through the runtime's track stack —
+`ss_runtime_set_track_animation`, `ss_runtime_crossfade`, `ss_runtime_add_track_source`,
+`ss_runtime_fade_track` and the rest of the track and source calls.
+
+- *Current state*: not available. The runtime side is complete; nothing on `SSPlayer` exposes
+  it.
+- *Reference*: `SSPlayerForWgpu`, the one official player that surfaces it
+  (`set_track_animation` / `crossfade` / `fade_track` / …, with regression tests in
+  `tests/tracks.rs`). The stems are fixed in the SDK's
+  [Player API Conventions](./SpriteStudio-SDK/libs/ssruntime/docs/20_design/30_api_conventions.md)
+  §3-2, and the design is its
+  [Animation mixing](./SpriteStudio-SDK/libs/ssruntime/docs/50_features/10_animation_mixing.md)
+  page.
+- *Deferred*: until after the first release — a selling point, not a release blocker.
+
 ### 🕒 Flip and offset — *low priority*
 
 Mirror playback horizontally / vertically, and shift the drawn animation, without moving the
@@ -115,10 +117,9 @@ host object.
 
 ## Shared with every port
 
-Animation blending / crossfade (`ss_runtime_crossfade`, the blend-source API) is exposed by
-the runtime but implemented by no official player yet, so it is tracked in the SDK roadmap
-rather than here. The same applies to Text and NineSlice parts, and to nested timeline
-events inside Instance / Effect parts — see [Limitations](./docs/en/limitations.md).
+Text and NineSlice parts, and nested timeline events inside Instance / Effect parts, are
+exposed by the runtime but implemented by no official player yet, so they are tracked in the
+SDK roadmap rather than here — see [Limitations](./docs/en/limitations.md).
 
 Text and NineSlice are the two part kinds authored for UI, and the UI work above stops short
 of both. Text is settled SDK-side as a **player responsibility**, so drawing it — and
