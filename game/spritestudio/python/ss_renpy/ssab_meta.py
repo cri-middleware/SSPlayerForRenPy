@@ -61,14 +61,14 @@ class ExternalTextureInfo:
     ``name`` is the texture's file name, resolved against the pack dir exactly
     like a cellmap ``image_path``; ``name_hash`` is the hash of that FILE name —
     a different namespace from a cellmap's *name* hash, and the key such a part's
-    ``DrawBatch.texture_hash`` carries (SDK doc: 30_core/10_initialization.md)."""
+    ``DrawBatch.texture_hash`` carries."""
     name: str
     name_hash: int
 
 
 @dataclass(frozen=True)
 class SoundFileInfo:
-    """One entry of a pack ``SoundList`` (SDK doc: 40_components/90_audio.md).
+    """One entry of a pack ``SoundList``.
 
     ``file_path`` is the audio file **as stored** in the ``.ssab`` — an
     ssab-relative reference (no normalisation), which the host
@@ -95,8 +95,8 @@ class PartInfo:
     Effect parts ``ref_effect_name_hash`` keys the embedded effect. All ref
     fields are empty/0 for other part types.
 
-    The four ``*_mask`` flags are the **static** mask attributes (SDK doc:
-    40_components/40_mask.md): they never change per frame, so a Player reads
+    The four ``*_mask`` flags are the **static** mask attributes:
+    they never change per frame, so a Player reads
     them once. Their meaning is role-dependent — see the ``is_*`` helpers below
     for the canonical classification (pure mask / writer / clipping / target
     polarity).
@@ -349,8 +349,7 @@ class SsabMeta:
         """Textures targeted by a *texture change* (``TCHG``) attribute.
 
         A second texture table alongside :meth:`cellmaps`, listing files that no
-        cellmap points at (SDK doc: 30_core/10_initialization.md §3 — "the two
-        load targets are ``cellmaps()`` and ``external_textures()``")."""
+        cellmap points at."""
         out: list[ExternalTextureInfo] = []
         for i in range(self._root.ExternalTexturesLength()):
             t = self._root.ExternalTextures(i)
@@ -387,8 +386,8 @@ class SsabMeta:
 
         A cellmap is named WITHOUT its file extension (``common``); an external
         texture is a file NAME (``common.png``). They are different strings that
-        hash into the two distinct spaces ``DrawBatch.texture_hash`` draws from
-        (SDK doc: 40_components/70_external_resources.md), so both are listed —
+        hash into the two distinct spaces ``DrawBatch.texture_hash`` draws from,
+        so both are listed —
         every entry is legitimately replaceable. Mirrors the sibling players'
         ``get_cellmap_names``; dedup guards only against a repeated name."""
         out: list[str] = []
@@ -421,12 +420,12 @@ class SsabMeta:
                 return t.name
         return ""
 
-    # -- audio (SDK doc: 40_components/90_audio.md) ---------------------
+    # -- audio ----------------------------------------------------------
     def sound_files(self) -> list[SoundFileInfo]:
         """Every ``SoundFile`` across the pack's ``SoundList``s, in file order.
 
-        The runtime plays no audio (SDK doc: 10_introduction/20_limitations.md)
-        — it only *reports* Audio triggers; the Player resolves and plays them.
+        The runtime plays no audio —
+        it only *reports* Audio triggers; the Player resolves and plays them.
         This surfaces the pack's sound
         table so the host can (a) preload the files at setup and (b) resolve an
         :class:`~ss_renpy.events.AudioEvent` to a concrete file."""

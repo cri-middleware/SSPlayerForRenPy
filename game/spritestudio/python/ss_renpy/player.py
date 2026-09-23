@@ -65,8 +65,7 @@ class FramePlan:
     # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) or None when this
     # frame has no live mask writer. The render layer rasterizes its writers into
     # an offscreen coverage bitmap; individual masked items reference it (or, for
-    # an instance child, the parent's) via ``MeshPart.mask`` (SDK doc:
-    # 40_components/40_mask.md).
+    # an instance child, the parent's) via ``MeshPart.mask``.
     frame_mask: object = None
 
 
@@ -320,8 +319,8 @@ class SSInternalPlayer:
 
         Distinct from ``FramePlan.finished``, which is its rising edge: this
         stays true until the next play/setup, never trips for an infinite loop,
-        and is never raised by a commanded :meth:`stop` (SDK doc:
-        30_core/20_playback_control.md). The host reads it to tell a naturally
+        and is never raised by a commanded :meth:`stop`.
+        The host reads it to tell a naturally
         finished player from a merely stopped one — e.g. when snapshotting
         playback state for rollback."""
         return bool(self._rt and self._rt.is_finished)
@@ -340,8 +339,8 @@ class SSInternalPlayer:
         NOT the speed sign — see :attr:`ssruntime.SSRuntime.is_playing_forward`).
 
         The host uses this to gate audio: SS audio must only play while the
-        timeline moves forward (SS does not support reverse audio playback —
-        SDK doc: 10_introduction/20_limitations.md). Assumes forward when there
+        timeline moves forward (SS does not support reverse audio playback).
+        Assumes forward when there
         is no runtime."""
         return bool(self._rt.is_playing_forward) if self._rt else True
 
@@ -372,7 +371,7 @@ class SSInternalPlayer:
         stop, since reverse playback is
         :meth:`set_playback_direction`'s business -- so the request and the
         effect part company the moment either is passed. The Player-facing
-        getter reports the effect (SDK doc: 30_core/20_playback_control.md).
+        getter reports the effect.
         """
         return self._rt.speed_scale if self._rt else self._speed
 
@@ -536,8 +535,8 @@ class SSInternalPlayer:
         Used when this player is an Instance child: the parent's instance slot
         already computed ``frame_no``; we evaluate that frame and recurse into
         this child's own Instance/Effect parts. ``inherited`` is the composed
-        mask context from the calling Instance part (SDK doc:
-        40_components/40_mask.md §2-6) — our parts compose their own settings on
+        mask context from the calling Instance part —
+        our parts compose their own settings on
         top of it and sample the *root's* coverage. Never raises: a draw-plan
         failure returns Normal/Mesh-only, and a native/parse failure returns an
         empty list rather than propagating into the parent's frame build."""
@@ -575,8 +574,8 @@ class SSInternalPlayer:
         is a *hidden* Instance child: the Brain drops Hide'd parts from
         ``draw_order``, so the normal render walk (``render_at`` →
         ``collect_ordered``) never runs for it and its slots would freeze. Stepping
-        here keeps independent descendants advancing while off-screen (SDK doc:
-        40_components/10_instance.ja.md). Never raises — and guards each slot on
+        here keeps independent descendants advancing while off-screen.
+        Never raises — and guards each slot on
         its own, so one wedged child cannot freeze its siblings' clocks."""
         sf = self._sub_frame if sub_frame is None else sub_frame
         if self._instances is not None:
@@ -737,7 +736,7 @@ class SSInternalPlayer:
             # Build the coverage *before* collect_ordered steps any slot — both
             # read the transient SoA, which an instance/effect step invalidates.
             # An owner with no writers of its own still needs a coverage when an
-            # instance child carries clipping writers out into it (SDK doc §2-7),
+            # instance child carries clipping writers out into it,
             # so build one whenever a clipping child exists and let collect_ordered
             # fill the bubbled writers; it is dropped below if nothing lands.
             has_clip_children = (self._instances is not None
@@ -861,8 +860,7 @@ class SSInternalPlayer:
     # -- part overrides -------------------------------------------------
     # Per-part runtime overrides (color / cell / visibility): an imperative
     # "make this part this colour / cell / hidden NOW" that the Brain applies on
-    # the resolved pose, so it wins over both the keyframe and any blend (SDK
-    # doc: 40_components/65_override_layer.md).
+    # the resolved pose, so it wins over both the keyframe and any blend.
     #
     # The Brain owns the table and its whole lifecycle — a new animation drops
     # visibility + non-Permanent color/cell overrides, a new pack drops
@@ -978,8 +976,8 @@ class SSInternalPlayer:
 
     def replaceable_texture_names(self) -> List[str]:
         """Names accepted by :meth:`resolve_texture_name` — every cellmap plus
-        every texture a ``TCHG`` can select (SDK doc:
-        40_components/70_external_resources.md). The host surfaces these as the
+        every texture a ``TCHG`` can select.
+        The host surfaces these as the
         runtime texture-replacement targets."""
         return self._meta.replaceable_texture_names()
 

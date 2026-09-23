@@ -22,6 +22,9 @@
     first, then the porting guide under `SpriteStudio-SDK/libs/ssruntime/docs/`. The reference ports are
     SSPlayerForGodot (closest — source of the `ss-*` shaders and the coverage-bitmap mask) and
     SSPlayerForWeb (`GeometryBuilder.ts` is the render math).
+*   **Code comments do not cite the SDK's porting guide** — no section numbers, page paths or quotes.
+    Its sections move as it is revised and nothing checks a citation inside a comment; say what breaks
+    if the code changes, and leave the rule to the guide.
 *   **Ren'Py is an external dependency** (`renpy-sdk/`) — do not patch it. Use its public API and the `SS_*`
     environment knobs.
 

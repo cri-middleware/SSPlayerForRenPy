@@ -79,8 +79,7 @@ class _WebRuntime:
                 var ctx = window.ss_ctxs[ctx_id];
                 // Out-of-range / NaN frame_no: the wasm-bindgen API THROWS
                 // (SSRuntimeError::InvalidParameter) where the native C-API
-                // silently returns a null buffer (SDK doc:
-                // 30_core/20_playback_control.md). Mirror native:
+                // silently returns a null buffer. Mirror native:
                 // no frame data this tick (the frame's parts just don't draw).
                 // The sub-frame Instance walk momentarily seeks past the child's
                 // range edge, so without this the child throws every such tick.

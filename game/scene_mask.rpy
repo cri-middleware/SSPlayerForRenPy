@@ -24,7 +24,7 @@ label mask_demo:
 
     "A clipping (write-mask) part instead confines the parts drawn above it INSIDE its own shape, like a window." id mask_msg3
 
-    "Both effects come from one stencil: each part's 'visible inside mask' flag decides the inside/outside polarity per the spec (09_mask)." id mask_msg4
+    "Both effects come from one stencil: each part's 'visible inside mask' flag decides the inside/outside polarity per the spec." id mask_msg4
 
     hide mask_sample
     with dissolve

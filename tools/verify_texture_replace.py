@@ -8,7 +8,7 @@ actual displayable swap lives in ``_base_image`` (GL2 render path) and is signed
 off in a GUI run — here we prove the resolver the override is keyed by.
 
 Runtime texture replacement is a Player-side override, NOT the per-part Override
-Layer (SDK doc: 40_components/70_external_resources.md). Its whole design is:
+Layer. Its whole design is:
 key a texture map by ``DrawBatch.texture_hash``; the host replaces an entry, the
 draw loop binds it for free. This port keys the override by the *resolved path*
 instead (ForRenPy resolves every ``texture_hash`` to a path), so the invariant

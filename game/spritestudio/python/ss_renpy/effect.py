@@ -80,7 +80,7 @@ class EffectRig:
 
         For a part the Brain dropped from ``draw_order`` while hidden, which
         :meth:`collect` therefore never reaches. Independent effects must keep
-        simulating while off-screen (SDK doc 40_components/20_effect.ja.md); the
+        simulating while off-screen; the
         stepped plan view is discarded (no geometry built)."""
         slot = self._slots.get(part_index)
         if not slot:

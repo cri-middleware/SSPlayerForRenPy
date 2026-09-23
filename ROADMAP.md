@@ -108,7 +108,7 @@ host object.
   geometry, or every attachment detaches the moment the player is flipped — this is the one
   mistake both sibling ports call out. Keep the sign convention they converged on (the mirror
   is carried on the **Y** axis), which is also what this player's `part_transform()` already
-  produces; see *Mirrored parts* in the usage guide, and `30_core/30_render_loop.md` in the
+  produces; see *Mirrored parts* in the usage guide, and `30_core/40_render_loop.md` in the
   SDK docs for why the choice of axis is a convention rather than a detail.
 
 ---

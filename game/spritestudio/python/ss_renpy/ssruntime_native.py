@@ -8,12 +8,12 @@ Signatures are transcribed from the generated C header
 ``libs/ssruntime/target/ssruntime.h`` — that header is the source of truth;
 keep ``argtypes``/``restype`` in sync with it.
 
-Lifetime rules (SDK doc: 10_introduction/20_limitations.md):
-  * A bound ``resource`` must outlive every ``context`` it is bound to.
-    Internally the runtime ref-counts with ``Arc``, so destroying the resource
-    handle early is safe *as long as* contexts are destroyed/reset too. We keep
-    the Python wrapper conservative: ``close()`` destroys the context first,
-    then the resource.
+Lifetime rules:
+  * The runtime ref-counts the ``resource`` with ``Arc``, so the resource and
+    its contexts may be destroyed in either order. What must stay alive is the
+    ssab bytes behind a *borrowed* resource, until the resource and every
+    context bound to it are gone. We keep the Python wrapper conservative:
+    ``close()`` destroys the context first, then the resource.
   * SoA buffers (world matrices, local vertices, ...) are only valid until the
     next Brain call. Never retain the raw pointers across frames; copy out
     (or build a numpy view and consume it) within the same frame.
@@ -395,8 +395,8 @@ def _declare(lib: C.CDLL) -> None:
         fn.restype = C.c_int32
     # Effective playback direction (forward incl. ping-pong leg + Backward
     # setting; the *speed-sign* is NOT folded in — the caller compares it. SS
-    # does not support reverse audio playback — SDK doc:
-    # 10_introduction/20_limitations.md). Optional: older prebuilt runtimes may
+    # does not support reverse audio playback).
+    # Optional: older prebuilt runtimes may
     # not export it, so bind tolerantly and let the wrapper assume forward when
     # absent.
     try:
@@ -432,8 +432,8 @@ def _declare(lib: C.CDLL) -> None:
 
     # --- Override Layer: per-part runtime overrides -----------------------
     # Color / Cell / Visibility, applied by the Brain on the *resolved* pose so
-    # an override wins over both the keyframe and any blend (SDK doc:
-    # 40_components/65_override_layer.md). Parts are addressed by the positional
+    # an override wins over both the keyframe and any blend.
+    # Parts are addressed by the positional
     # part index. Declared as one optional group (same stale-lib tolerance as
     # is_playing_forward above): they land together in one SDK version, so a
     # drop-in whose libs predate the Override Layer simply leaves the whole group
@@ -699,8 +699,7 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_frame_no(self._ctx, frame)
 
     def play_with_start_frame(self, frame: float):
-        """Start playback from ``frame`` (``play(startFrame)``; SDK doc:
-        30_core/20_playback_control.md)."""
+        """Start playback from ``frame`` (``play(startFrame)``)."""
         self._lib.ss_runtime_play_with_start_frame(self._ctx, float(frame))
         return self
 
@@ -708,8 +707,7 @@ class _NativeRuntime:
         self._lib.ss_runtime_set_frame_rate(self._ctx, int(fps))
 
     def set_animation_section(self, start: int, end: int):
-        """Limit playback/loop to ``[start, end]`` (``set_animation_section``;
-        SDK doc: 30_core/20_playback_control.md)."""
+        """Limit playback/loop to ``[start, end]`` (``set_animation_section``)."""
         self._lib.ss_runtime_set_animation_section(self._ctx, int(start), int(end))
 
     def set_playback_direction(self, direction: int, style: int = STYLE_NORMAL):
@@ -803,9 +801,9 @@ class _NativeRuntime:
         """True when the head is advancing forward on the timeline.
 
         Accounts for the Backward direction setting and the current ping-pong
-        leg (outbound/return) but NOT the animation-speed sign — callers that
-        support a negative speed must XOR that in (SDK doc:
-        10_introduction/20_limitations.md). Assumes forward when the native
+        leg (outbound/return). The speed sign needs no check: a negative speed
+        stops the playhead rather than reversing it.
+        Assumes forward when the native
         runtime does not export the query (older builds)."""
         fn = getattr(self._lib, "ss_runtime_is_playing_forward", None)
         if fn is None:

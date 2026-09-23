@@ -173,7 +173,7 @@ init -10 python:
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
-    # Mask / clipping (SDK doc: 40_components/40_mask.md). Needs the mesh
+    # Mask / clipping. Needs the mesh
     # backend + custom shaders + offscreen Render-to-texture; set False to draw
     # masked parts plainly (geometry stays correct, the mask is simply not
     # applied). The coverage bitmap is sized to the writers' world bbox × the
@@ -208,8 +208,7 @@ init -10 python:
     # control flow (jumps, sound) prefer draining ss_poll_events() from a screen.
     SS_ENABLE_EVENTS = True
 
-    # Play SS Audio timeline events through Ren'Py's audio system (SDK docs:
-    # 40_components/90_audio.md + 10_introduction/20_limitations.md). When on,
+    # Play SS Audio timeline events through Ren'Py's audio system. When on,
     # the displayable resolves each Audio event to its sound
     # file (via the pack's SoundList), preloads the files at setup if the pack
     # carries any (lazy: nothing happens for packs with no audio), and plays each
@@ -359,7 +358,7 @@ init -10 python:
     _SS_USER_NEEDS_TEXEL = set()
     _SS_USER_NEEDS_CELL = set()
 
-    # PartColor shader (SDK doc: 40_components/50_parts_color.md), used by the
+    # PartColor shader, used by the
     # "mesh" backend. The CPU reference is framedata.eval_partcolor — keep this
     # GLSL in step with it. Registered defensively: older Ren'Py without
     # register_shader just skips it (the mesh backend then falls back to the
@@ -470,8 +469,7 @@ init -10 python:
             renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
 
         # -- Mask / clipping (coverage-bitmap hybrid) ------------------------
-        # Two shaders implement the spec's stencil over an offscreen coverage
-        # (SDK doc: 40_components/40_mask.md):
+        # Two shaders implement the spec's stencil over an offscreen coverage:
         #
         #   ss.mask_write   — rasterizes ONE writer into the coverage bitmap.
         #       Cuts out by the part's texture alpha vs the per-frame threshold
@@ -576,7 +574,7 @@ init -10 python:
                             vec4 cov = texture2D(tex1, cuv);
                             // Two accumulators, never one: invert and increment
                             // do not commute, so a shared one would make the
-                            // coverage depend on writer order (SDK doc §3-1-4).
+                            // coverage depend on writer order.
                             float parity = 0.0;   // mask_influence == 1: odd overlap
                             float count = 0.0;    // mask_influence == 0: any overlap
                             for (int i = 0; i < 24; i++) {
@@ -662,8 +660,7 @@ init -10 python:
                 vec4 p = texture2D(t, uv);
                 return vec4(p.a > 0.0 ? p.rgb / p.a : p.rgb, p.a);
             }
-            // PartColor composite (SDK doc: 40_components/50_parts_color.md),
-            // straight-space.
+            // PartColor composite, straight-space.
             vec3 ss_pc_blend(vec3 rgb, vec3 color, vec3 varg) {
                 return rgb * varg.x + mix(vec3(1.0), rgb, varg.z) * color * varg.y;
             }
@@ -1292,8 +1289,7 @@ init -10 python:
             self.speed = speed
             # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (SDK doc:
-            # 30_core/20_playback_control.md). Defaults to on.
+            # head stays a raw float either way. Defaults to on.
             self._sub_frame = bool(sub_frame)
             # Layout size. Given as (w, h) (or a single number for a square),
             # render() reports a box of that size and centers the animation
@@ -1325,8 +1321,8 @@ init -10 python:
             # actually changes — kept OFF the record so it never pickles. Any
             # attach/detach invalidates it (indices shift). See render().
             self._xform_cache = {}
-            # Optional event callbacks (the recommended Player API; SDK doc:
-            # 30_core/20_playback_control.md). Each is invoked as
+            # Optional event callbacks (the recommended Player API).
+            # Each is invoked as
             # cb(self, frame_index, event) for the per-part events
             # and cb(self) for started/finished/looped, guarded so a raising
             # callback can never break rendering. Prefer module-level functions /
@@ -1389,8 +1385,8 @@ init -10 python:
             # so it pickles with the displayable. See _reapply_overrides.
             self._overrides = {}
             # Runtime texture replacements: {resolved_path -> displayable}. A
-            # Player-side override (SDK doc: 40_components/70_external_resources
-            # .md), NOT the per-part Override Layer above. Keyed by the SAME path
+            # Player-side override,
+            # NOT the per-part Override Layer above. Keyed by the SAME path
             # _texture_path() yields, so _base_image() shadows the pack's atlas
             # wherever that texture binds; a cleared key falls back to the pack's
             # own image. Both texture_hash spaces (cellmap name / TCHG file name)
@@ -1513,7 +1509,7 @@ init -10 python:
             # switch does — so the Permanent ones are precisely what must ride
             # along. Without this, an attribute switch (`show ringo talk`, or
             # SSCharacter's lip-flap) silently threw away a costume the game had
-            # set Permanent, which docs/*/usage.md §5 promises persists.
+            # set Permanent, which docs/*/usage.md §6 promises persists.
             rv._overrides = self._permanent_overrides()
             rv._duplicatable = False
             return rv
@@ -1747,15 +1743,15 @@ init -10 python:
             for s in fe.signals:
                 self._call_cb(self.on_signal, fe.frame_index, s)
             for a in fe.audios:
-                # Play it ourselves (the Player, not the runtime, plays audio —
-                # SDK doc: 40_components/90_audio.md) AND notify: on_audio stays
+                # Play it ourselves (the Player, not the runtime, plays audio)
+                # AND notify: on_audio stays
                 # a notification hook so a game can react (subtitles, ...)
                 # without owning playback.
                 if SS_ENABLE_AUDIO:
                     self._play_audio(fe.frame_index, a)
                 self._call_cb(self.on_audio, fe.frame_index, a)
 
-        # -- audio (SDK doc: 40_components/90_audio.md) --------------------
+        # -- audio ---------------------------------------------------------
         def _audio_full_path(self, file_ref):
             """Join an ssab-relative sound reference with this pack's base dir
             (like a texture path) and confirm Ren'Py can load it; "" if not."""
@@ -1770,8 +1766,7 @@ init -10 python:
             return path
 
         def _preload_audio(self):
-            """Warm this pack's sound files at setup, once (SDK doc:
-            40_components/90_audio.md).
+            """Warm this pack's sound files at setup, once.
 
             Ren'Py streams + decodes audio on `play`; there is no public API to
             pre-decode a sound, so "preload" here means resolving each file and
@@ -1803,13 +1798,12 @@ init -10 python:
                                     "audio preload failed for %r (%r)" % (path, e))
 
         def _play_audio(self, frame, audio):
-            """Play one SS Audio timeline event (SDK doc:
-            40_components/90_audio.md). Never raises.
+            """Play one SS Audio timeline event. Never raises.
 
             Forward-only: skip when the head is walking backward (the runtime's
             is_playing_forward, which already accounts for the direction and the
-            ping-pong leg), because most decoders cannot play audio in reverse
-            (SDK doc: 10_introduction/20_limitations.md). The *speed* has no say
+            ping-pong leg), because most decoders cannot play audio in reverse.
+            The *speed* has no say
             in it: the Brain clamps a negative rate to a stop rather than to
             reverse playback, so nothing advances and no event reaches here.
             ``loop_num`` is a *play count* (SS has no infinite loop), realised by
@@ -1972,8 +1966,8 @@ init -10 python:
             it lazily, so whether playback was *live* has to be carried as plain
             data alongside the frame — otherwise every restore resumes. A
             naturally finished one-shot reads as "stopped": the Brain parks it on
-            the final frame with is_playing false (SDK doc:
-            30_core/20_playback_control.md), and restoring it as playing would
+            the final frame with is_playing false,
+            and restoring it as playing would
             re-fire the completion edge. Never raises — an unreadable state
             degrades to the previous behaviour ("playing")."""
             try:
@@ -2052,7 +2046,7 @@ init -10 python:
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 # Mask: rasterize each distinct coverage once before drawing the
-                # targets that sample it (SDK doc: 40_components/40_mask.md).
+                # targets that sample it.
                 # Failure leaves the dict empty so masked parts simply draw
                 # unmasked.
                 cov_by_id = {}
@@ -2507,8 +2501,7 @@ init -10 python:
             Returns ``(coverage_render, cov_w, cov_h)`` or None. The coverage is
             sized to the writers' world bbox (long edge capped at
             SS_MASK_COVERAGE_MAX_DIM); each writer is drawn with ``ss.mask_write``
-            under *additive* blend so disjoint bits OR together (SDK doc:
-            40_components/40_mask.md).
+            under *additive* blend so disjoint bits OR together.
             Built in bbox-local pixel space so the target's ``v_mask_uv`` (derived
             from a_position via the same bbox) indexes it directly."""
             if _SS_Mesh2 is None or not fm.writers:
@@ -2927,8 +2920,8 @@ init -10 python:
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
-        # engine-independent core. load/set_animation/play are split (SDK doc:
-        # 30_core/20_playback_control.md): building the core loads the pack and
+        # engine-independent core. load/set_animation/play are split:
+        # building the core loads the pack and
         # everything it implies (textures, Instance/Effect rigs), set_animation
         # switches+poses, ss_play starts.
         def ss_set_animation(self, name):
@@ -3013,8 +3006,8 @@ init -10 python:
             # there for when you do want silence.
 
         def ss_stop_audio(self, fadeout=0.0):
-            """Stop SS audio this player is currently sounding (SDK doc:
-            40_components/90_audio.md). Called automatically on hide / scene
+            """Stop SS audio this player is currently sounding.
+            Called automatically on hide / scene
             change; `ss_stop()` deliberately does not, so call this directly to
             cut the sound early or with a `fadeout` (seconds)."""
             self._stop_audio(fadeout=fadeout)
@@ -3392,8 +3385,7 @@ init -10 python:
         # -- part overrides ------------------------------------------------
         # Per-part runtime overrides: "make this part this colour / cell /
         # hidden NOW". The Brain applies them on the resolved pose, so an
-        # override wins over both the keyframe and any blend (SDK doc:
-        # 40_components/65_override_layer.md).
+        # override wins over both the keyframe and any blend.
         #
         #     $ ringo.ss_set_part_color_override("apple", "#f00", blend_op=1)
         #     $ ringo.ss_set_part_visibility_override("apple", True, cascade=True)
@@ -3625,8 +3617,7 @@ init -10 python:
         # A whole-texture swap from your program (costume / expression change),
         # distinct from the per-part Override Layer above: it repoints the atlas
         # a cellmap (or TCHG target) binds, not a part's cell/colour/visibility
-        # (SDK doc: 40_components/70_external_resources.md — "a Player-side
-        # override", explicitly not the Override Layer API).
+        # (implemented by the Player, not part of the Part Overrides).
         def ss_texture_names(self):
             """Names you can pass to :meth:`ss_set_cellmap_texture`.
 
@@ -3652,7 +3643,7 @@ init -10 python:
             through the same resolver) — but not a separate ``SSPlayer``. The
             replacement is assumed to share the original's size and layout: the
             UVs are unchanged, so a different resolution samples a different
-            region (SDK doc: 40_components/70_external_resources.md). Callable
+            region. Callable
             before the first show or any time after; persists across save/load."""
             self._ensure()
             path = self._core.resolve_texture_name(name)

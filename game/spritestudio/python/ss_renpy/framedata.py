@@ -74,8 +74,7 @@ LT, RT, LB, RB, CENTER = 0, 1, 2, 3, 4
 # -- PartColor blend (texel<->vertex-colour, shader-side) ---------------------
 # This is a DIFFERENT axis from the framebuffer blend on DrawBatch.blend_type:
 # PartColor blend mixes texel and vertex colour *inside the shader* and only the
-# first four modes are valid; values >= 4 clamp to Mix (SDK doc:
-# 40_components/50_parts_color.md).
+# first four modes are valid; values >= 4 clamp to Mix.
 PC_BLEND_MIX, PC_BLEND_MUL, PC_BLEND_ADD, PC_BLEND_SUB = 0, 1, 2, 3
 PC_BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub"}
 
@@ -114,7 +113,7 @@ def parse(fb) -> FrameData:
 _PS_SIZE = 144
 # UpdateFlag u64@0, Alpha f32@48, Priority f32@56, Mask f32@108,
 # PartColor i16@128, Shader i16@130, Hide bool@138 (little-endian). Priority/Mask
-# are the per-frame mask attributes (SDK doc: 40_components/40_mask.md):
+# are the per-frame mask attributes:
 # Priority feeds draw order (the runtime already sorts draw_order, but we keep
 # it for diagnostics) and Mask is the cutout value (0..255, a float despite the
 # range). Shader indexes FrameData.shaders (the per-part user-shader effect;
@@ -216,22 +215,19 @@ def partcolor_coef(blend_idx: int) -> tuple:
 
     The rate-independent half of :func:`partcolor_varg`, so a renderer that packs
     ``varg`` per *vertex* can resolve the mode once per *part* without
-    reimplementing the clamp — the mode table and its clamp stay owned here
-    (SDK doc: 40_components/50_parts_color.md).
+    reimplementing the clamp — the mode table and its clamp stay owned here.
     """
     return _PC_COEF[clamp_pc_blend(blend_idx)]
 
 
 def partcolor_varg(blend_idx: int, rate: float) -> tuple:
-    """Build the ``varg`` coefficient triple for one vertex (SDK doc:
-    40_components/50_parts_color.md)."""
+    """Build the ``varg`` coefficient triple for one vertex."""
     cx, cy, cz = partcolor_coef(blend_idx)
     return (1.0 + cx * rate, cy * rate, cz)
 
 
 def eval_partcolor(pixel_rgb, color_rgb, blend_idx: int, rate: float) -> tuple:
-    """CPU reference of the PartColor fragment formula (SDK doc:
-    40_components/50_parts_color.md).
+    """CPU reference of the PartColor fragment formula.
 
     ``pixel_rgb`` / ``color_rgb`` are 0..1 RGB triples. Returns the composited
     RGB. This is the authority the headless rasterizer and tests check against;
@@ -380,8 +376,8 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     plus matching normalized bbox coords ((0, 0) = LT .. (1, 1) = RB). Positions
     are sent through the part's world matrix (exactly like a Normal part's local
     vertices); the fill is the PartColor with ``rate`` forced to 1.0 — a shape
-    has no texel to blend against (SCHEMA.md / SDK doc:
-    40_components/50_parts_color.md: Shape is rate-1.0), so the (white) texture
+    has no texel to blend against (SCHEMA.md:
+    Shape is rate-1.0), so the (white) texture
     supplied by the render layer is fully replaced by the interpolated corner
     colour. Returns ``None`` for a non-shape part or a degenerate range
     (<3 valid verts, e.g. a size-collapsed shape).
@@ -409,7 +405,7 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     # still fills solid).
     #
     # A Shape **bypasses the PartColor blend formula** (SSPlayerForWeb
-    # GeometryBuilder.buildShape; SDK doc: 40_components/50_parts_color.md): a
+    # GeometryBuilder.buildShape): a
     # textureless shape has no texel to blend against, so the blend mode is
     # FORCED to Mix and the rate to 1.0 — the fill is the interpolated corner
     # colour itself, regardless of the part's authored PartColor blend (Add/Sub
@@ -593,7 +589,7 @@ class VertexColor:
     """One vertex's PartColor: RGBA (0..1) plus the texel blend ``rate``.
 
     ``rgba.a`` already has the part's hierarchical alpha pre-multiplied
-    (SCHEMA.md / SDK doc: 40_components/50_parts_color.md) — never re-multiply
+    (SCHEMA.md) — never re-multiply
     by ``PartState.alpha``. ``rate`` is the texel<->colour blend strength;
     ``0`` = texel pass-through.
     """
@@ -604,8 +600,8 @@ class VertexColor:
 _WHITE_OPAQUE = VertexColor((1.0, 1.0, 1.0, 1.0), 0.0)
 
 
-# Default for a part with no ``parts_color`` entry (SDK doc:
-# 40_components/50_parts_color.md): white, hierarchical alpha, rate 0 → the
+# Default for a part with no ``parts_color`` entry:
+# white, hierarchical alpha, rate 0 → the
 # generic formula returns the raw texel, so the renderer needs no separate
 # "has part colour?" branch.
 def _default_vertex_color(alpha: float) -> VertexColor:
@@ -705,7 +701,7 @@ def part_colors(fd: FrameData, ps, pcs=None) -> tuple:
 
     ``blend_idx`` is clamped to the 4 valid PartColor modes. Parts without a
     ``parts_color`` entry (``PartState.part_color() < 0``) get the white /
-    rate-0 default on all four corners (SDK doc: 40_components/50_parts_color.md).
+    rate-0 default on all four corners.
     Only the Normal-part rule (four corners individual) is applied here; Mesh
     (Whole-only) and Shape (rate forced 1.0) are handled by their own builders.
 
@@ -768,7 +764,7 @@ class MeshPart:
     # shader is orthogonal to the geometry, so it is NOT part of equality.
     shader_id_hash: int = 0
     shader_params: tuple = ()
-    # Masking (SDK doc: 40_components/40_mask.md): a ``ss_renpy.mask.MaskApply``
+    # Masking: a ``ss_renpy.mask.MaskApply``
     # when this part is a masked target this frame, else None. Set by the mask
     # layer after the draw plan is built (the render layer reads it to bind
     # coverage + replay the stencil); it is intentionally NOT part of the
@@ -1059,7 +1055,7 @@ def iter_draw_plan(rt, fd: FrameData, parts=None):
     # Mask-type part has ONLY a Mask batch (already yielded as "skip"), but a
     # ``draw_as_mask`` Shape/Normal/Mesh part ALSO emits its own colour batch at
     # the same draw-order slot; that colour batch must be suppressed (the part is
-    # the mask, not a drawn sprite — SDK doc: 40_components/40_mask.md). Clipping
+    # the mask, not a drawn sprite). Clipping
     # writers (``mask_write``) emit no Mask batch, so they are absent here and
     # draw normally.
     batches = _draw_batch_list(fd)

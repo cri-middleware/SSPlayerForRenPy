@@ -1,4 +1,4 @@
-"""Engine-independent mask / clipping-mask core (SDK doc: 40_components/40_mask.md).
+"""Engine-independent mask / clipping-mask core.
 
 SpriteStudio "mask" and "clipping" are two features over one stencil. Ren'Py's
 GL2 model layer does not expose a stencil buffer, so — exactly like the Godot
@@ -36,11 +36,11 @@ from ss_renpy import framedata
 
 # Coverage encodes one writer per bit across the RGB channels of an RGBA8
 # bitmap (8 bits x 3). The alpha channel is reserved (premultiplied accumulator
-# in the GPU path), so the hard cap is 24 (SDK doc: 40_components/40_mask.md).
+# in the GPU path), so the hard cap is 24.
 MAX_WRITERS = 24
 
-# Identity element of the instance-hierarchy composition (SDK doc:
-# 40_components/40_mask.md §2-6). A top-level animation is reached with
+# Identity element of the instance-hierarchy composition.
+# A top-level animation is reached with
 # "influence still allowed / draw outside", so every part evaluates exactly its
 # own settings; ``visible_inside`` accumulates by OR and ``influence`` chains by
 # AND from here down.
@@ -55,8 +55,7 @@ _QUAD_TRIS = [(framedata.LT, framedata.RT, framedata.LB),
 
 @dataclass
 class MaskWriter:
-    """One coverage writer for the current frame (``MaskWriter`` in the SDK doc:
-    40_components/40_mask.md).
+    """One coverage writer for the current frame.
 
     ``positions`` / ``uvs`` / ``triangles`` are the geometry to rasterize into
     the coverage bitmap (world space, texture-pixel UVs — the render layer
@@ -82,8 +81,7 @@ class MaskWriter:
 
 @dataclass
 class MaskApply:
-    """Per-target replay parameters stamped onto a drawable (SDK doc:
-    40_components/40_mask.md).
+    """Per-target replay parameters stamped onto a drawable.
 
     A drawable part that is masked carries one of these. ``frame_mask`` is the
     coverage it samples (the *parent's* coverage for an inherited instance
@@ -99,8 +97,7 @@ class MaskApply:
 
 @dataclass
 class MaskInherit:
-    """The effective mask context an Instance part hands to its sub-animation
-    (SDK doc: 40_components/40_mask.md §2-6).
+    """The effective mask context an Instance part hands to its sub-animation.
 
     ``influence`` / ``visible_inside`` are the values *already composed* down to
     (and including) the Instance part — each part of the sub-animation composes
@@ -117,8 +114,7 @@ class MaskInherit:
 
 
 def compose(parent, pinfo):
-    """One hierarchy step of the mask-setting composition (SDK doc:
-    40_components/40_mask.md §2-6).
+    """One hierarchy step of the mask-setting composition.
 
     ``parent`` is the caller's effective ``(influence, visible_inside)`` —
     :data:`ROOT_CONTEXT` at the top level. Returns the part's own effective pair:
@@ -139,7 +135,7 @@ class FrameMask:
 
     Built by :func:`build_frame_mask`. ``meta`` is parallel to ``writers``:
     ``(rank, bit, op_invert, is_clipping)`` per writer — exactly the replay
-    shader's ``mask_meta`` (SDK doc: 40_components/40_mask.md). ``bmin`` /
+    shader's ``mask_meta``. ``bmin`` /
     ``bsize`` are the world bbox of all writer geometry; a target's coverage UV
     is ``(world - bmin) / bsize``. ``max_mask_rank`` / ``min_clip_rank`` are the
     scope bounds used to skip targets no writer can reach.
@@ -152,7 +148,7 @@ class FrameMask:
     min_clip_rank: Optional[int] = None             # min rank of clipping writers
     rank_of: dict = field(default_factory=dict)     # part_index -> draw-order rank
     # Raw world bbox accumulator [x0, y0, x1, y1], kept so add_bubbled can extend
-    # it before finalize re-derives bmin/bsize (SDK doc §2-7 carry-over).
+    # it before finalize re-derives bmin/bsize.
     _raw: list = field(default_factory=lambda: [float("inf"), float("inf"),
                                                 float("-inf"), float("-inf")])
 
@@ -161,8 +157,7 @@ class FrameMask:
         return len(self.writers)
 
     def in_scope(self, rank: int) -> bool:
-        """True if any writer can affect a target at ``rank`` (SDK doc:
-        40_components/40_mask.md).
+        """True if any writer can affect a target at ``rank``.
 
         A pure mask affects ranks *below* it (``rank < mask_rank``); a clipping
         writer affects ranks *above* it (``rank > clip_rank``). This is the cheap
@@ -179,7 +174,7 @@ class FrameMask:
         """(Re)derive ``bmin`` / ``bsize`` / ``meta`` / scope bounds from the
         current writers. Called by :func:`build_frame_mask` after the owner's own
         writers, and again after :meth:`add_bubbled` has folded in any
-        instance-child clipping writers (SDK doc §2-7)."""
+        instance-child clipping writers."""
         raw = self._raw
         if self.writers and raw[2] >= raw[0]:
             self.bmin = (raw[0], raw[1])
@@ -193,7 +188,7 @@ class FrameMask:
 
     def note_pending_clip_ranks(self, ranks) -> None:
         """Lower ``min_clip_rank`` to include instance parts that WILL bubble a
-        clipping writer this frame (SDK doc §2-7), so :meth:`in_scope` — the cheap
+        clipping writer this frame, so :meth:`in_scope` — the cheap
         pre-filter run while targets are stamped, *before* the child clippers are
         actually gathered — already counts them. The per-writer replay test stays
         authoritative, so an over-inclusive rank here only costs a redundant
@@ -205,8 +200,7 @@ class FrameMask:
             else min(self.min_clip_rank, m)
 
     def add_bubbled(self, desc, mat, rank: int, inherited_influence: bool) -> bool:
-        """Fold one instance-child clipping writer into this coverage (SDK doc
-        §2-7 carry-over).
+        """Fold one instance-child clipping writer into this coverage.
 
         ``desc`` is a :func:`clip_writer_desc` read from the sub-animation's drawn
         geometry (sub-anim-local space); ``mat`` is the instance slot's world
@@ -292,7 +286,7 @@ def _shape_writer_geom(soa, fd, p):
     mask cuts its true silhouette rather than a bounding box. Falls back to the
     part's ``PartState.Size`` box (transformed by the world matrix) for a
     cell-less writer the runtime exposes no shape geometry for — texture-less,
-    whole geometry is the mask (SDK doc: 40_components/40_mask.md). Returns None
+    whole geometry is the mask. Returns None
     for a zero-size / empty part.
     """
     wm, wn = soa.world
@@ -419,7 +413,7 @@ def build_frame_mask(rt, fd, part_infos, parts=None,
 
     # ``allow_empty`` keeps a writer-less FrameMask alive so an owner whose only
     # masks come from an instance child's carried-out clipping writers still has
-    # a coverage to bubble them into (SDK doc §2-7); the caller drops it after
+    # a coverage to bubble them into; the caller drops it after
     # collect_ordered if nothing landed.
     if not writers and not allow_empty:
         return None
@@ -432,8 +426,7 @@ def build_frame_mask(rt, fd, part_infos, parts=None,
 
 
 def clip_writer_desc(mp, mask_value) -> dict:
-    """Coverage-writer descriptor for a clipping part, from its drawn MeshPart
-    (SDK doc §2-7 carry-over).
+    """Coverage-writer descriptor for a clipping part, from its drawn MeshPart.
 
     ``positions`` / ``uvs`` / ``triangles`` are the part's drawn geometry in the
     SUB-ANIMATION's local space; the instance owner transforms them into coverage
@@ -469,8 +462,8 @@ def attach_target(mp, frame_mask: Optional[FrameMask], part_infos,
             return
         fm, rank, parent = frame_mask, frame_mask.rank_of.get(p), ROOT_CONTEXT
     else:
-        # Scope is judged at the Instance part's slot in the *root's* draw order
-        # (SDK doc §3-2-2) — the child's own rank means nothing to the parent's
+        # Scope is judged at the Instance part's slot in the *root's* draw order —
+        # the child's own rank means nothing to the parent's
         # coverage, and part indices are a per-pack namespace anyway.
         fm, rank = inherited.frame_mask, inherited.rank
         parent = (inherited.influence, inherited.visible_inside)
@@ -487,8 +480,8 @@ def inherit_for(part_index: int, part_infos, frame_mask: Optional[FrameMask],
                 inherited: Optional[MaskInherit] = None) -> Optional[MaskInherit]:
     """Context to hand down into an Instance part's sub-animation, or ``None``.
 
-    Composes the Instance part's own settings onto the caller's context (SDK doc:
-    40_components/40_mask.md §2-6) so the sub-animation's parts can compose their
+    Composes the Instance part's own settings onto the caller's context
+    so the sub-animation's parts can compose their
     own on top. ``None`` means "nothing below can be masked": either there is no
     coverage this frame, or the AND chain of ``mask_influence`` has latched off,
     which no descendant can undo.
@@ -519,15 +512,14 @@ def inherit_for(part_index: int, part_infos, frame_mask: Optional[FrameMask],
 
 def mask_passes(frame_mask: FrameMask, rank: int, visible_inside: bool,
                 cov_uv, sample_bit) -> bool:
-    """CPU reference of the replay shader's ``ss_mask_passes`` (SDK doc:
-    40_components/40_mask.md).
+    """CPU reference of the replay shader's ``ss_mask_passes``.
 
     ``cov_uv`` is the target fragment's coverage UV; ``sample_bit(bit) -> bool``
     reports whether ``bit`` is set in the coverage at that UV (the headless
     rasterizer / test supplies this; the GPU samples the bitmap). Returns True to
     draw, False to ``discard``. This is the authority the GLSL must reproduce.
 
-    The two writer OPs get **separate accumulators** (SDK doc §3-1-4). ``Invert``
+    The two writer OPs get **separate accumulators**. ``Invert``
     and ``Increment`` are each self-inverse but do not commute, so replaying both
     into one accumulator makes the coverage depend on writer order — ``incr ->
     invert`` covers where ``invert -> incr`` does not. Splitting them keeps
