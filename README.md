@@ -38,7 +38,7 @@ For detailed specifications, import procedures, and API references, please visit
 **Using it in your game?** Read on — drop the folder in, convert your `.sspj`, add one line.
 Everything after that (events, per-part overrides, `SSCharacter`) is the same path further in,
 in the [documentation](./docs/en/index.md).
-**Working on the Player, or the Rust core under it?** [Section 2](#-2-full-build-environment-for-sdkplayer-developers).
+**Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdkplayer-developers).
 
 ### Setup
 
