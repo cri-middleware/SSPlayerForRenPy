@@ -7,8 +7,7 @@ needs a GUI to be *correct* — only the final on-screen GL draw does — so thi
 tool proves the engine-independent core:
 
   1. unit-tests the PartColor blend math (``eval_partcolor``) against the spec
-     cases in the SDK parts-color spec, 40_components/50_parts_color.md
-     (rate-0 pass-through, Mix/Mul/Add/Sub @ rate 1);
+     cases (rate-0 pass-through, Mix/Mul/Add/Sub @ rate 1);
   2. for every pack, plays the first animation and validates each frame's
      ``build_mesh_parts`` output — finite positions, in-range triangles, UVs
      inside the atlas, colours in 0..1, blend index 0..3, the 5-vertex centre
@@ -44,7 +43,7 @@ from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# 1. PartColor blend math (the SDK parts-color spec, 40_components/50_parts_color.md)
+# 1. PartColor blend math
 # --------------------------------------------------------------------------
 
 def _approx(a, b, eps=1e-6) -> bool:

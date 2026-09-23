@@ -4,8 +4,7 @@
 Exercises the engine-independent half of the feature with NO Ren'Py: the
 ``SSInternalPlayer.*_part_*_override`` API over the Brain's
 ``ss_runtime_*_override`` C-API. An override is applied by the Brain on the
-*resolved* pose, so it wins over both the keyframe and any blend (SDK doc:
-40_components/65_override_layer.md).
+*resolved* pose, so it wins over both the keyframe and any blend.
 
 Validates:
   * ``_pack_rgba`` accepts the documented colour forms and clamps;

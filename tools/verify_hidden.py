@@ -2,10 +2,10 @@
 """Headless regression check: hidden independent Instance/Effect slots keep stepping.
 
 The Brain omits ``Hide``'d Instance/Effect parts from ``draw_order`` (documented
-SDK design — SpriteStudio-SDK docs 40_components/40_mask). A host that drives slot
+SDK design). A host that drives slot
 stepping off ``draw_order`` therefore never steps a hidden part, freezing its clock;
 for an *independent* part that must keep advancing while off-screen
-(40_components/10_instance, 20_effect) this diverges from SpriteStudio. ``collect_ordered``
+this diverges from SpriteStudio. ``collect_ordered``
 steps every slot the draw plan missed (leftover pass), so hidden independent slots
 still advance.
 

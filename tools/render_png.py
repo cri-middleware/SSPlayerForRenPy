@@ -165,8 +165,7 @@ def _avg_rate(rates) -> float:
 def tint_layer(layer: Image.Image, blend: int, color, rate: float) -> Image.Image:
     """Apply a flat ``parts_color`` tint to an RGBA layer (per-channel LUT).
 
-    Implements the PartColor formula (the SDK parts-color spec,
-    40_components/50_parts_color.md / ``eval_partcolor``)
+    Implements the PartColor formula (``eval_partcolor``)
     as a per-channel linear op out = pixel*S + O. Uniform-colour approximation
     of the per-vertex gradient; alpha is left untouched (handled separately).
     """

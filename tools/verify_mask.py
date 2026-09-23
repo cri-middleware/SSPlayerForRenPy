@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless check for the mask / clipping-mask core (SDK doc: 40_components/40_mask.md).
+"""Headless check for the mask / clipping-mask core.
 
 Exercises the engine-independent half of masking without a GUI:
 
@@ -14,10 +14,10 @@ Exercises the engine-independent half of masking without a GUI:
   * **replay reference** — that :func:`ss_renpy.mask.mask_passes` (the CPU twin
     of the GLSL ``ss_mask_passes``) honours scope, OP, polarity and
     bbox-outside handling, and that the two OPs replay into separate
-    accumulators so coverage never depends on writer order (SDK doc §3-1-4);
+    accumulators so coverage never depends on writer order;
   * **instance composition** — that :func:`ss_renpy.mask.inherit_for` /
     :func:`ss_renpy.mask.attach_target` compose a caller's context with each
-    sub-animation part's own settings (§2-6: ``mask_influence`` by AND,
+    sub-animation part's own settings (``mask_influence`` by AND,
     ``visible_inside_mask`` by OR), chaining through nesting.
 
 Actual GL2 coverage rendering / replay still needs a GUI run (Shift+B browser).
@@ -231,7 +231,7 @@ def check_replay() -> bool:
     _check(mask.mask_passes(_fm(two), 2, False, inside, covered()) is True,
            "two masks: uncovered -> draw", fails)
 
-    # -- OP plane split (SDK doc §3-1-4) ----------------------------------
+    # -- OP plane split ---------------------------------------------------
     # Invert writers are PARITY: an odd overlap covers, an even one does not.
     # Two overlapping inverts cancel; three cover. (Two alone cannot tell parity
     # from an "exactly one" reading — three is what distinguishes them, and

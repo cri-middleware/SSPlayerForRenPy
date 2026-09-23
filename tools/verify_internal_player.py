@@ -63,8 +63,7 @@ def check(lib, rel_ssab: str, base_dir: str, anim, kind: str) -> bool:
 
     # Loading must request every texture this pack draws from — cellmap atlases
     # AND texture-change (TCHG) targets, which live in a separate table and would
-    # otherwise leave those batches textureless (SDK doc:
-    # 30_core/10_initialization.md).
+    # otherwise leave those batches textureless.
     expect_tex = {(base_dir + "/" + c.image_path) for c in meta.cellmaps()
                   if c.image_path}
     expect_tex |= {(base_dir + "/" + t.name) for t in meta.external_textures()
