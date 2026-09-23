@@ -102,6 +102,11 @@ try {
 
 # --- 1.5 copy license notices alongside the libraries ---------------------
 New-Item -ItemType Directory -Force -Path $LibRoot | Out-Null
+# libs\VERSION names the SDK release download-sdk installed, and what follows
+# replaces libraries with this local build. Stamp it "local" first: a later
+# download-sdk sees a mismatch and reinstalls instead of skipping as up to date,
+# and build-release sdk=build labels its zip for what it is.
+Set-Content -Path (Join-Path $LibRoot "VERSION") -Value "local"
 if (Test-Path "$SdkDir/LICENSE.md") { Copy-Item "$SdkDir/LICENSE.md" "$LibRoot/" -Force }
 if (Test-Path "$SdkDir/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md") {
     Copy-Item "$SdkDir/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" "$LibRoot/" -Force

@@ -79,8 +79,14 @@ build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime-ffi -
 build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter-ffi ); }
 place() { mkdir -p "$LIB_ROOT/$1"; cp "$2" "$LIB_ROOT/$1/${3:-$(basename "$2")}"; echo "   -> game/spritestudio/libs/$1/${3:-$(basename "$2")}"; }
 
-# copy license notices alongside the libraries
 mkdir -p "$LIB_ROOT"
+# libs/VERSION names the SDK release download-sdk installed, and what follows
+# replaces libraries with this local build. Stamp it "local" first: a later
+# download-sdk sees a mismatch and reinstalls instead of skipping as up to date,
+# and build-release sdk=build labels its zip for what it is.
+echo "local" > "$LIB_ROOT/VERSION"
+
+# copy license notices alongside the libraries
 [ -f "$SDK_DIR/LICENSE.md" ] && cp "$SDK_DIR/LICENSE.md" "$LIB_ROOT/"
 [ -f "$SDK_DIR/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" ] && \
   cp "$SDK_DIR/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" "$LIB_ROOT/"
