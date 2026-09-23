@@ -193,8 +193,8 @@ def platform_subdir() -> str:
     dynamic-libs package), so a bundled release drop resolves without renaming:
 
         macos/                          (universal libssruntime.framework; no arch split)
-        windows/x86_64                  (ssruntime.dll)
-        linux/x86_64                    (libssruntime.so)
+        windows/{x86_64,arm64}          (ssruntime.dll)
+        linux/{x86_64,aarch64}          (libssruntime.so)
         android/{arm64-v8a,armeabi-v7a,x86_64}    (libssruntime.so)
         ios/                            (libssruntime.xcframework — see load_library)
         web/                            (wasm — not loadable via ctypes)
@@ -203,6 +203,10 @@ def platform_subdir() -> str:
     ``sys.platform`` is also ``"linux"``, but its ``.so`` lives under
     ``android/<abi>`` (abi ∈ arm64-v8a / armeabi-v7a / x86_64 — the NDK/jniLibs
     names), not ``linux/<arch>``.
+
+    64-bit ARM is ``linux/aarch64`` but ``windows/arm64`` — the release's own
+    directory names — and ``spritestudio.rpy`` classifies ``linux/aarch64`` into
+    the ``linux_arm`` package, so the Linux spelling cannot be normalised away.
     """
     arch = _arch_token()
     if _is_android():
@@ -213,7 +217,7 @@ def platform_subdir() -> str:
         return "macos"
     if sys.platform.startswith("win"):
         return os.path.join("windows", arch)
-    return os.path.join("linux", arch)
+    return os.path.join("linux", "aarch64" if arch == "arm64" else arch)
 
 
 def library_filename() -> str:
