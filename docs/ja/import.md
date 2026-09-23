@@ -45,14 +45,10 @@ graph LR
 > 手元に `.sspj` がまだ無い状態で試したい場合は、[SpriteStudio 公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo)、エフェクトを含むものなら [パーティクル](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) が手頃です。ダウンロードしたプロジェクト一式は、以下のどのコンバート方法にもそのまま渡せます。
 
 > [!NOTE]
-> **どの SpriteStudio ファイルが、変換後のどれになるのか**（`.sspj` / `.ssae` / `.ssce` / `.ssqe` の
-> 役割と対応）は Player 共通なので、ポータルにまとめてあります —
+> **どの SpriteStudio ファイルが、変換後のどれになるのか**（`.sspj` / `.ssae` / `.ssce` / `.ssqe` の役割と対応）は Player 共通なので、ポータルにまとめてあります —
 > [アセットの変換 — プロジェクトの構成と、変換後の対応](https://cri-middleware.github.io/SpriteStudio-Docs/ja/overview/conversion/#プロジェクトの構成と変換後の対応)。
 >
-> 要点は 2 つです。**`.ssae` 1 本が `.ssab` 1 本**になること、そして
-> **セルの切り出し位置は `.ssce` から `.ssab` へ焼き込まれる**こと。後者があるため、セルを追加・移動・
-> リサイズしたり画像サイズを変えたりしたときは、**画像だけでなく `.ssab` も作り直して一緒に配置**
-> してください。画像だけを新しくすると、古い切り出し位置のまま描画されて絵がずれます。
+> 要点は 2 つです。**`.ssae` 1 本が `.ssab` 1 本**になること、そして**セルの切り出し位置は `.ssce` から `.ssab` へ焼き込まれる**こと。後者があるため、セルを追加・移動・リサイズしたり画像サイズを変えたりしたときは、**画像だけでなく `.ssab` も作り直して一緒に配置**してください。画像だけを新しくすると、古い切り出し位置のまま描画されて絵がずれます。
 
 ---
 
@@ -70,8 +66,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 3. Ren'Py のプロジェクトを起動します。起動中なら `Shift + R` を押します。
 
 **実行結果:**
-起動時の初期化フェーズでファイルの更新が検知されると自動的にコンバートが走り、プロジェクト名と同名のフォルダが **`game/ss_assets/`** 以下に生成されます。
-（例: `SpriteStudio_Source/Ringo/Ringo.sspj` を配置した場合、`game/ss_assets/Ringo/` に変換データが出力されます）
+起動時の初期化フェーズでファイルの更新が検知されると自動的にコンバートが走り、プロジェクト名と同名のフォルダが **`game/ss_assets/`** 以下に生成されます。（例: `SpriteStudio_Source/Ringo/Ringo.sspj` を配置した場合、`game/ss_assets/Ringo/` に変換データが出力されます）
 
 ### ホットリロード
 
@@ -89,8 +84,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;">
 
 > [!TIP]
-> **出力パスのカスタマイズ**
-> ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。
+> **出力パスのカスタマイズ**ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。
 > ```renpy
 > # 例: options.rpy 等でオートインポーター（init -10）より先に定義する
 > define -15 ss_source_dir = "my_custom_source_folder"
@@ -162,9 +156,7 @@ ssconverter-cli SpriteStudio_Source/
 - 変換したい `.sspj` と関連ファイル（画像など）をブラウザ画面にドラッグ＆ドロップすると変換処理が走り、結果が **`.zip` 形式でダウンロード** されます。
 - ダウンロードされた `.zip` を解凍し、生成された `.ssab` と画像を一緒にご自身の `game/` フォルダ内に配置してください。
 
-SSPlayerForWeb のサイト内、`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` で公開されます
-（_準備中_ — アドレスは確定していますが、SSPlayerForWeb がサイトを公開するまでは 404 になります）。
-フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
+SSPlayerForWeb のサイト内、`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` で公開されます（_準備中_ — アドレスは確定していますが、SSPlayerForWeb がサイトを公開するまでは 404 になります）。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
 
 詳しくは [SSPlayerForWeb リポジトリ](https://github.com/cri-middleware/SSPlayerForWeb) のドキュメントをご参照ください。
 
@@ -172,5 +164,4 @@ SSPlayerForWeb のサイト内、`https://cri-middleware.github.io/SSPlayerForWe
 
 ## リリースビルドとアーカイブ (`.rpa`)
 
-`.ssab` とテクスチャ（PNG / WebP）は Ren'Py のローダ経由で読み込むため、**`.rpa` アーカイブに含めても読み込めます**。テクスチャは Ren'Py 標準の画像パイプライン（`Image`）を通るため、Ren'Py が対応する形式（PNG / WebP）はプロジェクト内の他の画像とまったく同じように扱えます。
-配布ビルドで `game/` をアーカイブ化する場合（`build.classify` 等）も、これらをそのままアーカイブに入れて構いません。ルースファイルのままでも動作します。
+`.ssab` とテクスチャ（PNG / WebP）は Ren'Py のローダ経由で読み込むため、**`.rpa` アーカイブに含めても読み込めます**。テクスチャは Ren'Py 標準の画像パイプライン（`Image`）を通るため、Ren'Py が対応する形式（PNG / WebP）はプロジェクト内の他の画像とまったく同じように扱えます。配布ビルドで `game/` をアーカイブ化する場合（`build.classify` 等）も、これらをそのままアーカイブに入れて構いません。ルースファイルのままでも動作します。
