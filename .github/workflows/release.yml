@@ -35,7 +35,7 @@ concurrency:
 # pinned by scripts/SDK_VERSION.txt to be reachable (no extra auth required).
 jobs:
   # Headless verification gate: every engine-independent layer has a plain-
-  # CPython test under tools/ (AGENTS.md, "Verification"), plus the Ren'Py lint. GL2
+  # CPython test under tools/ (CONTRIBUTING.md, "Test"), plus the Ren'Py lint. GL2
   # rendering cannot be verified here — sign it off locally (Shift+B /
   # scripts/run-demo.*) before releasing.
   test:
@@ -56,13 +56,10 @@ jobs:
       - name: Generate example animation data
         run: bash scripts/deploy-examples.sh
 
+      # Through the runner, never a bare loop: a tool that cannot find its pack
+      # prints SKIP and exits 0, and only the runner counts that as a failure.
       - name: Run headless test suite
-        run: |
-          for t in tools/verify_*.py tools/m0_smoke.py; do
-            echo "::group::$t"
-            python3 "$t"
-            echo "::endgroup::"
-          done
+        run: bash scripts/run-tests.sh verbose=yes
 
       - name: Fetch Ren'Py SDK
         run: bash scripts/fetch-renpy-sdk.sh
