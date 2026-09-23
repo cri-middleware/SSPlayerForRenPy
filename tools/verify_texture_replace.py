@@ -152,7 +152,9 @@ def check_texture_change() -> bool:
     try:
         externals = [t for t in p.meta.external_textures() if t.name]
         if not externals:
-            print("    SKIP: pack unexpectedly has no external textures"); return True
+            # The pack exists to author a texture change, so an empty list is the
+            # converter dropping it -- a regression, not a pack without one.
+            print("    FAIL: TextureChange.ssab lists no external textures"); return False
         # Each external (TCHG file-name) resolves, and to the same path its own
         # texture_hash resolves to — so an override keyed by that name is bound
         # on the frames the texture change is active.
