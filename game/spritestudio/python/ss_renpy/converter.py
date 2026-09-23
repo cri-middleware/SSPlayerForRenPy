@@ -18,7 +18,8 @@ def platform_subdir() -> str:
         return "macos"
     if sys.platform.startswith("win"):
         return os.path.join("windows", arch)
-    return os.path.join("linux", arch)
+    # 64-bit ARM is linux/aarch64 but windows/arm64 — see ssruntime_native.platform_subdir.
+    return os.path.join("linux", "aarch64" if arch == "arm64" else arch)
 
 def library_filename() -> str:
     if sys.platform.startswith("win"):
