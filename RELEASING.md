@@ -14,8 +14,7 @@ Both locales, English first: it clears `site/`, which contains `site/ja`, so an 
 leaves a stale Japanese site behind and a page you just broke still looks fine. `mkdocs.base.yml`
 sets `strict: true`; `serve` validates nothing, and nothing builds the docs on a pull request.
 
-`build-pages.sh` is the whole published site, and `pages.yml`'s build job **is** this script with
-every option spelled out. `demo=download` needs `gh` and a Release carrying
+`build-pages.sh` is the whole published site, and `pages.yml`'s build job **is** this script. `demo=download` needs `gh` and a Release carrying
 `SSPlayerForRenPy-web-demo.zip`; `zip=<path>` feeds one by hand, and `demo=build` runs the export
 here instead — the only option until that first Release exists. `sdk=` picks `download-sdk` or
 `build-runtime` and is consulted for `demo=build` only, since a downloaded demo brings its own
@@ -37,8 +36,7 @@ resolves for a non-prerelease.
 The tag must agree with `ss_renpy.__version__`, which is the single source of truth: it ships
 inside the folder creators get, and the release reads it for the tag and the zip name.
 
-`scripts/build-release.sh` is the release, and `release.yml`'s job **is** this script with every
-option spelled out. It produces the version-pinned plugin zip and Web demo zip, a version-less
+`scripts/build-release.sh` is the release, and `release.yml`'s job **is** this script. It produces the version-pinned plugin zip and Web demo zip, a version-less
 alias of each, and `SHA256SUMS` over all four.
 
 ```bash
@@ -76,7 +74,7 @@ scripts/build-pages.sh serve=yes     # + リリース済み Web デモ -> http:/
 
 必ず両ロケールを、英語を先に。英語ビルドは `site/ja` を含む `site/` を消すため、英語だけ建てると古い日本語サイトが残り、壊したページが無傷に見えます。`mkdocs.base.yml` が `strict: true` を設定します。`serve` は何も検証せず、プルリクエストでも docs はビルドされません。
 
-`build-pages.sh` が公開サイト全体で、`pages.yml` のビルドジョブは**このスクリプト**（オプションはすべて明示）です。`demo=download` には `gh` と、`SSPlayerForRenPy-web-demo.zip` を持つ Release が必要です。`zip=<path>` で手渡しもでき、`demo=build` はここでエクスポートを実行します（最初の
+`build-pages.sh` が公開サイト全体で、`pages.yml` のビルドジョブは**このスクリプト**です。`demo=download` には `gh` と、`SSPlayerForRenPy-web-demo.zip` を持つ Release が必要です。`zip=<path>` で手渡しもでき、`demo=build` はここでエクスポートを実行します（最初の
 Release ができるまではこれだけが選択肢です）。`sdk=` は `download-sdk` と `build-runtime` の選択で、参照されるのは `demo=build` のときだけです（ダウンロードしたデモは自前のランタイムを持っているため）。既存の `renpy-sdk/` は再取得しません。
 
 `game/options.rpy` が `site/**` を除外している点に注意してください。docs のビルドがスクリーンキャストを `site/*/assets/` に複製するため、除外しないと Ren'Py が `**.webm` をすべてのパッケージに分類します。
@@ -88,7 +86,7 @@ README と docs が案内するリンクが `releases/latest/download/…` で�
 
 タグは `ss_renpy.__version__` と一致している必要があります。これが唯一の正典で、クリエイターが受け取るフォルダの中に入り、リリースはここからタグ名と zip 名を読みます。
 
-`scripts/build-release.sh` がリリースそのもので、`release.yml` のジョブは**このスクリプト**（オプションはすべて明示）です。バージョン付きのプラグイン zip と Web デモ zip、それぞれのバージョン無しエイリアス、そして 4 つすべてに対する `SHA256SUMS` を作ります。
+`scripts/build-release.sh` がリリースそのもので、`release.yml` のジョブは**このスクリプト**です。バージョン付きのプラグイン zip と Web デモ zip、それぞれのバージョン無しエイリアス、そして 4 つすべてに対する `SHA256SUMS` を作ります。
 
 ```bash
 scripts/build-release.sh              # 両方の asset
