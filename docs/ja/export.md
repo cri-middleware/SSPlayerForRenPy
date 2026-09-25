@@ -15,9 +15,9 @@ Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html
 > **⚠️ 各プラットフォームごとに専用のネイティブライブラリが必要です。**
 > `game/spritestudio/libs/` 以下に `macos/libssruntime.framework`、
 > `windows/x86_64/ssruntime.dll`、`linux/x86_64/libssruntime.so`。Ren'Py が同梱し、
-> `ssruntime.py` が実行時に解決します。ビルド対象プラットフォームのライブラリが無いままビルドすると、起動は通っても SSPlayer がロード時に落ちます。
+> `ssruntime.py` が実行時に解決します。ビルド対象プラットフォームのライブラリが無くてもパッケージのビルドは通りますが、SSPlayer がロード時に例外を送出します。
 
-`build.name` の設定は必須です（未設定だと `.app` が起動しません。デモは設定済み）。配布時は Ren'Py のドキュメントに従いコード署名・公証を行ってください（未署名 `.dylib`
+`build.name` はご自身の `options.rpy` で必ず設定してください（未設定だと `.app` が起動しません。デモは設定済み）。配布時は Ren'Py のドキュメントに従いコード署名・公証を行ってください（未署名 `.dylib`
 は Gatekeeper にブロックされます）。
 
 **任意 — アセットを `.rpa` にまとめる:** アセットをアーカイブへ振り分けるため、
