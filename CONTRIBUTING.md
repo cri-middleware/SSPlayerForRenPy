@@ -64,7 +64,7 @@ Once built, deploy the example assets and run the demo:
 ./scripts/run-demo.sh
 ```
 
-Every script is `scripts/*.sh` with a `.ps1` twin, and takes `key=value` options and `--help`.
+Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `fetch-renpy-ios.sh`, which need macOS and Xcode anyway. All take `key=value` options and `--help`.
 
 ### Test
 ```bash
@@ -72,7 +72,7 @@ Every script is `scripts/*.sh` with a `.ps1` twin, and takes `key=value` options
 ```
 Every engine-independent layer has a headless check in `tools/`, in plain CPython: the playback core and events, geometry and mesh and PartColor, instance and effect and shape and slot stepping, masks, part overrides and shaders, the `.ssab` identifier gate and the resolver, and the test doubles themselves.
 
-**Run them through the runner, never as a bare loop over the tools.** Both prerequisites are gitignored, so a fresh clone has neither — `game/spritestudio/libs/` and `game/ss_assets/` — and a tool that cannot find its pack prints `SKIP` and **exits 0**. The runner checks both up front, refuses to start a partial suite, and treats a surviving `SKIP` as a failure; sub-case skips are counted beside the passes. Nothing runs the suite on a pull request, so this is the gate: run it after touching anything under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is the case to watch — no compiler catches the call sites, so it surfaces only as an `AttributeError` from whichever tool still reads the old name. Lint with `renpy-sdk/renpy.sh . lint`.
+**Run them through the runner, never as a bare loop over the tools.** Both prerequisites are gitignored, so a fresh clone has neither — `game/spritestudio/libs/` and `game/ss_assets/` — and a tool that cannot find its pack prints `SKIP` and **exits 0**. The runner checks both up front, refuses to start a partial suite, and treats a surviving `SKIP` as a failure; sub-case skips are counted beside the passes. Nothing runs the suite on a pull request, so this is the gate: run it after touching anything under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is the case to watch — no compiler catches the call sites, so it surfaces only as an `AttributeError` from whichever tool still reads the old name. Lint from the repository root with `renpy-sdk/renpy.sh . lint`; `scripts/fetch-renpy-sdk.sh` (`.ps1` on Windows) fetches `renpy-sdk/` first.
 
 **GL2 rendering has no headless check** (PMA, mesh, blend, mask, the `ss-*` GLSL) — sign it off in a GUI run, via `Shift+B` or `run-demo`.
 
@@ -123,7 +123,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 1. リポジトリをフォークし、`develop` ブランチから作業用ブランチを作成してください。
 2. 既存の規約に従ってコードを記述してください。
 3. ヘッドレステストを実行してください: `scripts/run-tests.sh`（Windows は `scripts\run-tests.ps1`）。実行にはランタイムとサンプルデータが必要です（後述の「開発環境のセットアップ」を参照）。
-4. デモプロジェクトを実行し、画面上での動作確認を行ってください。描画はテストの対象外のため、この確認でしか担保できません。
+4. `scripts/run-demo.sh`（Windows は `scripts\run-demo.ps1`）でデモプロジェクトを実行し、画面上での動作確認を行ってください。描画はテストの対象外のため、この確認でしか担保できません。
 5. `develop` ブランチに向けて、変更内容を明確に記載したプルリクエストを送信してください。
 
 ## 開発環境のセットアップ
@@ -153,7 +153,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ./scripts/run-demo.sh
 ```
 
-スクリプトはすべて `scripts/*.sh` と `.ps1` 双子で、`key=value` オプションと `--help` を取ります。
+スクリプトはすべて `scripts/*.sh` と `.ps1` の双子です。ただし `deploy-ios.sh` と `fetch-renpy-ios.sh` はどのみち macOS と Xcode が必要なので `.sh` だけです。いずれも `key=value` オプションと `--help` を取ります。
 
 ### テスト
 ```bash
@@ -161,15 +161,14 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ```
 エンジン非依存の各層には、素の CPython で動くヘッドレスチェックが `tools/` にあります（再生コア・イベント、ジオメトリ / メッシュ / PartColor、インスタンス・エフェクト・シェイプ・スロット送り、マスク、パートオーバーライドとシェーダー、`.ssab` 識別子ゲートとリゾルバ、そしてテストダブル自身）。
 
-**必ずランナー経由で実行してください。ツールを素でループさせてはいけません。** 前提となる `game/spritestudio/libs/` と `game/ss_assets/` はどちらも git 管理外で、クリーンなクローンには存在しません。パックを見つけられなかったツールは `SKIP` と表示して **exit 0** します。ランナーは両方を先に確認し、欠けていれば部分実行を拒否し、それでも残った `SKIP` は失敗として扱います（サブケースのスキップは PASS と並べて数えます）。プルリクエストではスイートは走らないので、`game/spritestudio/python/` 配下を触ったらこれがゲートです。特に注意すべきは `SSInternalPlayer` のプロパティ改名で、呼び出し側を検出するコンパイラが無いため、古い名前を読んでいるツールの `AttributeError` としてしか現れません。lint は `renpy-sdk/renpy.sh . lint` です。
+**必ずランナー経由で実行してください。ツールを素でループさせてはいけません。** 前提となる `game/spritestudio/libs/` と `game/ss_assets/` はどちらも git 管理外で、クリーンなクローンには存在しません。パックを見つけられなかったツールは `SKIP` と表示して **exit 0** します。ランナーは両方を先に確認し、欠けていれば部分実行を拒否し、それでも残った `SKIP` は失敗として扱います（サブケースのスキップは PASS と並べて数えます）。プルリクエストではスイートは走らないので、`game/spritestudio/python/` 配下を触ったらこれがゲートです。特に注意すべきは `SSInternalPlayer` のプロパティ改名で、呼び出し側を検出するコンパイラが無いため、古い名前を読んでいるツールの `AttributeError` としてしか現れません。lint はリポジトリのルートで `renpy-sdk/renpy.sh . lint` を実行します。`renpy-sdk/` は先に `scripts/fetch-renpy-sdk.sh`（Windows は `.ps1`）で取得してください。
 
 **GL2 の描画にはヘッドレスチェックがありません**（PMA、メッシュ、ブレンド、マスク、`ss-*` の GLSL）。`Shift+B` か `run-demo` の GUI 実行で確認してください。
+
+スイートの外にあるもの: `tools/analyze.py`（DrawBatchKind の監査）、`cli_convert.py`（シェルからの `.sspj` → `.ssab` 変換）、`ss_stamp_import.py`（別経路で作ったパックに自動インポーターのマーカーを付ける）、`render_png.py` / `render_mask_png.py`（GL2 ではなくソフトウェアラスタ。Pillow が必要なのはこの 2 つだけ）。
 
 ### ドキュメント
 `docs/` は日英 2 言語で、`setup → import → usage → export`（＋ `build` と `limitations`）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。ページを編集したら、仕上げる前に両ロケールをビルドしてください（手順は [RELEASING.md](./RELEASING.md)）。プルリクエストでは docs はビルドされないため、手元のビルドが唯一のゲートです。
 
-
-ビルド完了後、デモプロジェクトを起動して変更内容をテストしてください。
-
 ---
-本プロジェクトへの貢献は、プロジェクトの [LICENSE.md](./LICENSE.md) に同意したものとみなされます。
+本プロジェクトに貢献することで、あなたの貢献がプロジェクトの [LICENSE.md](./LICENSE.md) の下でライセンスされることに同意したものとみなされます。
