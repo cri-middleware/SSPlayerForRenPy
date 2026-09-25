@@ -103,7 +103,7 @@ git submodule update --init --recursive
 scripts\build-runtime.ps1
 ```
 
-- 動作確認の `scripts/download-sdk.*`（ビルド済みコアの取得）の代わりに `scripts/build-runtime.*` を実行し、コアを自前でビルドします。以降の `fetch-renpy-sdk` / `deploy-examples` / `run-demo` は[動作確認](#-1-クイックスタート)と同じ手順です。
+- [チェックアウトから動かしてみる](#チェックアウトから動かしてみる)の `scripts/download-sdk.*`（ビルド済みコアの取得）の代わりに `scripts/build-runtime.*` を実行し、コアを自前でビルドします。以降の `fetch-renpy-sdk` / `deploy-examples` / `run-demo` は同じ手順です。
 
 ## 🔗 関連リポジトリ
 

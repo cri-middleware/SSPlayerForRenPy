@@ -110,7 +110,7 @@ git submodule update --init --recursive
 scripts\build-runtime.ps1
 ```
 
-- Run `scripts/build-runtime.*` in place of the `scripts/download-sdk.*` step from Verifying It Works — this builds the core yourself instead of fetching the pre-built one. The following `fetch-renpy-sdk` / `deploy-examples` / `run-demo` steps are the same as in [Verifying It Works](#-1-quick-start).
+- Run `scripts/build-runtime.*` in place of the `scripts/download-sdk.*` step in [See it running from a checkout](#see-it-running-from-a-checkout) — this builds the core yourself instead of fetching the pre-built one. The following `fetch-renpy-sdk` / `deploy-examples` / `run-demo` steps are the same as there.
 
 ## 🔗 Related Repositories
 
