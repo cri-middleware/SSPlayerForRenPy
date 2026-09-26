@@ -156,16 +156,16 @@ This is very convenient when you want to convert and update animation data for m
 
 ## Method 4: Web-based Converter (`ssconverter-web`)
 
-If you want to try conversion quickly in your browser without installing any tools, you can use **`ssconverter-web`**, which is included in the sister project `SSPlayerForWeb`.
+If you want to try conversion quickly in your browser without installing any tools, you can use **`ssconverter-web`**, which is included in the sister project SpriteStudio Player for Web.
 
 - It uses WebAssembly to process files locally within the browser, meaning your files are never uploaded to an external server.
 - Simply drag and drop the `.sspj` and related files (like images) into the browser window. The converted result will be **downloaded as a `.zip` file**.
 - Unzip the downloaded `.zip` file, and place the generated `.ssab` and images together in your `game/` folder.
 
-It is hosted on the SSPlayerForWeb site at
+It is hosted on the SpriteStudio Player for Web site at
 `https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` (_coming soon_ — the address is
-final, but it 404s until SSPlayerForWeb publishes its site). Folder selection uses the **File
-System Access API**, so a **Chromium-based browser (Chrome / Edge)** is required.
+final, but it 404s until SpriteStudio Player for Web publishes its site). Folder selection uses
+the **File System Access API**, so a **Chromium-based browser (Chrome / Edge)** is required.
 
 For details, please refer to the documentation in the [SSPlayerForWeb repository](https://github.com/cri-middleware/SSPlayerForWeb).
 
