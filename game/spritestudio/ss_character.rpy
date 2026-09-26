@@ -3,7 +3,7 @@
 #     define ringo = SSCharacter("ss_assets/Ringo/Ringo.ssab",
 #                                talk="talk", idle="wait1")
 #     # then just speak — the sprite plays `talk` while the line is typing
-#     # and returns to `idle` when it finishes:
+#     # and returns to what it was showing before when it finishes:
 #     #     show ringo
 #     #     ringo "Hello!"
 #
@@ -27,9 +27,9 @@ init -9 python:
         `who`          : display name (default: the .ssab filename stem).
         `tag`          : image tag to register + drive (default: stem, lower-cased).
         `aliases`      : extra attribute->animation aliases for the image
-                         (e.g. emotions). Note (v1): an emotion shown via an
-                         attribute is replaced by talk/idle while speaking, then
-                         returns to `idle` — per-emotion talk is not yet handled.
+                         (e.g. emotions). An emotion shown via an attribute is
+                         replaced by `talk` while speaking and comes back when
+                         the line ends — there is no per-emotion talk.
         `size`         : passed to SSPlayer. Leave it out and the image is the
                          canvas `idle` was authored on, so `at left` / xalign
                          place it like any image.
@@ -61,6 +61,9 @@ init -9 python:
         renpy.image(tag, SSPlayer(ssab, animation=idle, aliases=al, size=size))
 
         has_lipflap = (talk is not None) and (idle is not None)
+        # What the sprite showed when the line began, put back when it ends —
+        # forcing `idle` instead would drop the `happy` a creator had shown.
+        rest = {"attrs": ()}
 
         def _ss_lipflap(event, interact=True, **kwargs):
             # Only drive the sprite while it is actually on screen; narration or
@@ -70,8 +73,12 @@ init -9 python:
             # Attributes go in the NAME (renpy.show's 2nd arg is at_list, not
             # attributes); the leading tag + space-separated attrs, "-x" removes.
             if event in start:
+                rest["attrs"] = tuple(a for a in (renpy.get_attributes(tag) or ())
+                                      if a != "talk")
                 renpy.show(tag + " talk -idle")
             elif event in stop:
-                renpy.show(tag + " idle -talk")
+                # A bare `show <tag>` has no attribute to put back; it rests idle.
+                back = rest["attrs"] or ("idle",)
+                renpy.show(" ".join((tag,) + back + ("-talk",)))
 
         return Character(who, image=tag, callback=_ss_lipflap, **char_kwargs)
