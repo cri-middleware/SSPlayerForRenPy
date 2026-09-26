@@ -111,6 +111,25 @@ host object.
 
 ---
 
+## Drop-in ergonomics
+
+Conveniences in the sibling `*.rpy` files. They are Ren'Py's alone — no other port has a
+say statement to hook — so the case for each is a creator who needs it, not parity.
+
+### 🕒 Per-emotion talk in `SSCharacter`
+
+While a line is spoken, `talk` replaces the attribute the sprite was showing, so a `happy`
+character talks with the one talk animation and turns happy again only when the line ends.
+
+- *Current state*: `talk` names a single animation; the attribute shown before the line is
+  put back when it ends.
+- *Shape*: let `talk` also take a mapping from that attribute to the animation to talk with —
+  `talk={"happy": "joy_talk", None: "talk"}` — so the mapping is the only new vocabulary.
+- *Deferred*: until there is a pack that authors a talk animation per emotion. Ringo has no
+  talk animation at all, so nothing here could check an implementation.
+
+---
+
 ## Shared with every port
 
 Text and NineSlice parts, and nested timeline events inside Instance / Effect parts, are

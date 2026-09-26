@@ -92,8 +92,8 @@ label start:
 - You can also pass `aliases=` (for emotions, etc.) and `size=` (see [Size and Placement](#size-and-placement)).
 - The lip-sync start/stop timing can be adjusted using `start` / `stop` (Character callback event names).
 
-> [!WARNING]
-> **v1 Limitation**: Because talk/idle replace attributes while speaking, emotion attributes like `show ringo happy` won't reflect during `talk`, and it will return to `idle` afterwards (emotion-specific talks will be supported in the future).
+> [!NOTE]
+> While a line is spoken, `talk` replaces the attribute the sprite was showing, so an emotion such as `show ringo happy` is not visible during the line; it comes back when the line ends. There is no per-emotion talk animation.
 
 ---
 
