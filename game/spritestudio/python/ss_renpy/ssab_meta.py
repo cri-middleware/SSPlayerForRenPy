@@ -225,6 +225,32 @@ class SsabMeta:
     def animation_names(self) -> list[str]:
         return [a.name for a in self.animations()]
 
+    def canvas_rect(self, name: str | None = None) -> tuple[float, float, float, float] | None:
+        """The authored canvas of animation ``name`` (the first one when
+        ``None``), as ``(x, y, width, height)`` in player-local space: the
+        animation's origin at ``(0, 0)`` and ``y`` downward, the space
+        ``part_transform`` reports in. ``None`` for an unknown name or a
+        zero-sized canvas.
+
+        The pivot is where the origin sits inside the canvas, in editor space —
+        normalised from the canvas centre, ``y`` upward — so ``pivot (0, -0.5)``,
+        a character standing on the canvas's bottom edge, gives a box that lies
+        entirely above the origin. The runtime's metadata carries no pivot,
+        which is why this reads the pack.
+        """
+        for i in range(self._root.AnimationsLength()):
+            a = self._root.Animations(i)
+            if name is not None and _s(a.Name()) != name:
+                continue
+            size, pivot = a.CanvasSize(), a.Pivot()
+            if size is None or pivot is None:
+                return None
+            w, h = size.V1(), size.V2()
+            if w <= 0.0 or h <= 0.0:
+                return None
+            return (-pivot.V1() * w - w / 2.0, pivot.V2() * h - h / 2.0, w, h)
+        return None
+
     def cellmaps(self) -> list[CellMapInfo]:
         out: list[CellMapInfo] = []
         for i in range(self._root.CellmapsLength()):

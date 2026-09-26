@@ -1292,17 +1292,25 @@ init -10 python:
             # head stays a raw float either way. Defaults to on.
             self._sub_frame = bool(sub_frame)
             # Layout size. Given as (w, h) (or a single number for a square),
-            # render() reports a box of that size and centers the animation
-            # within it, so `xalign` / `xpos` / `pos` and container layout work
-            # like a normal image. None (default) fills the whole offered area
-            # (position with xoffset/yoffset).
-            # `zoom` / Transform still scale the rendered result either way.
+            # render() reports a box of that size with the animation's origin at
+            # its centre, so `xalign` / `xpos` / `pos` and container layout work
+            # like a normal image. None (default) makes the box the authored
+            # canvas instead, with the origin where the pivot puts it — see
+            # _canvas_box. `zoom` / Transform still scale the rendered result
+            # either way.
             if size is None:
                 self._size = None
             elif isinstance(size, (int, float)):
                 self._size = (int(size), int(size))
             else:
                 self._size = (int(size[0]), int(size[1]))
+            # The animation whose canvas is this player's box: the one it starts
+            # on, kept when the animation changes afterwards — including through
+            # _duplicate, so `show ringo dead` does not move a left-aligned
+            # sprite when `dead` was authored on a wider canvas. None is the
+            # pack's first animation, as it is for `animation`.
+            self._box_anim = self.animation
+            self._box_rect = False   # not read yet; see _canvas_box
             # Optional attachments: displayables pinned to a named part's live
             # transform every frame (e.g. an item in the hand, an effect over the
             # head, a second SS animation linked to a bone). Stored as a list of
@@ -1409,6 +1417,7 @@ init -10 python:
             state["_audio_preloaded"] = False  # core is rebuilt; preload re-runs
             state["_audio_channels_used"] = set()
             state["_xform_cache"] = {}         # pure render cache; rebuild lazily
+            state["_box_rect"] = False         # re-read from the pack; see _canvas_box
             return state
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
@@ -1511,6 +1520,9 @@ init -10 python:
             # SSCharacter's lip-flap) silently threw away a costume the game had
             # set Permanent, which docs/*/usage.md §6 promises persists.
             rv._overrides = self._permanent_overrides()
+            # The template's box, not the chosen animation's: every attribute of
+            # one image then lays out on the same canvas.
+            rv._box_anim = getattr(self, "_box_anim", None)
             rv._duplicatable = False
             return rv
 
@@ -1979,6 +1991,18 @@ init -10 python:
                 pass
             return "playing"
 
+        def _canvas_box(self):
+            """The authored canvas of `_box_anim` as (x, y, w, h), origin-relative
+            and y-down, or None when the pack has no usable one. Read once and
+            kept, so rendering stays allocation-free."""
+            if getattr(self, "_box_rect", False) is False:
+                try:
+                    self._box_rect = self._core.meta.canvas_rect(
+                        getattr(self, "_box_anim", None))
+                except Exception:
+                    self._box_rect = None
+            return self._box_rect
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
@@ -2037,12 +2061,20 @@ init -10 python:
             self._saved_state = self._playback_state(core)
 
             _draw = 0.0
-            # With an explicit `size`, report a box of that size and center the
-            # animation within it, so xalign / xpos / pos position us like a
-            # normal image; otherwise fill the whole offered area (legacy).
-            rw, rh = self._size if self._size else (width, height)
+            # The box Ren'Py lays us out by, and where the animation's origin
+            # sits in it. An explicit `size` is a box of that size with the
+            # origin at its centre; otherwise it is the authored canvas, the
+            # frame the artist composed in, so the default transform and
+            # xalign / `at left` place us the way they place an image. A pack
+            # with no usable canvas fills the offered area, origin at its centre.
+            box = None if self._size else self._canvas_box()
+            if box is not None:
+                bx, by, rw, rh = box
+                ox, oy = -bx, -by
+            else:
+                rw, rh = self._size if self._size else (width, height)
+                ox, oy = rw / 2.0, rh / 2.0
             r = renpy.Render(rw, rh)
-            ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 # Mask: rasterize each distinct coverage once before drawing the
