@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build the Ren'Py Web export AND apply the two SSPlayer post-export steps the
-# Web target needs (docs/en/export.md, Web Export steps 1-2) but that the Ren'Py exporter cannot
-# do on its own:
-#   3. inject the ssruntime.js / .wasm module <script> into index.html, and
-#   4. copy game/spritestudio/libs/web/{ssruntime.js,ssruntime_bg.wasm} out of
-#      game.zip into <dest>/game/spritestudio/libs/web/ as real, HTTP-reachable
-#      files (a browser's ES-module import cannot read files inside game.zip).
-#
-# The exporter regenerates index.html and repacks game.zip on every run, so
-# these steps must be re-applied after each export — that is what this script
-# automates. Both steps are idempotent, so re-running is safe.
+# Build the Ren'Py Web export of this project, with the stock exporter and
+# nothing applied afterwards: the Brain's wasm module ships inside game.zip and
+# SSPlayer loads it from there at startup, so the export plays as it comes out.
 #
 # Prereqs: Ren'Py SDK in renpy-sdk/ (fetch-renpy-sdk.sh) with Web support
 # (fetch-renpy-web.sh), and the web runtime under game/spritestudio/libs/web/
@@ -26,7 +18,7 @@ LAUNCHER="$RENPY_SDK/launcher"
 WEB_ASSETS="$ROOT_DIR/game/spritestudio/libs/web"
 
 DEST="${1:-web_out}"
-case "$DEST" in -h|--help|help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+case "$DEST" in -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 
 # --- prerequisites --------------------------------------------------------
@@ -39,35 +31,7 @@ case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 echo ">> building Web export -> $DEST"
 "$RENPY_SDK/renpy.sh" "$LAUNCHER" web_build "$ROOT_DIR" --dest "$DEST"
 
-INDEX="$DEST/index.html"
-[ -f "$INDEX" ] || { echo "deploy-web.sh: export did not produce $INDEX" >&2; exit 1; }
-
-# --- inject the module <script> before renpy-pre.js (idempotent) ----------
-if grep -q "spritestudio/libs/web/ssruntime.js" "$INDEX"; then
-  echo ">> index.html: module script already present"
-else
-  echo ">> index.html: injecting ssruntime module script"
-  tmp="$(mktemp)"
-  awk '
-    /<script src="renpy-pre\.js"><\/script>/ && !done {
-      print "  <script type=\"module\">"
-      print "    import init, * as ss from '"'"'./game/spritestudio/libs/web/ssruntime.js'"'"';"
-      print "    window.ssruntime = ss;"
-      print "    window.ssruntime_wasm = await init('"'"'./game/spritestudio/libs/web/ssruntime_bg.wasm'"'"');"
-      print "  </script>"
-      done=1
-    }
-    { print }
-  ' "$INDEX" > "$tmp"
-  grep -q "ssruntime.js" "$tmp" || { echo "deploy-web.sh: renpy-pre.js anchor not found in index.html" >&2; rm -f "$tmp"; exit 1; }
-  mv "$tmp" "$INDEX"
-fi
-
-# --- copy the web runtime out of game.zip as real files -------------------
-echo ">> placing web runtime under $DEST/game/spritestudio/libs/web/"
-mkdir -p "$DEST/game/spritestudio/libs/web"
-cp "$WEB_ASSETS/ssruntime.js" "$WEB_ASSETS/ssruntime_bg.wasm" "$DEST/game/spritestudio/libs/web/"
+[ -f "$DEST/index.html" ] || { echo "deploy-web.sh: export did not produce $DEST/index.html" >&2; exit 1; }
 
 echo "deploy-web.sh: done -> $DEST"
-echo "  Serve it over HTTP (not file://). Any static server works; the assets"
-echo "  need .js=application/javascript and .wasm=application/wasm MIME types."
+echo "  Serve it over HTTP (not file://), as any Ren'Py Web export."

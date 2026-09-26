@@ -2,7 +2,8 @@
 
 This module provides `_WebRuntime`, a drop-in replacement for `_NativeRuntime`
 that operates on the Web platform (Ren'Py Web) by communicating with the JS API
-exported by the `SSPlayerForWeb` WASM wrapper, via `renpy.emscripten`.
+of the SDK's `ssruntime-ffi` wasm-bindgen build, via `renpy.emscripten`, and
+`load_library`, which loads that build out of the game's own files.
 """
 
 from __future__ import annotations
@@ -35,6 +36,67 @@ def _jsnum(x) -> str:
     if x == -math.inf:
         return "-Infinity"
     return repr(x)
+
+
+def load_library(path=None, base_dir=None, *, timeout=10.0):
+    """Load the Brain's wasm-bindgen module out of the game's own files.
+
+    ``path`` is the folder holding ``ssruntime.js`` and ``ssruntime_bg.wasm``;
+    ``base_dir`` resolves it the way the native loader does, as ``<base_dir>/web``.
+    Both files ship inside ``game.zip`` and so are on the emscripten filesystem,
+    where the page can read them but a browser ``import`` cannot: the glue is
+    imported from a Blob URL and handed the wasm bytes, which is what spares the
+    exported ``index.html`` any edit and the export any extra file. Every binding
+    below reaches the module through ``window.ssruntime`` / ``window.ssruntime_wasm``.
+
+    The import is asynchronous, so this sleeps until it settles — a few
+    milliseconds — and returns ``True`` once the module is live: there is no
+    Python-side handle, the module lives on ``window``. A failure raises, as the
+    native loader's does, rather than leave the first player to hit a JS
+    ``TypeError`` that cannot be caught across the emscripten boundary.
+    """
+    import json
+    import time
+    web_dir = path or (base_dir.rstrip("/") + "/web")
+    emscripten.run_script(f"""
+        if (!window.ss_runtime_state) {{
+            window.ss_runtime_state = 'loading';
+            (async function () {{
+                // An emscripten FS error carries only a name and an errno, so
+                // the message says which step failed as well as how.
+                var step = 'reading ssruntime.js';
+                try {{
+                    var dir = {json.dumps(web_dir)};
+                    var js = FS.readFile(dir + '/ssruntime.js', {{ encoding: 'utf8' }});
+                    step = 'reading ssruntime_bg.wasm';
+                    var wasm = FS.readFile(dir + '/ssruntime_bg.wasm');
+                    step = 'importing ssruntime.js';
+                    var url = URL.createObjectURL(new Blob([js], {{ type: 'text/javascript' }}));
+                    var ss;
+                    try {{ ss = await import(url); }} finally {{ URL.revokeObjectURL(url); }}
+                    step = 'instantiating ssruntime_bg.wasm';
+                    window.ssruntime_wasm = await ss.default({{ module_or_path: wasm }});
+                    window.ssruntime = ss;
+                    window.ss_runtime_state = 'ready';
+                }} catch (e) {{
+                    var why = (e && e.message) ||
+                        (e && e.errno !== undefined ? e.name + ' errno ' + e.errno : String(e));
+                    window.ss_runtime_state = 'failed ' + step + ': ' + why;
+                }}
+            }})();
+        }}
+    """)
+    # A reload re-runs init in the same page and finds the module already live.
+    deadline = time.time() + timeout
+    state = emscripten.run_script_string("window.ss_runtime_state")
+    while state == "loading" and time.time() < deadline:
+        emscripten.sleep(0)
+        state = emscripten.run_script_string("window.ss_runtime_state")
+    if state != "ready":
+        raise RuntimeError("ss: cannot load the web runtime from %s — %s"
+                           % (web_dir, state if state != "loading" else
+                              "still loading after %gs" % timeout))
+    return True
 
 
 class _WebRuntime:
