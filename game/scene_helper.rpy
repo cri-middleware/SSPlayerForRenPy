@@ -28,8 +28,7 @@ label ringo_helper_demo:
     #    otherwise. So the narration lines below (no speaker = Ringo silent) keep
     #    her in wait1, while her own line flips her to the talk motion (joy) for
     #    just that line. Narration is what makes the "not talking" state visible.
-    show ringo_talk:
-        yoffset 200
+    show ringo_talk at ss_stand
     with dissolve
     "While the narrator is speaking, Ringo isn't the speaker — so SSCharacter holds her in her idle motion (wait1)." id helper_msg1
     ringo_chr "The moment I speak, SSCharacter switches me to the talk motion — here 'joy', since Ringo has no dedicated talk anim, su!" id helper_msg2
@@ -37,8 +36,7 @@ label ringo_helper_demo:
 
     # 2. Attachments: the ♪ is pinned to Ringo's "head" part and follows it.
     hide ringo_talk
-    show ringo_point:
-        yoffset 200
+    show ringo_point at ss_stand
     with dissolve
     "The ♪ is pinned to my 'head' part, so it follows along." id helper_msg4
 
@@ -52,14 +50,12 @@ label ringo_helper_demo:
     # 4. ss_duration times a beat to a motion WITHOUT removing the sprite
     #    (contrast beat 3's ss_play_once, which hides the animation when done).
     #    Clear the lip-flap idle/talk attributes so only `dance` selects the anim.
-    show ringo_talk dance -idle -talk:
-        yoffset 200
+    show ringo_talk dance -idle -talk at ss_stand
     with dissolve
     # Wait exactly one playthrough, then settle back to idle. The image loops
     # (loop=-1), so switching right after the beat keeps it to a single dance.
     $ renpy.pause(ss_duration("ss_assets/Ringo/Ringo.ssab", "dance"))
-    show ringo_talk idle:
-        yoffset 200
+    show ringo_talk idle at ss_stand
     "That 'dance' beat was timed with ss_duration — and unlike a one-shot effect, she stays on screen." id helper_msg6
 
     ringo_chr "That's all for the new-feature showcase. Thanks for watching, su!" id helper_msg7

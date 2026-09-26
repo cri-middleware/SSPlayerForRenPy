@@ -30,7 +30,9 @@ init -9 python:
                          (e.g. emotions). Note (v1): an emotion shown via an
                          attribute is replaced by talk/idle while speaking, then
                          returns to `idle` — per-emotion talk is not yet handled.
-        `size`         : passed to SSPlayer (a (w, h) box makes xalign work).
+        `size`         : passed to SSPlayer. Leave it out and the image is the
+                         canvas `idle` was authored on, so `at left` / xalign
+                         place it like any image.
         `start`/`stop` : Character callback events that begin / end the talk loop.
                          Default: talk from `show_done` until the line is
                          dismissed (`end`), so the talk animation is visible even

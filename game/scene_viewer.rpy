@@ -141,9 +141,13 @@ label viewer_demo:
 
 screen ss_demo():
     add Solid("#2a2e36")
+    # Each pack is laid out on the canvas it was authored on, shrunk by Ren'Py's
+    # own `fit` when that canvas is bigger than the stage above the bottom bar.
     add ss_current:
+        fit "scale-down"
+        xysize (1280, 670)
         xalign 0.5
-        yalign (0.95 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
+        yalign 0.4
 
     # Drain timeline events from the displayable's poll queue a few times a
     # second; the screen re-renders each tick to show the latest log.

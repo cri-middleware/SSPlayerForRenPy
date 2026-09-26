@@ -22,11 +22,16 @@ screen demo():
 - **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display.
 - **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays. `0` is a synonym for `-1` (infinite), not "do not play".
 - **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
-- **`size` (Optional)**: If you pass `(w, h)` (or a single number for a square), it acts as a **normal image of that bounding box size**, allowing `xalign`/`xpos`/`pos` and container layouts to work directly (the animation is drawn at the center of the box). If omitted, it occupies the entire screen, and you must use `xoffset`/`yoffset` for positioning. In both cases, scaling via `zoom`/`Transform` applies.
+- **`size` (Optional)**: A `(w, h)` box (or a single number for a square) to use in place of the canvas, with the animation's origin at the box's centre. You rarely need it — see below.
+
+### Size and Placement
+Without `size`, a player is the size of the **canvas the animation was authored on** in SpriteStudio, with the animation's origin where the canvas's pivot puts it — the frame a PNG export of that animation would have. So it lays out like any image: `xalign` / `xpos`, `at left` / `at right` and Ren'Py's default bottom-centre placement all work, and a character authored standing on the bottom edge of its canvas stands wherever its `ypos` puts it.
+
+- The size comes from the animation the player **starts** on and stays when the animation changes — through `ss_set_animation()` or an image attribute such as `show ringo dead` — so a sprite does not move when you switch it, even to an animation authored on a wider canvas. Whatever an animation draws outside that box is still drawn.
+- To fit an animation into a box of your own, use Ren'Py's `fit` transform property. `scale-down` shrinks a canvas that is too big and leaves a smaller one alone:
 
 ```renpy
-# You can place it with align if you specify size
-add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.0
+add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xalign 0.5 yalign 1.0
 ```
 
 > [!TIP]
@@ -55,15 +60,13 @@ image ringo = SSPlayer(
 define r = Character("Ringo", image="ringo")
 
 label start:
-    # Show default standing image (idle motion)
-    show ringo idle:
-        yoffset 200
+    # Show default standing image (idle motion) at the bottom centre
+    show ringo idle
 
     r happy "The motion switches just by changing the attribute!"
 
     # Make them walk by combining with Transform
-    show ringo walk:
-        xoffset -400 yoffset 200
+    show ringo walk at left
     with move
 
     r attack "Attack! (It automatically returns to wait1 when attack1 ends)"
@@ -86,7 +89,7 @@ label start:
 ```
 
 - The image tag is the lowercased file stem of the `.ssab` (e.g., `"ringo"`). You can override it with `tag=`.
-- You can also pass `aliases=` (for emotions, etc.) and `size=` (box size for `xalign`).
+- You can also pass `aliases=` (for emotions, etc.) and `size=` (see [Size and Placement](#size-and-placement)).
 - The lip-sync start/stop timing can be adjusted using `start` / `stop` (Character callback event names).
 
 > [!WARNING]
@@ -105,9 +108,10 @@ image hit_effect = SSPlayer(
 )
 
 label battle:
-    # Show the effect at a specific position matching the attack
+    # Show the effect at a specific position matching the attack. This effect
+    # was authored around the centre of its canvas, so xcenter / ycenter place it.
     show hit_effect:
-        xoffset -150 yoffset 50
+        xcenter 490 ycenter 410
     "KABOOM!"
 ```
 
@@ -406,7 +410,7 @@ image boss = SSPlayer(
 Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
 ```renpy
 $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
-               at=Transform(xpos=640, ypos=360), wait=True)
+               at=Transform(xcenter=640, ycenter=360), wait=True)
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 

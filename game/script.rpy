@@ -1,9 +1,9 @@
 # SpriteStudio Player for Ren'Py — demo entry point (shared bits).
 #
 # This file holds only what the whole demo shares: the bare dialogue window, the
-# ss_escape text helper, and the start menu. Each menu choice jumps to a scene
-# that lives in its own file (Ren'Py loads every .rpy under game/, so labels,
-# images and screens may live anywhere):
+# ss_stand transform, the ss_escape text helper, and the start menu. Each menu
+# choice jumps to a scene that lives in its own file (Ren'Py loads every .rpy
+# under game/, so labels, images and screens may live anywhere):
 #   - scene_ringo.rpy   — ringo_demo (image attributes / Character image=)
 #   - scene_helper.rpy  — ringo_helper_demo (SSCharacter / attachments / helpers)
 #   - scene_part_follow.rpy — part_follow_demo (ss_attach / part tracking + skinned-mesh check)
@@ -37,6 +37,13 @@ screen say(who, what):
             text what:
                 id "what"
                 size 28
+
+# Where the demo's characters stand. A SpriteStudio character is authored
+# standing on its canvas's bottom edge, and without a `size` the canvas is the
+# SSPlayer's box — so, anchored at its bottom centre like any image, ypos is
+# where the feet go. 560 sets them just inside the top of the dialogue window.
+transform ss_stand(x=0.5):
+    xpos x xanchor 0.5 ypos 560 yanchor 1.0
 
 init python:
     def ss_escape(s):

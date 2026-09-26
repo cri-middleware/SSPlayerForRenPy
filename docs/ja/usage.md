@@ -21,11 +21,16 @@ screen demo():
 - **`animation` (省略可能)**: 初期状態で再生するアニメーション名。省略時はデータ内の最初のアニメーションが再生されます。**存在しない名前を渡すと初回表示時にエラー**（有効なアニメーション名の一覧つき）になります。
 - **`loop` (省略可能)**: 再生回数。`-1`（既定）で無限ループ、`1` で1回再生、`N` でN回再生。`0` は `-1`（無限）の別名で、「再生しない」ではありません。
 - **`speed` (省略可能)**: 再生速度の倍率（既定 `1.0`）。
-- **`size` (省略可能)**: `(w, h)`（または正方形なら数値1つ）を渡すと、その**箱サイズの普通の画像**として振る舞い、`xalign`/`xpos`/`pos` やコンテナ配置がそのまま効きます（アニメは箱の中央に描画）。省略時は画面全体を占有するので `xoffset`/`yoffset` で位置調整します。どちらの場合も `zoom`/`Transform` での拡大縮小は効きます。
+- **`size` (省略可能)**: キャンバスの代わりに使う `(w, h)` の箱（正方形なら数値1つ）。アニメの原点は箱の中央に置かれます。ふつうは不要です（下記参照）。
+
+### サイズと配置
+`size` を省くと、プレイヤーの大きさは SpriteStudio で**そのアニメを作ったキャンバス**になり、アニメの原点はキャンバスの基準点（pivot）の位置に置かれます。そのアニメを PNG で書き出したときと同じ枠です。そのため普通の画像と同じように配置でき、`xalign` / `xpos`、`at left` / `at right`、Ren'Py 既定の下端中央への配置がそのまま効きます。キャンバスの下端に立つように作ったキャラクターは、`ypos` で指定した位置に立ちます。
+
+- 大きさはプレイヤーが**最初に**再生するアニメで決まり、あとでアニメを切り替えても変わりません（`ss_set_animation()` でも、`show ringo dead` のような画像属性でも同じ）。そのため、より広いキャンバスで作られたアニメに切り替えてもスプライトは動きません。枠の外にはみ出した部分もそのまま描画されます。
+- 自分で決めた箱に収めるときは、Ren'Py の `fit` 変換プロパティを使います。`scale-down` は大きすぎるキャンバスだけを縮め、小さいものはそのままにします。
 
 ```renpy
-# size を指定すれば align で配置できる
-add SSPlayer("ss_assets/Ringo/Ringo.ssab", size=(400, 600)) xalign 0.5 yalign 1.0
+add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xalign 0.5 yalign 1.0
 ```
 
 > [!TIP]
@@ -54,15 +59,13 @@ image ringo = SSPlayer(
 define r = Character("Ringo", image="ringo")
 
 label start:
-    # デフォルトの立ち絵を表示（idleモーション）
-    show ringo idle:
-        yoffset 200
+    # デフォルトの立ち絵を下端中央に表示（idleモーション）
+    show ringo idle
 
     r happy "アトリビュートを変えるだけでモーションが切り替わるよ！"
 
     # Transform (移動) と組み合わせて歩かせる
-    show ringo walk:
-        xoffset -400 yoffset 200
+    show ringo walk at left
     with move
 
     r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
@@ -85,7 +88,7 @@ label start:
 ```
 
 - 画像タグは `.ssab` のファイル名 stem を小文字化したもの（例 `"ringo"`）。`tag=` で上書き可。
-- `aliases=`（感情など）や `size=`（`xalign` を効かせる箱サイズ）も渡せます。
+- `aliases=`（感情など）や `size=`（[サイズと配置](#サイズと配置) を参照）も渡せます。
 - 口パクの開始/終了タイミングは `start` / `stop`（Character のコールバックイベント名）で調整可能。
 
 > [!WARNING]
@@ -104,9 +107,10 @@ image hit_effect = SSPlayer(
 )
 
 label battle:
-    # 攻撃に合わせて指定位置にエフェクトを表示
+    # 攻撃に合わせて指定位置にエフェクトを表示。このエフェクトは
+    # キャンバスの中央を原点に作られているので、xcenter / ycenter で置ける
     show hit_effect:
-        xoffset -150 yoffset 50
+        xcenter 490 ycenter 410
     "ドガァン！"
 ```
 
@@ -405,7 +409,7 @@ image boss = SSPlayer(
 任意の `.ssab` を一度だけ再生（エフェクトでも全画面カットシーンでも）。`wait=True` で再生し終わるまで待ってから自動で消します。待たずに出したものは `ss_hide_once(tag)` で消せます。
 ```renpy
 $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
-               at=Transform(xpos=640, ypos=360), wait=True)
+               at=Transform(xcenter=640, ycenter=360), wait=True)
 ```
 `ss_duration("…/Ringo.ssab", "attack1")` はそのアニメ1周の秒数を返すので、表示中キャラの「再生して待つ」は `show ringo attack` ＋ `$ renpy.pause(ss_duration(...))` で書けます。
 

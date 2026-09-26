@@ -2,7 +2,7 @@
 # common "play something" patterns, so creators don't hand-roll timing logic.
 #
 #   $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
-#                  at=Transform(xpos=400, ypos=300), wait=True)     # cutscene beat
+#                  at=Transform(xcenter=400, ycenter=300), wait=True)  # cutscene beat
 #   $ d = ss_duration("ss_assets/Ringo/Ringo.ssab", "attack1")      # one playthrough (s)
 #
 # These are thin compositions of documented Ren'Py APIs (show/hide/pause/sound)

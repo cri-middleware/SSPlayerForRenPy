@@ -50,15 +50,11 @@ animation clock.
 
 ### ☐ Screen-language integration
 
-A player is already a `Displayable`, so it drops into a `screen` — but it behaves like a
-picture there, not like a control. Three pieces, in the order they build on each other.
+A player is already a `Displayable`, so it drops into a `screen` and lays out there like an
+image: its natural size is the authored canvas, and Ren'Py's own `fit` / `xysize` / `align`
+place it in a box it was not authored for. What it lacks is the behaviour of a control. Two
+pieces, the second building on the first.
 
-- *Render size*. `render()` returns `self._size` when the constructor was given one and the
-  full available `(width, height)` otherwise, so a player inside a `vbox` / `hbox` claims the
-  whole area. Measure the animation's content box and return that as the natural size, with a
-  `fit` (`contain` / `cover` / `none`) + `align` pair for how the animation sits in a box it
-  was not authored for — the family's vocabulary, with `SSPlayerForReactNative`'s
-  implementation as the reference.
 - *Focus mask*. Ren'Py's `focus_mask` accepts a callable, which is exactly the hook a per-part
   hit test fits: an irregular button then stops taking clicks across its bounding box. It
   needs a **part rect read-out** first — `ss_part_rect(part)`, built from the `PartState`
