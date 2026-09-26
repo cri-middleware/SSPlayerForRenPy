@@ -340,13 +340,21 @@ if ($verify -eq "yes") {
         foreach ($f in @("index.html", "game.zip")) {
             if ($demoEntries -notcontains $f) { $failed.Add("$demoZip has no $f") }
         }
-        # The two post-export steps deploy-web exists to apply: the runtime has
-        # to sit outside game.zip as a real file, because a browser's ES-module
-        # import cannot read into the archive.
-        if (-not ($demoEntries | Where-Object { $_ -match 'spritestudio/libs/web/ssruntime_bg\.wasm$' })) {
-            $failed.Add("$demoZip has no HTTP-reachable ssruntime_bg.wasm (deploy-web step 4)")
+        # The Brain is read out of game.zip at startup (ssruntime_web.load_library),
+        # so the export plays only if both runtime files were packed into it.
+        $demoCheck = "$rootDirectory/build/release-democheck"
+        if (Test-Path $demoCheck) { Remove-Item -Recurse -Force $demoCheck }
+        & unzip -q "$out/$demoZip" game.zip -d $demoCheck
+        if ($LASTEXITCODE -eq 0) {
+            $gameEntries = & unzip -Z1 "$demoCheck/game.zip"
+            foreach ($f in @("ssruntime.js", "ssruntime_bg.wasm")) {
+                if ($gameEntries -notcontains "game/spritestudio/libs/web/$f") {
+                    $failed.Add("${demoZip}: game.zip has no spritestudio/libs/web/$f")
+                }
+            }
         }
-        if ($failed.Count -eq 0) { Write-Host "   Web demo: index.html, game.zip and the unpacked runtime" }
+        if (Test-Path $demoCheck) { Remove-Item -Recurse -Force $demoCheck }
+        if ($failed.Count -eq 0) { Write-Host "   Web demo: index.html, and game.zip with the runtime" }
     }
 
     # Each alias is the same bytes as the zip it stands in for.

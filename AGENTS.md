@@ -36,7 +36,7 @@ FlatBuffers draw plan over a C-API, and `libssconverter` turns a `.sspj` project
 `.ssab` pack. This repository is the Ren'Py layer and the creator ergonomics around them.
 
 Three layers under `game/spritestudio/`. `python/ss_renpy/ssruntime.py` routes to
-`ssruntime_native.py` (ctypes FFI to the Brain) or `ssruntime_web.py` (Pyodide). `player.py`'s
+`ssruntime_native.py` (ctypes FFI to the Brain) or `ssruntime_web.py` (emscripten). `player.py`'s
 `SSInternalPlayer` is the engine-independent core: it plays one animation through
 `update(dt_ms) → FramePlan` and reports `finished` / `looped` as observations only. The `SSPlayer`
 displayable in `spritestudio.rpy` builds the `renpy.Render` and owns policy — sequence chaining,

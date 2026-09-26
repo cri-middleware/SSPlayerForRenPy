@@ -89,34 +89,12 @@ Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates 
 
 ## Web Export
 
-Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html)
-(Pyodide/WASM). SSPlayer auto-switches to a non-ctypes JS binding
-(`ssruntime_web.py`) — no code changes needed.
+Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html) — no
+SSPlayer-specific post-steps. The Brain's WebAssembly build
+(`game/spritestudio/libs/web/`) ships inside `game.zip` with the rest of the
+folder, and SSPlayer loads it from there when the game starts, so the export plays
+as the launcher produces it.
 
-> **⚠️ A raw Web export will NOT run.** The renderer needs a separate WASM module
-> (`ssruntime.js` / `ssruntime_bg.wasm`) that Ren'Py's exporter doesn't know about,
-> so **every export needs the two post-steps below**. Ren'Py regenerates
-> `index.html` and repacks `game.zip` on every run, so **re-apply them after each
-> export**. Without them the console throws
-> `Cannot read properties of undefined (reading 'SSRuntimeContext')`.
-
-After a `web_build` export:
-
-1. **Edit `index.html`** — add this **before** the `<script>` tag that loads
-   `renpy-pre.js`, so the WASM bindings load before the game starts:
-   ```html
-   <script type="module">
-     import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
-     window.ssruntime = ss;
-     window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
-   </script>
-   ```
-2. **Copy the WASM assets as real files** — `ssruntime.js` and `ssruntime_bg.wasm`
-   from `game/spritestudio/libs/web/` into the same path in the output (e.g.
-   `web_out/game/spritestudio/libs/web/`). The export zips `game/` into `game.zip`,
-   so the browser can't `import` them from inside it; the step-1 path must match.
-
-**Testing:** serve over HTTP (not `file://`) with correct MIME types (`.js` →
-`application/javascript`, `.wasm` → `application/wasm`) — Ren'Py's own web server
-does this. After re-exporting, **unregister the cached service worker / clear site
-data**, or the browser serves the old build.
+**Testing:** serve over HTTP (not `file://`) — Ren'Py's own web server does. After
+re-exporting, **unregister the cached service worker / clear site data**, or the
+browser serves the old build.

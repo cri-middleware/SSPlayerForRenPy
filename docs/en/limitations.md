@@ -41,4 +41,3 @@ This page covers what is specific to **this** player. The constraints that come 
 >
 > - **Android** ships the Brain as a native library in the APK's `lib/<abi>/`; Android only loads native code from there, not from the packaged game data, so the `.so` must be placed in the app's jniLibs — a step the SSPlayer Android export flow handles, but a plain launcher build needs done once by hand.
 > - **iOS** requires macOS + Xcode, and the Brain library must be embedded into the app target once by hand — Ren'Py has no hook to auto-link third-party native code.
-> - **Web** (Pyodide/WASM) can't load the Brain through `ctypes`, so it uses a JS/WASM binding that Ren'Py's exporter doesn't bundle on its own — every Web export needs an extra manual step to load the WASM module before the game starts.

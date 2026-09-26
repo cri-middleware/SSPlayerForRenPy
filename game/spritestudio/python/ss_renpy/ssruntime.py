@@ -1,7 +1,7 @@
 """Runtime routing and constants for libssruntime.
 
 This module exposes the runtime constants and dynamically delegates SSRuntime
-to either the native ctypes implementation (_NativeRuntime) or the Pyodide/JS
+to either the native ctypes implementation (_NativeRuntime) or the emscripten/JS
 implementation (_WebRuntime) depending on the environment.
 """
 
@@ -66,8 +66,7 @@ def hash_string(s: str) -> int:
 
 if _IS_WEB:
     from .ssruntime_web import _WebRuntime as SSRuntime
-    def load_library(path=None, base_dir=None):
-        return None
+    from .ssruntime_web import load_library
 else:
     from .ssruntime_native import _NativeRuntime as SSRuntime
     from .ssruntime_native import load_library

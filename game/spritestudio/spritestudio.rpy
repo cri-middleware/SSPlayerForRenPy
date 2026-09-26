@@ -123,7 +123,9 @@ init -10 python:
     if getattr(renpy, "ios", False):
         os.environ["SS_IOS"] = "1"
 
-    # Load the native library once, from spritestudio/libs/<platform-arch>/.
+    # Load the Brain once, from spritestudio/libs/<platform-arch>/ — on the Web,
+    # the wasm module in libs/web/, read out of game.zip, so an export needs no
+    # edit to its index.html.
     _SS_LIB = ssruntime.load_library(base_dir=os.path.join(_SS_ROOT, "libs"))
 
     # --- Opt-in render profiler (in-engine) --------------------------------

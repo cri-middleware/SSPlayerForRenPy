@@ -351,12 +351,18 @@ if [ "$VERIFY" = "yes" ]; then
     for f in index.html game.zip; do
       unzip -Z1 "$OUT/$DEMO_ZIP" | grep -qx "$f" || fail "$DEMO_ZIP has no $f"
     done
-    # The two post-export steps deploy-web.sh exists to apply: the runtime has to
-    # sit outside game.zip as a real file, because a browser's ES-module import
-    # cannot read into the archive.
-    unzip -Z1 "$OUT/$DEMO_ZIP" | grep -q 'spritestudio/libs/web/ssruntime_bg\.wasm$' \
-      || fail "$DEMO_ZIP has no HTTP-reachable ssruntime_bg.wasm (deploy-web.sh step 4)"
-    [ -n "$FAILED" ] || echo "   Web demo: index.html, game.zip and the unpacked runtime"
+    # The Brain is read out of game.zip at startup (ssruntime_web.load_library),
+    # so the export plays only if both runtime files were packed into it.
+    DEMO_CHECK="$ROOT_DIR/build/release-democheck"
+    rm -rf "$DEMO_CHECK"
+    if unzip -q "$OUT/$DEMO_ZIP" game.zip -d "$DEMO_CHECK"; then
+      for f in ssruntime.js ssruntime_bg.wasm; do
+        unzip -Z1 "$DEMO_CHECK/game.zip" | grep -qx "game/spritestudio/libs/web/$f" \
+          || fail "$DEMO_ZIP: game.zip has no spritestudio/libs/web/$f"
+      done
+    fi
+    rm -rf "$DEMO_CHECK"
+    [ -n "$FAILED" ] || echo "   Web demo: index.html, and game.zip with the runtime"
   fi
 
   # Each alias is the same bytes as the zip it stands in for.

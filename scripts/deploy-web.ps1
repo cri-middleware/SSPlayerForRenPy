@@ -1,16 +1,8 @@
 #!/usr/bin/env pwsh
 #
-# Build the Ren'Py Web export AND apply the two SSPlayer post-export steps the
-# Web target needs (docs/en/export.md, Web Export steps 1-2) but that the Ren'Py exporter cannot
-# do on its own:
-#   3. inject the ssruntime.js / .wasm module <script> into index.html, and
-#   4. copy game\spritestudio\libs\web\{ssruntime.js,ssruntime_bg.wasm} out of
-#      game.zip into <dest>\game\spritestudio\libs\web\ as real, HTTP-reachable
-#      files (a browser's ES-module import cannot read files inside game.zip).
-#
-# The exporter regenerates index.html and repacks game.zip on every run, so
-# these steps must be re-applied after each export — that is what this script
-# automates. Both steps are idempotent, so re-running is safe.
+# Build the Ren'Py Web export of this project, with the stock exporter and
+# nothing applied afterwards: the Brain's wasm module ships inside game.zip and
+# SSPlayer loads it from there at startup, so the export plays as it comes out.
 #
 # Prereqs: Ren'Py SDK in renpy-sdk\ (fetch-renpy-sdk.ps1) with Web support
 # (fetch-renpy-web.ps1), and the web runtime under game\spritestudio\libs\web\
@@ -57,35 +49,7 @@ Write-Host ">> building Web export -> $Dest"
 & $RenpyExe @RenpyPre $Launcher web_build $RootDir --dest $Dest
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy-web.ps1: web_build failed ($LASTEXITCODE)"; exit 1 }
 
-$Index = Join-Path $Dest "index.html"
-if (-not (Test-Path $Index)) { Write-Error "deploy-web.ps1: export did not produce $Index"; exit 1 }
-
-# --- inject the module <script> before renpy-pre.js (idempotent) ----------
-$content = Get-Content -Raw $Index
-if ($content.Contains("spritestudio/libs/web/ssruntime.js")) {
-    Write-Host ">> index.html: module script already present"
-} else {
-    Write-Host ">> index.html: injecting ssruntime module script"
-    $anchor = '  <script src="renpy-pre.js"></script>'
-    if (-not $content.Contains($anchor)) { Write-Error "deploy-web.ps1: renpy-pre.js anchor not found in index.html"; exit 1 }
-    $inject = @"
-  <script type="module">
-    import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
-    window.ssruntime = ss;
-    window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
-  </script>
-"@
-    $content = $content.Replace($anchor, $inject + "`n" + $anchor)
-    Set-Content -NoNewline -Path $Index -Value $content
-}
-
-# --- copy the web runtime out of game.zip as real files -------------------
-Write-Host ">> placing web runtime under $Dest\game\spritestudio\libs\web\"
-$OutWeb = Join-Path $Dest "game/spritestudio/libs/web"
-New-Item -ItemType Directory -Force -Path $OutWeb | Out-Null
-Copy-Item (Join-Path $WebAssets "ssruntime.js") $OutWeb -Force
-Copy-Item (Join-Path $WebAssets "ssruntime_bg.wasm") $OutWeb -Force
+if (-not (Test-Path (Join-Path $Dest "index.html"))) { Write-Error "deploy-web.ps1: export did not produce $Dest\index.html"; exit 1 }
 
 Write-Host "deploy-web.ps1: done -> $Dest"
-Write-Host "  Serve it over HTTP (not file://). Any static server works; the assets"
-Write-Host "  need .js=application/javascript and .wasm=application/wasm MIME types."
+Write-Host "  Serve it over HTTP (not file://), as any Ren'Py Web export."
