@@ -150,13 +150,13 @@ ssconverter-cli SpriteStudio_Source/
 
 ## 方法4: Webブラウザ版コンバータ (`ssconverter-web`)
 
-インストール不要で、手元のブラウザ上で手軽に変換を試したい場合は、姉妹プロジェクトである `SSPlayerForWeb` に付属する **`ssconverter-web`** を利用することもできます。
+インストール不要で、手元のブラウザ上で手軽に変換を試したい場合は、姉妹プロジェクトである SpriteStudio Player for Web に付属する **`ssconverter-web`** を利用することもできます。
 
 - WebAssembly を利用してブラウザ内でローカル処理を行うため、ファイルが外部サーバーに送信されることはありません。
 - 変換したい `.sspj` と関連ファイル（画像など）をブラウザ画面にドラッグ＆ドロップすると変換処理が走り、結果が **`.zip` 形式でダウンロード** されます。
 - ダウンロードされた `.zip` を解凍し、生成された `.ssab` と画像を一緒にご自身の `game/` フォルダ内に配置してください。
 
-SSPlayerForWeb のサイト内、`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` で公開されます（_準備中_ — アドレスは確定していますが、SSPlayerForWeb がサイトを公開するまでは 404 になります）。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
+SpriteStudio Player for Web のサイト内、`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` で公開されます（_準備中_ — アドレスは確定していますが、SpriteStudio Player for Web がサイトを公開するまでは 404 になります）。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
 
 詳しくは [SSPlayerForWeb リポジトリ](https://github.com/cri-middleware/SSPlayerForWeb) のドキュメントをご参照ください。
 

@@ -1,6 +1,6 @@
 # SpriteStudio Player for Ren'Py — Player Roadmap
 
-This is the **Ren'Py Player** roadmap for SSPlayerForRenPy. It tracks Ren'Py-specific
+This is the **Ren'Py Player** roadmap for SpriteStudio Player for Ren'Py. It tracks Ren'Py-specific
 implementation tasks for capabilities exposed by the Rust runtime / converter
 ([`SpriteStudio-SDK/ROADMAP.md`](./SpriteStudio-SDK/ROADMAP.md)).
 
