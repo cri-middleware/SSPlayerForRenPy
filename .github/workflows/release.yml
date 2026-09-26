@@ -41,7 +41,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # deploy-examples.sh converts the SDK's bundled test projects, so the
           # SpriteStudio-SDK submodule must be present.
@@ -73,7 +73,7 @@ jobs:
     permissions:
       contents: write # softprops/action-gh-release creates the GitHub Release
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # deploy-examples.sh converts the SDK's bundled test projects, so the
           # SpriteStudio-SDK submodule must be present.
@@ -112,7 +112,7 @@ jobs:
       # byte-identical copies of their zips, so only the pinned ones are kept
       # here; SHA256SUMS still lists all four (verify with --ignore-missing).
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SSPlayerForRenPy-release-dist
           path: |
