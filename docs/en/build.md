@@ -154,7 +154,7 @@ developer-side counterpart of the manual instructions in the
 scripts/deploy-desktop.sh [dest_dir]                       # host-OS desktop app (mac / linux)
 scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
 scripts/deploy-ios.sh     [dest_dir] [--recreate] [--open] # generates an Xcode project (macOS only)
-scripts/deploy-web.sh     [dest_dir]                       # runs the export + both Web post-steps
+scripts/deploy-web.sh     [dest_dir]                       # the stock Web export; nothing to apply after it
 ```
 
 **Windows (`*.ps1`):**

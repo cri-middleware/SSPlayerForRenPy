@@ -142,7 +142,7 @@ scripts\generate-fbs-code.ps1
 scripts/deploy-desktop.sh [dest_dir]                       # ホスト OS のデスクトップアプリ (mac / linux)
 scripts/deploy-android.sh [dest_dir] [--bundle] [--install] [--launch]
 scripts/deploy-ios.sh     [dest_dir] [--recreate] [--open] # Xcode プロジェクトを生成 (macOS 専用)
-scripts/deploy-web.sh     [dest_dir]                       # エクスポート + Web の 2 つの後処理を実行
+scripts/deploy-web.sh     [dest_dir]                       # 標準の Web エクスポート（後処理は無し）
 ```
 
 **Windows (`*.ps1`):**

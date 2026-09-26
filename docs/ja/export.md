@@ -61,31 +61,6 @@ Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使いま�
 
 ## Web (ブラウザ) 向けエクスポート
 
-Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.html)
-（Pyodide / WASM）を使います。SSPlayer は非 ctypes な JS バインディング
-(`ssruntime_web.py`) に自動的に切り替わるため、コード変更は不要です。
+Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.html) をそのまま使います。SSPlayer 固有の後処理はありません。Brain の WebAssembly 版（`game/spritestudio/libs/web/`）はフォルダの他の部分と一緒に `game.zip` に入り、SSPlayer がゲーム起動時にそこから読み込むため、ランチャーが出力したものがそのまま動きます。
 
-> **⚠️ そのままの Web エクスポートは動きません。** レンダラは別の WASM モジュール
-> (`ssruntime.js` / `ssruntime_bg.wasm`) を必要としますが、Ren'Py のエクスポータはこれを認識しません。そのため**エクスポートのたびに下記 2 つの後処理が必須**です。Ren'Py
-> は毎回 `index.html` を再生成し `game.zip` を再パックするので、**エクスポートごとに再適用**してください。行わないと console に
-> `Cannot read properties of undefined (reading 'SSRuntimeContext')` が出ます。
-
-`web_build` エクスポート後に:
-
-1. **`index.html` を編集** — ゲーム起動前に WASM バインディングを読み込むため、
-   `renpy-pre.js` を読み込む `<script>` タグの**直前**に以下を追加:
-   ```html
-   <script type="module">
-     import init, * as ss from './game/spritestudio/libs/web/ssruntime.js';
-     window.ssruntime = ss;
-     window.ssruntime_wasm = await init('./game/spritestudio/libs/web/ssruntime_bg.wasm');
-   </script>
-   ```
-2. **WASM アセットを実ファイルとして配置** — `game/spritestudio/libs/web/` の
-   `ssruntime.js` と `ssruntime_bg.wasm` を、出力側の同じパス（例:
-   `web_out/game/spritestudio/libs/web/`）へコピーします。エクスポートは `game/` を
-   `game.zip` に固めるため、ブラウザはその中から `import` できません。手順1のパスと一致させてください。
-
-**動作確認:** `file://` ではなく HTTP で、正しい MIME（`.js` →
-`application/javascript`、`.wasm` → `application/wasm`）で配信します（Ren'Py 付属の
-web サーバはこれを満たします）。再エクスポート後は、キャッシュされた **Service Worker の登録解除 / サイトデータのクリア**を行わないと、ブラウザが古いビルドを表示します。
+**動作確認:** `file://` ではなく HTTP で配信します（Ren'Py 付属の web サーバで足ります）。再エクスポート後は、キャッシュされた **Service Worker の登録解除 / サイトデータのクリア**を行わないと、ブラウザが古いビルドを表示します。
