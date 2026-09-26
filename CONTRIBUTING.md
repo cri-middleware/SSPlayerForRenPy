@@ -6,6 +6,7 @@ Thank you for your interest in contributing to SSPlayerForRenPy! We welcome all 
 - [Code of Conduct](#code-of-conduct)
 - [How Can I Contribute?](#how-can-i-contribute)
 - [Development Environment](#development-environment)
+- [Coding Standards](#coding-standards)
 
 ## Code of Conduct
 Please refer to [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
@@ -81,6 +82,14 @@ Outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (s
 ### Documentation
 `docs/` is bilingual and ordered `setup → import → usage → export`, plus `build` and `limitations`; `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`, each locale owning its own `assets/`, with source-relative asset paths **including inside raw `<video>` / `<img>` HTML**. Keep `docs/` user-facing: never cite a dev script there. If you edit a page, build both locales before you finish — see [RELEASING.md](./RELEASING.md). Nothing builds the docs on a pull request, so that local build is the only gate.
 
+## Coding Standards
+
+### Python Guidelines
+- Follow [PEP 8](https://peps.python.org/pep-0008/) naming and the existing style of the files you touch.
+- Every module under `game/spritestudio/python/` must import in plain CPython, with no `renpy` — the headless suite runs them that way.
+- Handle the Rust FFI objects safely: release every handle with its destroy function (`ss_runtime_destroy`, `ss_resource_destroy`, `ss_converter_destroy`). The bindings do it in `close()` and `__del__`, so put a new handle on the same path. Textures are the exception — Ren'Py owns them.
+- Do not hand-edit `game/spritestudio/python/ss/`; regenerate it with `scripts/generate-fbs-code.sh` and commit. `game/spritestudio/python/flatbuffers/` is the vendored FlatBuffers runtime from `scripts/download-flatbuffers.sh` — leave it as downloaded.
+
 ---
 By contributing to this project, you agree that your contributions will be licensed under the project's [LICENSE.md](./LICENSE.md).
 
@@ -97,6 +106,7 @@ SSPlayerForRenPy にご関心をお寄せいただき、ありがとうござい
 - [行動規範](#行動規範)
 - [貢献する方法](#貢献する方法)
 - [開発環境のセットアップ](#開発環境のセットアップ)
+- [コーディング規約](#コーディング規約)
 
 ## 行動規範
 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) を参照してください。
@@ -169,6 +179,14 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 
 ### ドキュメント
 `docs/` は日英 2 言語で、`setup → import → usage → export`（＋ `build` と `limitations`）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。ページを編集したら、仕上げる前に両ロケールをビルドしてください（手順は [RELEASING.md](./RELEASING.md)）。プルリクエストでは docs はビルドされないため、手元のビルドが唯一のゲートです。
+
+## コーディング規約
+
+### Python のガイドライン
+- [PEP 8](https://peps.python.org/pep-0008/) の命名と、触るファイルの既存のスタイルに従ってください。
+- `game/spritestudio/python/` 配下のモジュールは、`renpy` の無い素の CPython で import できるようにしてください。ヘッドレスのスイートはその状態で実行します。
+- Rust FFI オブジェクトの安全な取り扱いに注意してください。ハンドルは必ず対応する destroy 関数（`ss_runtime_destroy`、`ss_resource_destroy`、`ss_converter_destroy`）で解放します。バインディングは `close()` と `__del__` で解放しているので、新しいハンドルも同じ経路に乗せてください。テクスチャは Ren'Py が所有するので例外です。
+- `game/spritestudio/python/ss/` は手で編集せず、`scripts/generate-fbs-code.sh` で生成し直してコミットしてください。`game/spritestudio/python/flatbuffers/` は `scripts/download-flatbuffers.sh` で取得して同梱している FlatBuffers ランタイムなので、取得したまま手を加えないでください。
 
 ---
 本プロジェクトに貢献することで、あなたの貢献がプロジェクトの [LICENSE.md](./LICENSE.md) の下でライセンスされることに同意したものとみなされます。
