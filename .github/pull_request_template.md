@@ -30,6 +30,9 @@ that is useful information, not a problem.
 - [ ] Docs updated if behaviour changed.
 - [ ] Anything that exists twice changed twice — a page and its translation, a `.sh` and its `.ps1`.
 - [ ] `render` does no unnecessary work and uses the runtime's `DrawBatch` plans directly.
+- [ ] Every Rust handle is released with its destroy function (`ss_runtime_destroy`, `ss_resource_destroy`, `ss_converter_destroy`).
+- [ ] Every module under `game/spritestudio/python/` still imports in plain CPython, with no `renpy`.
+- [ ] `game/spritestudio/python/ss/` regenerated with `scripts/generate-fbs-code.sh`, never hand-edited.
 - [ ] Core logic goes to SpriteStudio-SDK, and nothing is committed inside the submodule.
 - [ ] `docs/` stays user-facing: it never cites a development script.
 
