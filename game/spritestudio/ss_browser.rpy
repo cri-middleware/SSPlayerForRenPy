@@ -54,6 +54,15 @@ init python:
         store.ss_browser_zoom = max(SS_BROWSER_ZOOM_MIN,
                                     min(SS_BROWSER_ZOOM_MAX, z))
 
+    def _ss_browser_reset_view():
+        """Put the preview back the way a pack opens: 1:1, centred.
+
+        The drag group keeps a dropped drag's position under its drag_name
+        and hands it to any drag built with that name again, so the name
+        carries a view number, and a new number is a drag placed afresh."""
+        store.ss_browser_zoom = 1.0
+        store.ss_browser_view += 1
+
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
         # Stop the outgoing preview's audio: it is held in a variable and swapped,
@@ -121,6 +130,7 @@ default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
                              "has_effects": False, "instance_packs": []}
 default ss_browser_player = None
 default ss_browser_zoom = 1.0
+default ss_browser_view = 0
 
 
 screen _ss_browser_key():
@@ -138,13 +148,13 @@ screen ss_browser():
     # Wheel = zoom the preview. Declared before the body so the lists are offered
     # the event first (a `mousewheel True` viewport only takes it while the
     # pointer is inside), which leaves the wheel elsewhere to scale the sprite.
-    # + / - / 0 do the same from the keyboard.
+    # + / - do the same from the keyboard, and 0 resets the view.
     key "mousedown_4" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
     key "mousedown_5" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
     key "K_EQUALS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
     key "K_PLUS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
     key "K_MINUS" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
-    key "K_0" action SetVariable("ss_browser_zoom", 1.0)
+    key "K_0" action Function(_ss_browser_reset_view)
 
     add Solid("#000000d8")
 
@@ -202,7 +212,7 @@ screen ss_browser():
                             # demo picker (asset_picker.rpy).
                             draggroup:
                                 drag:
-                                    drag_name ss_browser_pack
+                                    drag_name "%s#%d" % (ss_browser_pack, ss_browser_view)
                                     draggable True
                                     drag_offscreen True
                                     xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
@@ -212,7 +222,10 @@ screen ss_browser():
                     # Percent, not a "x1.25" factor: at this size the decimal point
                     # is easy to miss, and "125%" cannot be misread.
                     $ _zoom_disp = "%d%%" % round(ss_browser_zoom * 100)
-                    text "drag to move | wheel (or + / -) to zoom: [_zoom_disp] | 0 resets" size 11
+                    hbox:
+                        spacing 10
+                        text "drag to move | wheel (or + / -) to zoom: [_zoom_disp]" size 11 yalign 0.5
+                        textbutton "Reset view (0)" action Function(_ss_browser_reset_view) text_size 11 yalign 0.5
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]
                     $ _fx = ss_browser_detail["has_effects"]

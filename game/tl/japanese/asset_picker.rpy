@@ -20,8 +20,11 @@ translate japanese strings:
     old "(no preview)"
     new "(プレビューなし)"
 
-    old "drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]  |  0 resets"
-    new "ドラッグで移動  ｜  ホイール（または + / -）で拡大縮小: [_zoom_disp]  ｜  0 でリセット"
+    old "drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]"
+    new "ドラッグで移動  ｜  ホイール（または + / -）で拡大縮小: [_zoom_disp]"
+
+    old "Reset view (0)"
+    new "表示をリセット (0)"
 
     old "animation: [_cur_disp]  |  [_na] animation(s)"
     new "アニメーション: [_cur_disp]  ｜  [_na] 個"
