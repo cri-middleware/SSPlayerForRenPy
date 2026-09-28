@@ -1111,11 +1111,34 @@ init -10 python:
     # and cached; rebuilt each dev reload (the library lives in one init block).
     _SS_INDEX = None
 
+    def _ss_index_roots():
+        """Gamedir-relative folders the index scans: `ss_asset_dirs` when the
+        game sets it, else ss_assets/ and the folder `ss_output_dir` sends the
+        auto importer's output to. Without the second, moving the output — as the
+        import guide shows how to — leaves every pack the importer writes out of
+        the browser and the startup summary."""
+        dirs = getattr(store, "ss_asset_dirs", None)
+        if dirs:
+            return [r.replace("\\", "/").strip("/") for r in dirs]
+        roots = ["ss_assets"]
+        out = getattr(store, "ss_output_dir", None)
+        if out:
+            # basedir-relative, as the importer reads it; outside game/ it is
+            # nothing Ren'Py can load, so there is nothing to list either (on
+            # another Windows drive there is not even a relative path to it).
+            try:
+                rel = os.path.relpath(os.path.join(config.basedir, out),
+                                      config.gamedir).replace("\\", "/").strip("/")
+            except ValueError:
+                rel = ".."
+            if rel not in (".", "..") and not rel.startswith("../"):
+                roots.append(rel)
+        return roots
+
     def _ss_get_index():
         global _SS_INDEX
         if _SS_INDEX is None:
-            roots = [r.replace("\\", "/").strip("/")
-                     for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+            roots = _ss_index_roots()
             rels = []
             for p in renpy.list_files():
                 rp = p.replace("\\", "/")
@@ -1136,8 +1159,7 @@ init -10 python:
         global _SS_INDEX
         if _SS_INDEX is None:
             return
-        roots = [r.replace("\\", "/").strip("/")
-                 for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+        roots = _ss_index_roots()
         current = set()
         for p in renpy.list_files():
             rp = p.replace("\\", "/")
