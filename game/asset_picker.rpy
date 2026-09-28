@@ -13,6 +13,7 @@ default ss_picker_pack = None     # selected pack's gamedir-relative .ssab path
 default ss_picker_anims = []      # animation names for the selected pack
 default ss_picker_player = None   # live SSPlayer for the preview
 default ss_picker_zoom = 1.0      # preview scale (wheel / + - keys, 0 resets)
+default ss_picker_view = 0        # bumped by a reset; see ss_picker_reset_view
 
 init python:
     def ss_picker_records():
@@ -43,6 +44,15 @@ init python:
         z = store.ss_picker_zoom * factor
         store.ss_picker_zoom = max(SS_PICKER_ZOOM_MIN,
                                    min(SS_PICKER_ZOOM_MAX, z))
+
+    def ss_picker_reset_view():
+        """Put the preview back the way a pack opens: 1:1, centred.
+
+        The drag group keeps a dropped drag's position under its drag_name
+        and hands it to any drag built with that name again, so the name
+        carries a view number, and a new number is a drag placed afresh."""
+        store.ss_picker_zoom = 1.0
+        store.ss_picker_view += 1
 
     def _ss_picker_stop_audio():
         # Held-and-swapped preview player: stop its sound before we replace it, so
@@ -116,7 +126,7 @@ screen ss_asset_picker():
     key "K_EQUALS" action Function(ss_picker_zoom_by, SS_PICKER_ZOOM_STEP)
     key "K_PLUS" action Function(ss_picker_zoom_by, SS_PICKER_ZOOM_STEP)
     key "K_MINUS" action Function(ss_picker_zoom_by, 1.0 / SS_PICKER_ZOOM_STEP)
-    key "K_0" action SetVariable("ss_picker_zoom", 1.0)
+    key "K_0" action Function(ss_picker_reset_view)
 
     add Solid("#1c2026")
 
@@ -187,7 +197,7 @@ screen ss_asset_picker():
                     if ss_picker_player is not None:
                         draggroup:
                             drag:
-                                drag_name ss_picker_pack
+                                drag_name "%s#%d" % (ss_picker_pack, ss_picker_view)
                                 draggable True
                                 drag_offscreen True
                                 xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
@@ -200,7 +210,10 @@ screen ss_asset_picker():
                 # Percent, not a "x1.25" factor: at 11px the decimal point is
                 # easy to miss, and "125%" cannot be misread.
                 $ _zoom_disp = "%d%%" % round(ss_picker_zoom * 100)
-                text _("drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]  |  0 resets") size 11 color "#667085"
+                hbox:
+                    spacing 12
+                    text _("drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]") size 11 color "#667085" yalign 0.5
+                    textbutton _("Reset view (0)") action Function(ss_picker_reset_view) text_size 11 yalign 0.5
                 $ _na = len(ss_picker_anims)
                 text _("animation: [_cur_disp]  |  [_na] animation(s)") size 14 color "#9aa0ab"
                 text _("click an animation to preview:") size 13 color "#9aa0ab"
