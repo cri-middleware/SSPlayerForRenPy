@@ -1,7 +1,7 @@
 """Freshness marker for auto-imported ``.ssab`` packs (no ``renpy`` import).
 
 The dev-only auto-importer (``auto_importer.rpy``) converts each
-``SpriteStudio_Source/<project>/*.sspj`` into ``game/ss_assets/<project>/`` and
+``SpriteStudio_Source/**/<name>.sspj`` into ``game/ss_assets/<name>/`` and
 must skip a project whose output is already current. It cannot judge that from
 output mtimes alone: the converter writes ``.ssab`` files before textures and
 can error part-way, leaving fresh-looking *partial* output. So a success marker
@@ -61,6 +61,27 @@ def latest_source_mtime(source_dir: str) -> float:
         if mtime > latest:
             latest = mtime
     return latest
+
+
+def plan_outputs(sspj_paths, out_dir: str):
+    """Pair each ``.sspj`` with the folder it converts into, ``out_dir/<name>``.
+
+    Returns ``(sspj, project_out_dir, owner)`` per project, in path order.
+    ``owner`` is ``None`` for the project that converts into the folder, and the
+    ``.sspj`` that already does for every other project with the same name: two
+    of them would overwrite one folder, and whichever converted last would be
+    the only one left, with nothing saying the others are gone. Names that
+    differ only in case are one folder on macOS and Windows, so they collide
+    too. Sorting makes the same project win on every launch and every machine.
+    """
+    owners: dict = {}
+    plan = []
+    for sspj in sorted(sspj_paths):
+        name = os.path.splitext(os.path.basename(sspj))[0]
+        owner = owners.setdefault(name.lower(), sspj)
+        plan.append((sspj, os.path.join(out_dir, name),
+                     None if owner == sspj else owner))
+    return plan
 
 
 def read_marker(out_dir: str):

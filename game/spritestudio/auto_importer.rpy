@@ -44,12 +44,15 @@ init -10 python:
     # stdout — log.txt under the launcher — which is not where a creator is
     # looking while iterating, so the outcome is also raised in-game; the bottom
     # of this file delivers it.
-    def _ss_import_notice(imported, failed):
+    def _ss_import_notice(imported, failed, skipped):
         parts = []
         if imported:
             parts.append("imported " + ", ".join(sorted(imported)))
         if failed:
             parts.append("FAILED " + ", ".join(sorted(failed)) + " — see the console")
+        if skipped:
+            parts.append("SKIPPED %d .sspj named like another project — see the console"
+                         % len(skipped))
         if parts:
             renpy.session["_ss_import_notice"] = "SpriteStudio: " + "; ".join(parts)
 
@@ -125,10 +128,13 @@ init -10 python:
         changed = False
         imported = []
         failed = []
+        skipped = []
 
-        for sspj_path in sspj_files:
-            project_name = os.path.splitext(os.path.basename(sspj_path))[0]
-            project_out_dir = os.path.join(out_dir, project_name)
+        def _shown(path):
+            return os.path.relpath(path, config.basedir).replace("\\", "/")
+
+        for sspj_path, project_out_dir, owner in import_marker.plan_outputs(sspj_files, out_dir):
+            project_name = os.path.basename(project_out_dir)
 
             # 1. Newest mtime across the source project (its .sspj + .ssae /
             # .ssce / .png siblings) — the snapshot this run would convert, and
@@ -139,12 +145,20 @@ init -10 python:
             # would otherwise sit there until someone pressed the key.
             # add_auto() is a no-op while autoreload is off, so this arms on the
             # first Shift+R and re-registers on every reload (Ren'Py empties the
-            # watch list each time).
+            # watch list each time). A project skipped below is watched too, so
+            # renaming its .sspj reloads and converts it.
             sspj_dir = os.path.dirname(sspj_path)
             latest_source_mtime = import_marker.latest_source_mtime(sspj_dir)
             renpy.loader.add_auto(sspj_dir.replace("\\", "/"))
             for src in import_marker.iter_source_files(sspj_dir):
                 renpy.loader.add_auto(src.replace("\\", "/"))
+
+            if owner is not None:
+                print(f"[SpriteStudio] Skipped {_shown(sspj_path)}: {_shown(project_out_dir)} "
+                      f"is converted from {_shown(owner)}, and one folder holds one "
+                      "project. Rename one of the two .sspj files.")
+                skipped.append(sspj_path)
+                continue
 
             # 2. Conversion is needed unless the last run both SUCCEEDED and
             # covered the current sources. Output mtimes alone cannot tell: the
@@ -219,7 +233,7 @@ init -10 python:
                 print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
                       "newly imported packs may not appear in the browser until restart.")
 
-        _ss_import_notice(imported, failed)
+        _ss_import_notice(imported, failed, skipped)
 
         # The watch is only live in autoreload mode, and the key that turns that
         # on is a TOGGLE with nothing on screen to say which side it is on
