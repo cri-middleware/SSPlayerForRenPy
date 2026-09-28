@@ -115,6 +115,18 @@ class SsConverter:
             self._lib.ss_converter_destroy(self._ctx)
             self._ctx = None
 
+    def version(self) -> str:
+        """The converter's build version, e.g. ``"0.1.0+abc1234"``."""
+        # The one string this ABI hands over to the caller: read it, then give
+        # it back to the library that allocated it.
+        ptr = self._lib.ss_converter_version()
+        if not ptr:
+            return ""
+        try:
+            return (C.cast(ptr, C.c_char_p).value or b"").decode("utf-8", errors="replace")
+        finally:
+            self._lib.ss_converter_version_free(ptr)
+
     def convert(self, sspj_path: str, output_dir: str, on_log: Optional[Callable[[str], None]] = None):
         """Starts the conversion process in a background thread."""
         if on_log:

@@ -44,12 +44,15 @@ init -10 python:
     # stdout — log.txt under the launcher — which is not where a creator is
     # looking while iterating, so the outcome is also raised in-game; the bottom
     # of this file delivers it.
-    def _ss_import_notice(imported, failed):
+    def _ss_import_notice(imported, failed, skipped):
         parts = []
         if imported:
             parts.append("imported " + ", ".join(sorted(imported)))
         if failed:
             parts.append("FAILED " + ", ".join(sorted(failed)) + " — see the console")
+        if skipped:
+            parts.append("SKIPPED %d .sspj named like another project — see the console"
+                         % len(skipped))
         if parts:
             renpy.session["_ss_import_notice"] = "SpriteStudio: " + "; ".join(parts)
 
@@ -121,38 +124,61 @@ init -10 python:
         # being already on — would only turn the watch back off.
         renpy.loader.add_auto(source_dir.replace("\\", "/"))
 
-        converter = None
+        # Loaded up front, not on the first conversion: what the converter
+        # version is decides whether an output is current (see step 2).
+        try:
+            converter = SsConverter()
+            converter_version = converter.version()
+        except (OSError, ImportError, AttributeError) as e:
+            # ctypes.CDLL raises OSError on a missing/wrong-ABI libssconverter; a
+            # present-but-stale library missing an expected export raises
+            # AttributeError from _declare(). Disable cleanly instead of a
+            # traceback at launch.
+            print(f"[SpriteStudio] Auto-importer disabled: could not load native converter ({e})")
+            return
+
         changed = False
         imported = []
         failed = []
+        skipped = []
 
-        for sspj_path in sspj_files:
-            project_name = os.path.splitext(os.path.basename(sspj_path))[0]
-            project_out_dir = os.path.join(out_dir, project_name)
+        def _shown(path):
+            return os.path.relpath(path, config.basedir).replace("\\", "/")
 
-            # 1. Newest mtime across the source project (its .sspj + .ssae /
-            # .ssce / .png siblings) — the snapshot this run would convert, and
-            # the same set to watch for the next one. Ren'Py's autoreload
-            # watches every file it opens through its loader — the .rpy, the
-            # textures, the .ssab packs — but never these: they sit outside
-            # game/ and are read with plain os calls, so a save in SpriteStudio
-            # would otherwise sit there until someone pressed the key.
-            # add_auto() is a no-op while autoreload is off, so this arms on the
-            # first Shift+R and re-registers on every reload (Ren'Py empties the
-            # watch list each time).
+        for sspj_path, project_out_dir, owner in import_marker.plan_outputs(sspj_files, out_dir):
+            project_name = os.path.basename(project_out_dir)
+
+            # 1. Watch the source project (its .sspj + .ssae / .ssce / .png
+            # siblings) — the same files the snapshot in step 2 reads. Ren'Py's
+            # autoreload watches every file it opens through its loader — the
+            # .rpy, the textures, the .ssab packs — but never these: they sit
+            # outside game/ and are read with plain os calls, so a save in
+            # SpriteStudio would otherwise sit there until someone pressed the
+            # key. add_auto() is a no-op while autoreload is off, so this arms on
+            # the first Shift+R and re-registers on every reload (Ren'Py empties
+            # the watch list each time). A project skipped below is watched too,
+            # so renaming its .sspj reloads and converts it.
             sspj_dir = os.path.dirname(sspj_path)
-            latest_source_mtime = import_marker.latest_source_mtime(sspj_dir)
             renpy.loader.add_auto(sspj_dir.replace("\\", "/"))
             for src in import_marker.iter_source_files(sspj_dir):
                 renpy.loader.add_auto(src.replace("\\", "/"))
 
-            # 2. Conversion is needed unless the last run both SUCCEEDED and
-            # covered the current sources. Output mtimes alone cannot tell: the
-            # converter writes .ssab files before textures and returns an error
-            # part-way through on failure, leaving fresh-looking partial output
-            # behind. So a success marker recording the source snapshot is
-            # written only on ConverterResult.Success (below), and only that
-            # marker skips reconversion (see ss_renpy.import_marker).
+            if owner is not None:
+                print(f"[SpriteStudio] Skipped {_shown(sspj_path)}: {_shown(project_out_dir)} "
+                      f"is converted from {_shown(owner)}, and one folder holds one "
+                      "project. Rename one of the two .sspj files.")
+                skipped.append(sspj_path)
+                continue
+
+            # 2. Conversion is needed unless the last run SUCCEEDED from what
+            # this run would convert: this .sspj, its sources as they are now,
+            # and this converter. Output mtimes alone cannot tell: the converter
+            # writes .ssab files before textures and returns an error part-way
+            # through on failure, leaving fresh-looking partial output behind.
+            # So a success marker recording that snapshot is written only on
+            # ConverterResult.Success (below), and only a marker equal to it
+            # skips reconversion (see ss_renpy.import_marker).
+            current = import_marker.snapshot(sspj_path, converter_version)
             needs_conversion = True
             if os.path.exists(project_out_dir):
                 has_files = False
@@ -161,25 +187,12 @@ init -10 python:
                     if any(not f.startswith('.') for f in files):
                         has_files = True
                         break
-                if has_files:
-                    marker = import_marker.read_marker(project_out_dir)
-                    if marker is not None and marker >= latest_source_mtime:
-                        needs_conversion = False
+                if has_files and import_marker.read_marker(project_out_dir) == current:
+                    needs_conversion = False
 
             if needs_conversion:
                 print(f"[SpriteStudio] Auto-converting project: {project_name} ...")
-                
-                if converter is None:
-                    try:
-                        converter = SsConverter()
-                    except (OSError, ImportError, AttributeError) as e:
-                        # ctypes.CDLL raises OSError on a missing/wrong-ABI
-                        # libssconverter; a present-but-stale library missing an
-                        # expected export raises AttributeError from _declare().
-                        # Disable cleanly instead of a traceback at launch.
-                        print(f"[SpriteStudio] Auto-importer disabled: could not load native converter ({e})")
-                        return
-                
+
                 def on_log(msg):
                     print(f"  [Converter] {msg.strip()}")
 
@@ -192,10 +205,10 @@ init -10 python:
                 res = converter.get_result()
                 if res == ConverterResult.Success:
                     print(f"[SpriteStudio] Successfully converted {project_name}.")
-                    # Stamp the source snapshot this conversion covered; the
+                    # Stamp the snapshot this conversion was made from; the
                     # freshness check above only trusts this marker.
                     try:
-                        import_marker.stamp(project_out_dir, latest_source_mtime)
+                        import_marker.stamp(project_out_dir, current)
                     except OSError as e:
                         print(f"[SpriteStudio] Warning: could not write import marker ({e})")
                     changed = True
@@ -219,7 +232,7 @@ init -10 python:
                 print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
                       "newly imported packs may not appear in the browser until restart.")
 
-        _ss_import_notice(imported, failed)
+        _ss_import_notice(imported, failed, skipped)
 
         # The watch is only live in autoreload mode, and the key that turns that
         # on is a TOGGLE with nothing on screen to say which side it is on

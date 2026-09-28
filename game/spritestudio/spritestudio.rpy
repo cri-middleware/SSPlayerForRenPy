@@ -1094,6 +1094,9 @@ init -10 python:
             if predicting:
                 renpy.display.predict.predicting = True
 
+    # Instance packs already reported missing: said once, not by every player.
+    _SS_MISSING_PACKS = set()
+
     def _ss_renpy_pack_reader(base_rel):
         """Reader for external-instance packs: <base_rel>/<pack>.ssab via loader."""
         def read(pack_name):
@@ -1101,7 +1104,17 @@ init -10 python:
                 else (pack_name + ".ssab")
             try:
                 return _ss_open_bytes(rel)
-            except Exception:
+            except Exception as e:
+                # The Instance parts that play this pack draw nothing, and the
+                # rest of the animation plays on — so without a word here, the
+                # only sign is a character missing a limb. The converter writes
+                # every instance pack beside the one that uses it; this happens
+                # when a pack is moved or copied away from its folder.
+                if config.developer and rel not in _SS_MISSING_PACKS:
+                    _SS_MISSING_PACKS.add(rel)
+                    print("[SSPlayer] instance pack %r not found at %s, so the "
+                          "parts that play it draw nothing. Keep a converted "
+                          "folder's .ssab files together. [%s]" % (pack_name, rel, e))
                 return b""
         return read
 
@@ -1111,11 +1124,34 @@ init -10 python:
     # and cached; rebuilt each dev reload (the library lives in one init block).
     _SS_INDEX = None
 
+    def _ss_index_roots():
+        """Gamedir-relative folders the index scans: `ss_asset_dirs` when the
+        game sets it, else ss_assets/ and the folder `ss_output_dir` sends the
+        auto importer's output to. Without the second, moving the output — as the
+        import guide shows how to — leaves every pack the importer writes out of
+        the browser and the startup summary."""
+        dirs = getattr(store, "ss_asset_dirs", None)
+        if dirs:
+            return [r.replace("\\", "/").strip("/") for r in dirs]
+        roots = ["ss_assets"]
+        out = getattr(store, "ss_output_dir", None)
+        if out:
+            # basedir-relative, as the importer reads it; outside game/ it is
+            # nothing Ren'Py can load, so there is nothing to list either (on
+            # another Windows drive there is not even a relative path to it).
+            try:
+                rel = os.path.relpath(os.path.join(config.basedir, out),
+                                      config.gamedir).replace("\\", "/").strip("/")
+            except ValueError:
+                rel = ".."
+            if rel not in (".", "..") and not rel.startswith("../"):
+                roots.append(rel)
+        return roots
+
     def _ss_get_index():
         global _SS_INDEX
         if _SS_INDEX is None:
-            roots = [r.replace("\\", "/").strip("/")
-                     for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+            roots = _ss_index_roots()
             rels = []
             for p in renpy.list_files():
                 rp = p.replace("\\", "/")
@@ -1136,8 +1172,7 @@ init -10 python:
         global _SS_INDEX
         if _SS_INDEX is None:
             return
-        roots = [r.replace("\\", "/").strip("/")
-                 for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+        roots = _ss_index_roots()
         current = set()
         for p in renpy.list_files():
             rp = p.replace("\\", "/")
