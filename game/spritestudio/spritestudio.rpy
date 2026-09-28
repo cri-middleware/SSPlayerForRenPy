@@ -1296,7 +1296,17 @@ init -10 python:
             self.aliases = aliases or {}
             self._duplicatable = True
             self._available_animations = None
-            
+            # The arguments as given, which is what __eq__ compares. Kept apart
+            # from the live fields because ss_set_speed_scale() and the other
+            # setters change those, and a player is still the one its screen
+            # asked for after them.
+            self._spec = (ssab,
+                          tuple(animation) if isinstance(animation, list) else animation,
+                          sprites_subdir, loop, speed, sub_frame, frame_skip, size,
+                          attachments, on_user_data, on_signal, on_audio,
+                          on_animation_finished, on_animation_looped,
+                          on_animation_started, aliases, audio_channel, kwargs)
+
             self._initial_animation = animation
             self._initial_loop = loop
 
@@ -1456,6 +1466,26 @@ init -10 python:
             state["_xform_cache"] = {}         # pure render cache; rebuild lazily
             state["_box_rect"] = False         # re-read from the pack; see _canvas_box
             return state
+
+        # -- equality: what lets a screen keep its player -------------------
+        def __eq__(self, o):
+            """Equal to a player built from the same arguments.
+
+            A screen evaluates `add SSPlayer(...)` again on every interaction,
+            and keeps the player it already shows only when the new one is equal
+            to the one it was given before — the comparison Ren'Py's own
+            displayables implement too. Without it, each line of dialogue swaps
+            in a new player that starts over at frame 0, so an animation in a
+            screen never gets past its first moments while the game is read,
+            nor past its first frame while it is skipped."""
+            if not self._equals(o):
+                return False
+            spec = getattr(self, "_spec", None)   # absent in older saves
+            return spec is not None and spec == getattr(o, "_spec", None)
+
+        # Hashing stays by identity. Two copies of one image are equal, and
+        # _audio_live must still hold each of them while it sounds.
+        __hash__ = object.__hash__
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):

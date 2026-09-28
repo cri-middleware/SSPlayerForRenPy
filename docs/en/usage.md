@@ -17,6 +17,8 @@ screen demo():
     add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
 ```
 
+A screen runs again on every interaction, and keeps the player it is showing for as long as the arguments stay the same, so the animation plays on from line to line. Change an argument — `animation=` from a screen variable, say — and the screen gets a new player that starts from the top.
+
 ### Basic Parameters
 - **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
 - **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display.
