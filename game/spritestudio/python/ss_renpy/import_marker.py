@@ -5,8 +5,9 @@ The dev-only auto-importer (``auto_importer.rpy``) converts each
 must skip a project whose output is already current. It cannot judge that from
 output mtimes alone: the converter writes ``.ssab`` files before textures and
 can error part-way, leaving fresh-looking *partial* output. So a success marker
-(``.ss_import_ok``) records the source snapshot the last SUCCESSFUL conversion
-covered, and only that marker is trusted to skip reconversion.
+(``.ss_import_ok``) records what the last SUCCESSFUL conversion was made from —
+which ``.sspj``, the newest mtime among its sources, and the converter's
+version — and only a marker that matches all three skips reconversion.
 
 This module is the single home for that convention so every producer agrees on
 it: the auto-importer (which writes it after its own conversions) and
@@ -20,6 +21,7 @@ headless CLI — share one implementation, mirroring ``events`` / ``ssab_meta``.
 
 from __future__ import annotations
 
+import json
 import os
 
 # Hidden (dot-prefixed) so it never lists as a pack and the source/output walks
@@ -84,25 +86,42 @@ def plan_outputs(sspj_paths, out_dir: str):
     return plan
 
 
+def snapshot(sspj_path: str, converter_version: str) -> dict:
+    """What a conversion of ``sspj_path`` right now would be made from.
+
+    A marker equal to this skips reconversion; anything else — a source edited,
+    or put back to an older copy, another ``.sspj`` now owning the folder, a
+    converter from a different build — reconverts. The converter is part of it
+    because an update can change what the same sources convert into without
+    changing the pack's schema version.
+    """
+    return {
+        "sspj": os.path.abspath(sspj_path),
+        "sources": latest_source_mtime(os.path.dirname(sspj_path)),
+        "converter": converter_version,
+    }
+
+
 def read_marker(out_dir: str):
-    """The source mtime the last successful import of ``out_dir`` covered, or
-    ``None`` when the marker is missing or corrupt (either way: reconvert)."""
+    """The :func:`snapshot` the last successful import of ``out_dir`` recorded,
+    or ``None`` when the marker is missing, corrupt, or in an older format
+    (each of which means: reconvert)."""
     try:
-        with open(os.path.join(out_dir, MARKER_NAME), "r") as fh:
-            return float(fh.read().strip())
+        with open(os.path.join(out_dir, MARKER_NAME), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
     except (OSError, ValueError):
         return None
+    return data if isinstance(data, dict) else None
 
 
-def stamp(out_dir: str, source_mtime: float) -> None:
-    """Record ``source_mtime`` in ``out_dir``'s marker as the snapshot it was
-    converted from.
+def stamp(out_dir: str, snap: dict) -> None:
+    """Record ``snap`` (a :func:`snapshot`) in ``out_dir``'s marker as what it
+    was converted from.
 
-    ``repr()`` keeps full float precision; ``"%f"`` truncates to 6 decimals and
-    rounds down about half the time on sub-microsecond mtimes, which would make
-    :func:`read_marker` compare stale and reconvert on every launch. Raises
-    ``OSError`` if the marker cannot be written (the caller decides whether that
-    is fatal).
+    JSON writes a float with ``repr()`` precision, so the mtime reads back equal;
+    a truncating format (``"%f"``) would compare stale and reconvert on every
+    launch. Raises ``OSError`` if the marker cannot be written (the caller
+    decides whether that is fatal).
     """
-    with open(os.path.join(out_dir, MARKER_NAME), "w") as fh:
-        fh.write(repr(source_mtime))
+    with open(os.path.join(out_dir, MARKER_NAME), "w", encoding="utf-8") as fh:
+        json.dump(snap, fh)

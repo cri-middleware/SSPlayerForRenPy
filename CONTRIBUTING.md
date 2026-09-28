@@ -71,7 +71,7 @@ Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `f
 ```bash
 ./scripts/run-tests.sh           # only=mask,events / skip= / list=yes / verbose=yes
 ```
-Every engine-independent layer has a headless check in `tools/`, in plain CPython: the playback core and events, geometry and mesh and PartColor, instance and effect and shape and slot stepping, masks, part overrides and shaders, the `.ssab` identifier gate and the resolver, the auto importer's output plan, and the test doubles themselves.
+Every engine-independent layer has a headless check in `tools/`, in plain CPython: the playback core and events, geometry and mesh and PartColor, instance and effect and shape and slot stepping, masks, part overrides and shaders, the `.ssab` identifier gate and the resolver, the auto importer's output plan and freshness marker, and the test doubles themselves.
 
 **Run them through the runner, never as a bare loop over the tools.** Both prerequisites are gitignored, so a fresh clone has neither — `game/spritestudio/libs/` and `game/ss_assets/` — and a tool that cannot find its pack prints `SKIP` and **exits 0**. The runner checks both up front, refuses to start a partial suite, and treats a surviving `SKIP` as a failure; sub-case skips are counted beside the passes. Nothing runs the suite on a pull request, so this is the gate: run it after touching anything under `game/spritestudio/python/`. Renaming a property on `SSInternalPlayer` is the case to watch — no compiler catches the call sites, so it surfaces only as an `AttributeError` from whichever tool still reads the old name. Lint from the repository root with `renpy-sdk/renpy.sh . lint`; `scripts/fetch-renpy-sdk.sh` (`.ps1` on Windows) fetches `renpy-sdk/` first.
 
@@ -169,7 +169,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ```bash
 ./scripts/run-tests.sh           # only=mask,events / skip= / list=yes / verbose=yes
 ```
-エンジン非依存の各層には、素の CPython で動くヘッドレスチェックが `tools/` にあります（再生コア・イベント、ジオメトリ / メッシュ / PartColor、インスタンス・エフェクト・シェイプ・スロット送り、マスク、パートオーバーライドとシェーダー、`.ssab` 識別子ゲートとリゾルバ、自動インポーターの出力先の割り当て、そしてテストダブル自身）。
+エンジン非依存の各層には、素の CPython で動くヘッドレスチェックが `tools/` にあります（再生コア・イベント、ジオメトリ / メッシュ / PartColor、インスタンス・エフェクト・シェイプ・スロット送り、マスク、パートオーバーライドとシェーダー、`.ssab` 識別子ゲートとリゾルバ、自動インポーターの出力先の割り当てと鮮度マーカー、そしてテストダブル自身）。
 
 **必ずランナー経由で実行してください。ツールを素でループさせてはいけません。** 前提となる `game/spritestudio/libs/` と `game/ss_assets/` はどちらも git 管理外で、クリーンなクローンには存在しません。パックを見つけられなかったツールは `SKIP` と表示して **exit 0** します。ランナーは両方を先に確認し、欠けていれば部分実行を拒否し、それでも残った `SKIP` は失敗として扱います（サブケースのスキップは PASS と並べて数えます）。プルリクエストではスイートは走らないので、`game/spritestudio/python/` 配下を触ったらこれがゲートです。特に注意すべきは `SSInternalPlayer` のプロパティ改名で、呼び出し側を検出するコンパイラが無いため、古い名前を読んでいるツールの `AttributeError` としてしか現れません。lint はリポジトリのルートで `renpy-sdk/renpy.sh . lint` を実行します。`renpy-sdk/` は先に `scripts/fetch-renpy-sdk.sh`（Windows は `.ps1`）で取得してください。
 

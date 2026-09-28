@@ -97,7 +97,7 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
     }
     # Stamp the auto-importer freshness marker so a dev-mode launch does not
     # reconvert this pack (cli_convert.py itself writes no marker). Non-fatal.
-    & $pythonCmd (Join-Path $RootDir "tools\ss_stamp_import.py") $workDir $Dest
+    & $pythonCmd (Join-Path $RootDir "tools\ss_stamp_import.py") $sspjPath $Dest
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "deploy-examples.ps1: could not stamp import marker for $ProjectName (will reconvert on next dev launch)"
     }
