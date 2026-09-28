@@ -1094,6 +1094,9 @@ init -10 python:
             if predicting:
                 renpy.display.predict.predicting = True
 
+    # Instance packs already reported missing: said once, not by every player.
+    _SS_MISSING_PACKS = set()
+
     def _ss_renpy_pack_reader(base_rel):
         """Reader for external-instance packs: <base_rel>/<pack>.ssab via loader."""
         def read(pack_name):
@@ -1101,7 +1104,17 @@ init -10 python:
                 else (pack_name + ".ssab")
             try:
                 return _ss_open_bytes(rel)
-            except Exception:
+            except Exception as e:
+                # The Instance parts that play this pack draw nothing, and the
+                # rest of the animation plays on — so without a word here, the
+                # only sign is a character missing a limb. The converter writes
+                # every instance pack beside the one that uses it; this happens
+                # when a pack is moved or copied away from its folder.
+                if config.developer and rel not in _SS_MISSING_PACKS:
+                    _SS_MISSING_PACKS.add(rel)
+                    print("[SSPlayer] instance pack %r not found at %s, so the "
+                          "parts that play it draw nothing. Keep a converted "
+                          "folder's .ssab files together. [%s]" % (pack_name, rel, e))
                 return b""
         return read
 
