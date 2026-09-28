@@ -21,7 +21,7 @@ A screen runs again on every interaction, and keeps the player it is showing for
 
 ### Basic Parameters
 - **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
-- **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display.
+- **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display. Lint (`renpy.sh . lint`, or **Check Script (Lint)** in the launcher) reports it before that for a player in an `image` or a `define`, along with a `.ssab` path that does not load and an image attribute that names no animation.
 - **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays. `0` is a synonym for `-1` (infinite), not "do not play".
 - **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
 - **`size` (Optional)**: A `(w, h)` box (or a single number for a square) to use in place of the canvas, with the animation's origin at the box's centre. You rarely need it — see below.

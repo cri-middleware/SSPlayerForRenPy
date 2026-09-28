@@ -1553,6 +1553,14 @@ init -10 python:
                         target_anim = self.aliases[attr]
                     elif attr in self._get_available_animations():
                         target_anim = attr
+                    elif getattr(args, "lint", False) and self._get_available_animations():
+                        # Lint asks by calling this and treats a raise as "no
+                        # such image" — the answer `show ringo typo` gets when
+                        # it runs, from _choose_attributes. Without it every
+                        # attribute passes lint. A pack whose names cannot be
+                        # read has its path reported by _ss_lint instead.
+                        raise Exception("%r is not an animation or alias of %s"
+                                        % (attr, self.ssab))
 
             # Return a copy configured for the chosen animation.
             rv = SSPlayer(
@@ -3768,6 +3776,69 @@ init -10 python:
 
     # Backwards-compatible alias for the original public class name.
     SpriteStudioDisplayable = SSPlayer
+
+    def _ss_lint():
+        """Lint the players lint can reach — every image, and every player held
+        in a `define`d variable — for a .ssab that is not loadable and for an
+        animation (the starting one, or an alias's) that the pack does not have.
+
+        Lint finds a missing file by predicting what an image loads, and a
+        player loads nothing until it is first drawn, so without this both
+        mistakes pass lint and surface only at that first draw."""
+        import difflib
+
+        def report(msg):
+            # Ren'Py's own reporter, so `lint --error-code` fails on these too.
+            # Its location is whichever statement lint checked last, so clear it.
+            try:
+                renpy.lint.report_node = None
+                renpy.lint.report("%s", msg)
+            except Exception:
+                print("")
+                print(msg)
+
+        found = []
+
+        def collect(label):
+            def visit(d):
+                if isinstance(d, SSPlayer):
+                    found.append((label, d))
+            return visit
+
+        for name, d in list(renpy.display.image.images.items()):
+            try:
+                d.visit_all(collect("image " + " ".join(name)))
+            except Exception:
+                pass
+        for name, v in list(vars(store).items()):
+            if not name.startswith("_") and isinstance(v, SSPlayer):
+                found.append((name, v))
+
+        seen = set()
+        for label, p in found:
+            if id(p) in seen:
+                continue
+            seen.add(id(p))
+            if not renpy.loader.loadable(p._ssab_relpath):
+                report("%s uses file '%s', which is not loadable."
+                       % (label, p._ssab_relpath))
+                continue
+            have = p._get_available_animations()
+            if not have:
+                continue
+            wanted = []
+            for a in [p._initial_animation] + list(p.aliases.values()):
+                wanted.extend(a if isinstance(a, (list, tuple)) else [a])
+            for a in wanted:
+                if a and a not in have:
+                    close = difflib.get_close_matches(a, have, n=3)
+                    report("%s plays animation %r, which '%s' does not have.%s"
+                           % (label, a, p._ssab_relpath,
+                              (" Did you mean: %s?" % ", ".join(close)) if close else ""))
+
+    config.lint_hooks[:] = [_f for _f in config.lint_hooks
+                            if getattr(_f, "__name__", "") != "_ss_lint"]
+    config.lint_hooks.append(_ss_lint)
 
 
 # Register the SS Audio channel pool. register_channel() is only allowed during
