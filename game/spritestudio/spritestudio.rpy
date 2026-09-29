@@ -1294,7 +1294,6 @@ init -10 python:
             self.ssab = ssab
             self.kwargs = kwargs
             self.aliases = aliases or {}
-            self._duplicatable = True
             self._available_animations = None
             # The arguments as given, which is what __eq__ compares. Kept apart
             # from the live fields because ss_set_speed_scale() and the other
@@ -1465,7 +1464,15 @@ init -10 python:
             state["_audio_channels_used"] = set()
             state["_xform_cache"] = {}         # pure render cache; rebuild lazily
             state["_box_rect"] = False         # re-read from the pack; see _canvas_box
+            state["_drawn_frame"] = None       # a frame number of this session only
             return state
+
+        def after_setstate(self):
+            # Saves from earlier releases hold _duplicatable = True on every
+            # player. Kept, it makes a loaded `add ringo` show a copy that the
+            # script's ringo.ss_* calls never reach.
+            if self.__dict__.get("_duplicatable") is True:
+                del self.__dict__["_duplicatable"]
 
         # -- equality: what lets a screen keep its player -------------------
         def __eq__(self, o):
@@ -1529,19 +1536,20 @@ init -10 python:
             return tuple(required)
 
         def _duplicate(self, args):
-            """Spawn a FRESH SSPlayer instance for `show ssplayer [attributes]`.
+            """A fresh player for an image's attributes; this one otherwise.
 
-            Always returns a NEW copy (never `self`), even with no attributes.
-            The registered template must never be the instance actually shown:
-            Ren'Py marks a shown displayable unique (``_duplicatable = False``)
-            via ``_unique()``, so if `show <tag>` (no attribute) returned the
-            template itself, the template would be poisoned and every later
-            `show <tag> <attr>` would call ``_duplicate`` on a now-non-
-            duplicatable template and get `self` back — never switching the
-            animation. (Otherwise SSCharacter lip-flap silently breaks: a
-            character shown with no attribute, then switched to ``talk``, keeps
-            replaying the idle template.)"""
-            if not getattr(self, "_duplicatable", True):
+            Ren'Py resolves `show ringo` / `show ringo talk` by calling this on
+            the registered image with the attributes (``args``), whether or not
+            the displayable is duplicatable — that is the copy each show gets,
+            and the registered template is never itself on screen. Every other
+            caller asks with ``args=None`` to copy a displayable once per use,
+            and a player is not copied for that, following Ren'Py's own rule
+            that a displayable whose state the game manipulates is never
+            copied: `add ringo` in a screen and `show expression ringo at left`
+            show the very player the script's `ringo.ss_*` calls reach. (Those
+            callers only ask a duplicatable displayable, and SSPlayer leaves
+            Ren'Py's default of not being one, so this is the backstop.)"""
+            if args is None:
                 return self
 
             # Start from the template's original spec (may be a list = sequence),
@@ -1598,7 +1606,6 @@ init -10 python:
             # The template's box, not the chosen animation's: every attribute of
             # one image then lays out on the same canvas.
             rv._box_anim = getattr(self, "_box_anim", None)
-            rv._duplicatable = False
             return rv
 
         # -- lazy native setup ---------------------------------------------
@@ -2082,10 +2089,20 @@ init -10 python:
         def render(self, width, height, st, at):
             self._ensure()
 
+            # One player can be drawn from several places at once — every
+            # particle of a SnowBlossom, or `show expression ringo` under two
+            # tags — and each place hands it its own st. Only the first render
+            # of a frame moves the animation; the others draw that same frame.
+            # Otherwise each later st, being smaller, reads as a re-show and
+            # restarts the animation on every frame.
+            frame = renpy.config.frames
+            again = getattr(self, "_drawn_frame", None) == frame
+            self._drawn_frame = frame
+
             # Detect re-show (time went backwards) -> restart from the top
             # (resets the animation sequence too).
             core = self._core
-            if self._last_st is not None and st < self._last_st:
+            if not again and self._last_st is not None and st < self._last_st:
                 self._saved_frame = -1.0
                 self._start_initial(start_frame=0)
                 # A re-show restarts the animation, and that setup_animation
@@ -2102,8 +2119,9 @@ init -10 python:
                 self._prewarm_textures(width, height, st, at)
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
-            dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
-            self._last_st = st
+            dt = 0.0 if (again or self._last_st is None) else max(0.0, st - self._last_st)
+            if not again:
+                self._last_st = st
             # Advance the engine-independent core (it takes milliseconds) and get
             # this frame's z-ordered, world-space draw plan.
             _tg = time.perf_counter() if SS_PROFILE else 0.0

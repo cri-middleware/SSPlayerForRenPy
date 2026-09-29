@@ -19,6 +19,8 @@ screen demo():
 
 A screen runs again on every interaction, and keeps the player it is showing for as long as the arguments stay the same, so the animation plays on from line to line. Change an argument — `animation=` from a screen variable, say — and the screen gets a new player that starts from the top.
 
+A player you keep in a variable is the one on screen: after `default ringo = SSPlayer(...)`, `add ringo` in a screen and `show expression ringo` both show that player, so `ringo.ss_*` calls — overrides, attachments, `ss_set_animation()` — reach what is drawn. Placed in several spots at once (two tags, or the particles of a `SnowBlossom`), it draws the same frame in each.
+
 ### Basic Parameters
 - **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
 - **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display. Lint (`renpy.sh . lint`, or **Check Script (Lint)** in the launcher) reports it before that for a player in an `image` or a `define`, along with a `.ssab` path that does not load and an image attribute that names no animation.

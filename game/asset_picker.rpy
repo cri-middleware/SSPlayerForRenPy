@@ -83,16 +83,9 @@ init python:
             renpy.notify("Preview failed: %s" % (e,))
 
     def ss_picker_play(anim):
-        """Switch the previewed animation by REBUILDING the SSPlayer with `anim`
-        as its initial animation.
-
-        An in-place `player.ss_play(anim)` looks like it does nothing here: the
-        anim-button click restarts the screen interaction, which resets the
-        displayable's shown-time, and SSPlayer.render() reads that as a re-show
-        and calls `_start_initial()` — replaying the player's ORIGINAL initial
-        animation and clobbering the switch (so it snaps back to e.g. attack1).
-        Rebuilding makes `anim` the new initial, so the re-show path replays the
-        animation we actually want. (Same proven path as picking a pack.)"""
+        """Switch the previewed animation by rebuilding the SSPlayer with `anim`
+        as its initial animation — the path picking a pack takes, so the
+        preview starts `anim` from its first frame."""
         rel = store.ss_picker_pack
         if not rel:
             return
