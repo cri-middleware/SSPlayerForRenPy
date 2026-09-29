@@ -15,8 +15,9 @@ init python:
     from ss_renpy import snippet as _ss_snippet
 
     def _ss_browser_escape(s):
-        # Ren'Py text treats { and [ as tags / substitutions — escape for display
-        # (the file export keeps the raw, correct text).
+        # For text written into a screen statement, where Ren'Py reads { as a
+        # tag and [ as a substitution. A value substituted in with [x!q] needs
+        # neither: its [ is not substituted again, and !q quotes its {.
         return str(s).replace("{", "{{").replace("[", "[[")
 
     def _ss_browser_detail(name):
@@ -199,7 +200,7 @@ screen ss_browser():
                 spacing 8
                 xsize 480
                 if ss_browser_pack:
-                    text "[ss_browser_pack]" size 20
+                    text "[ss_browser_pack!q]" size 20
                     frame:
                         xsize 470
                         ysize 360
@@ -258,7 +259,7 @@ screen ss_browser():
                     textbutton "One-shot" action SetVariable("ss_browser_role", "oneshot") text_size 13
                     textbutton "UI" action SetVariable("ss_browser_role", "ui") text_size 13
                 if ss_browser_pack and ss_browser_role:
-                    $ _snip_disp = _ss_browser_escape(_ss_browser_snippet(ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]))
+                    $ _snip_disp = _ss_browser_snippet(ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"])
                     frame:
                         xsize 360
                         ysize 360
@@ -266,7 +267,7 @@ screen ss_browser():
                         viewport:
                             mousewheel True
                             draggable True
-                            text "[_snip_disp]" size 13
+                            text "[_snip_disp!q]" size 13
                     textbutton "Save snippet -> ss_snippets.txt" action Function(_ss_browser_export, ss_browser_pack, ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]) text_size 13
                 else:
                     text "Pick a pack, then a role." size 13
