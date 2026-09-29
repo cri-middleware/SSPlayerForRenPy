@@ -43,15 +43,43 @@ init python:
             return path
         return path if rel.startswith("..") else rel.replace("\\", "/")
 
+    # The application id SpriteStudio registers on macOS. A SpriteStudio that
+    # is already running takes no request to open another project — `open`
+    # returns success and nothing loads — so the button has to know.
+    _SS_SPRITESTUDIO_ID = "jp.co.webtech.SpriteStudio"
+
+    def _ss_spritestudio_running():
+        """Whether SpriteStudio is running (macOS). Asks by application id,
+        which needs no automation permission; any failure reads as no."""
+        try:
+            r = _ss_subprocess.run(
+                ["osascript", "-e", 'application id "%s" is running' % _SS_SPRITESTUDIO_ID],
+                capture_output=True, text=True, timeout=5)
+            return r.stdout.strip() == "true"
+        except Exception:
+            return False
+
     def _ss_browser_open_source(sspj):
-        """Open `sspj` with the app the system opens .sspj files with."""
+        """Open `sspj` with the app the system opens .sspj files with.
+
+        On macOS a SpriteStudio already running keeps its project, so it is
+        brought forward and the path goes to the clipboard, with a notice to
+        open it from SpriteStudio's File menu."""
+        name = _ss_os.path.basename(sspj)
         try:
             if _ss_sys.platform.startswith("win"):
                 _ss_os.startfile(sspj)
-            else:
-                _ss_subprocess.Popen(["open", sspj])
+                return
+            running = _ss_spritestudio_running()
+            r = _ss_subprocess.run(["open", sspj], capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                renpy.notify("Could not open %s (%s)" % (name, r.stderr.strip() or r.returncode))
+            elif running:
+                _ss_browser_copy(sspj)
+                renpy.notify("SpriteStudio is already open and keeps its project: open %s "
+                             "from its File menu (the path is on the clipboard)." % name)
         except Exception as e:
-            renpy.notify("Could not open %s (%s)" % (_ss_os.path.basename(sspj), e))
+            renpy.notify("Could not open %s (%s)" % (name, e))
 
     def _ss_browser_copy(text):
         """Put `text` on the system clipboard, where the platform allows it.
