@@ -62,10 +62,11 @@ class FramePlan:
     events: list = field(default_factory=list)
     world_matrices: list = field(default_factory=list)
     hidden_parts: Optional[set] = None
-    # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) or None when this
-    # frame has no live mask writer. The render layer rasterizes its writers into
-    # an offscreen coverage bitmap; individual masked items reference it (or, for
-    # an instance child, the parent's) via ``MeshPart.mask``.
+    # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) for the whole
+    # instance tree, or None when nothing in it masks. It can hold no writer
+    # while a part that draws inside a mask still references it. The render layer
+    # rasterizes its writers into an offscreen coverage bitmap; masked items
+    # reference it via ``MeshPart.mask``.
     frame_mask: object = None
 
 
@@ -157,9 +158,8 @@ class SSInternalPlayer:
             # index). Cached once: the mask layer reads the static mask flags
             # from it every frame, and it is also the name->index source.
             self._part_infos = self._meta.parts()
-            # Pack-static: build_frame_mask can only ever produce writers from
-            # these parts, so a pack with none skips the whole per-frame coverage
-            # walk (mask.py: the classification is by PartInfo).
+            # Pack-static: collect_writers can only ever produce writers from
+            # these parts (mask.py: the classification is by PartInfo).
             self._has_mask_writers = any(p.is_mask_writer
                                          for p in self._part_infos)
             # Second corruption gate: a zeroed/garbage buffer can PARSE as a
@@ -232,6 +232,20 @@ class SSInternalPlayer:
         # child players the Instance rig builds see a fully constructed owner.
         self._acquire_textures(self._own_images)
         self._build_rigs()
+        # Pack-static, over the whole tree below: whether anything can write a
+        # mask, and whether anything draws inside one. A tree with neither skips
+        # the mask walk; one with only the latter still runs it, because a part
+        # that draws inside a mask is hidden where there is none.
+        writes, inside = (self._instances.mask_uses()
+                          if self._instances is not None else (False, False))
+        self._tree_writes = self._has_mask_writers or writes
+        self._tree_draws_inside = inside or any(
+            p.visible_inside_mask for p in self._part_infos)
+
+    def mask_uses(self):
+        """``(writes, draws_inside)`` for this animation's tree — see the end of
+        the constructor. Read by the owner's Instance rig."""
+        return self._tree_writes, self._tree_draws_inside
 
     # -- texture / pack resolution -------------------------------------
     def texture_path(self, texture_hash: int) -> str:
@@ -527,27 +541,24 @@ class SSInternalPlayer:
         except Exception:
             return None
 
-    def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None,
-                  clip_out=None):
+    def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
         """Pose to an externally-stepped ``frame_no`` (no head advance) and return
         this player's z-ordered, world-space draw items.
 
         Used when this player is an Instance child: the parent's instance slot
         already computed ``frame_no``; we evaluate that frame and recurse into
-        this child's own Instance/Effect parts. ``inherited`` is the composed
-        mask context from the calling Instance part —
-        our parts compose their own settings on
-        top of it and sample the *root's* coverage. Never raises: a draw-plan
-        failure returns Normal/Mesh-only, and a native/parse failure returns an
-        empty list rather than propagating into the parent's frame build."""
+        this child's own Instance/Effect parts. ``inherited`` is the
+        :class:`mask.MaskInherit` the calling Instance part hands down: our parts
+        take their numbers from the root's tree, sample the root's coverage,
+        and our writers go back up in it. Never raises: a draw-plan failure
+        returns Normal/Mesh-only, and a native/parse failure returns an empty
+        list rather than propagating into the parent's frame build."""
         try:
-            return self._render_at(frame_no, looped, dt_s, sub_frame, inherited,
-                                   clip_out)
+            return self._render_at(frame_no, looped, dt_s, sub_frame, inherited)
         except Exception:
             return []
 
-    def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None,
-                   clip_out=None):
+    def _render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
         rt = self._rt
         sf = self._sub_frame if sub_frame is None else sub_frame
         disp = frame_no if sf else math.floor(frame_no)
@@ -559,7 +570,7 @@ class SSInternalPlayer:
             return collect_ordered(rt, fd, self._instances, self._effects,
                                    frame_no, dt_s, looped, sf,
                                    part_infos=self._part_infos,
-                                   inherited=inherited, clip_out=clip_out)
+                                   inherited=inherited)
         except Exception:
             fb2 = rt.get_frame_data_view(disp)
             return ([("mesh", mp)
@@ -733,30 +744,20 @@ class SSInternalPlayer:
             # values, and each used to decode the vector again.
             bulk_parts = framedata.bulk_part_states(fd)
             hidden = framedata.hidden_parts(fd, bulk_parts)
-            # Build the coverage *before* collect_ordered steps any slot — both
-            # read the transient SoA, which an instance/effect step invalidates.
-            # An owner with no writers of its own still needs a coverage when an
-            # instance child carries clipping writers out into it,
-            # so build one whenever a clipping child exists and let collect_ordered
-            # fill the bubbled writers; it is dropped below if nothing lands.
-            has_clip_children = (self._instances is not None
-                                 and self._instances.has_clipping_children())
-            if self._has_mask_writers or has_clip_children:
-                try:
-                    frame_mask = mask.build_frame_mask(
-                        rt, fd, self._part_infos, bulk_parts,
-                        allow_empty=not self._has_mask_writers)
-                    if frame_mask is not None and has_clip_children:
-                        frame_mask.note_pending_clip_ranks(
-                            self._instances.pending_clip_ranks(frame_mask.rank_of))
-                except Exception:
-                    frame_mask = None
+            # One coverage for the whole instance tree, filled while
+            # collect_ordered walks it: each animation reads its own writers
+            # there, before it steps any slot of its own.
+            tree = (mask.MaskTree(self._tree_writes)
+                    if self._tree_writes or self._tree_draws_inside else None)
             try:
                 items = collect_ordered(rt, fd, self._instances, self._effects,
                                         frame_no, dt_s, looped, self._sub_frame,
                                         part_infos=self._part_infos,
-                                        frame_mask=frame_mask,
-                                        parts=bulk_parts)
+                                        tree=tree, parts=bulk_parts)
+                if tree is not None:
+                    frame_mask = tree.frame_mask
+                    frame_mask.finalize()
+                    mask.settle(items, frame_mask)
             except Exception:
                 # collect_ordered may have stepped slots and invalidated the
                 # zero-copy view; re-evaluate for a clean Normal/Mesh-only frame.
@@ -766,13 +767,6 @@ class SSInternalPlayer:
                               rt, framedata.parse(fb2))]
                          if fb2 else [])
                 frame_mask = None
-            if frame_mask is not None:
-                # Re-derive bbox / meta / scope now that collect_ordered has folded
-                # in any carried-out clipping writers; drop a coverage that never
-                # gathered a single writer.
-                frame_mask.finalize()
-                if frame_mask.count == 0:
-                    frame_mask = None
         self._last_hidden = hidden
 
         return FramePlan(items=items, frame_no=frame_no, disp=disp,

@@ -360,6 +360,120 @@ init -10 python:
     _SS_USER_NEEDS_TEXEL = set()
     _SS_USER_NEEDS_CELL = set()
 
+    def _ss_mask_replay_variables(n, tiled):
+        """Declarations of the mask-replay shader for ``n`` writers. The tiled
+        variant adds ``u_mask_tiles`` = (tiles across, tiles down)."""
+        return """
+            uniform sampler2D tex0;
+            uniform sampler2D tex1;     // coverage bitmap
+            attribute vec4 a_position;  // for the coverage UV (Live2D-style)
+            attribute vec2 a_tex_coord;
+            attribute vec4 a_ss_color;  // PER-VERTEX PartColor (not uniform)
+            attribute vec3 a_ss_varg;   // PER-VERTEX PartColor varg
+            varying vec2 v_tex_coord;
+            varying vec4 v_ss_color;
+            varying vec3 v_ss_varg;
+            uniform vec2 u_mask_origin;  // screen px of bbox min
+            uniform vec2 u_mask_size;    // bbox size (world px)
+            uniform vec2 u_cov_size;     // coverage tex px (nearest snap)
+            uniform int u_mask_count;
+            uniform float u_mask_seq;        // position in the tree
+            uniform float u_mask_inside;     // 1 = draw inside, 0 = outside
+            uniform vec4 u_mask_meta[%d];    // (open, close, op_invert, _)
+            varying vec2 v_mask_uv;
+        """ % n + ("uniform vec2 u_mask_tiles;\n" if tiled else "")
+
+    def _ss_mask_replay_fragment(n, tiled):
+        """The mask-replay fragment for ``n`` writers, then the partcolor math.
+
+        Everything that references a uniform/varying MUST live in this
+        fragment_NNN part — Ren'Py only declares variables it sees *here* (it
+        does not scan fragment_functions), so the replay is inlined.
+        SINGLE-TAP per tile by design: a multi-tap AA grid would nest with the
+        replay loop (ES 1.00 / GLSL 120 must unroll constant loops), too large
+        for reliable Metal/ANGLE compilation. The mask edge is antialiased by
+        SS_MASK_COVERAGE_SUPERSAMPLE instead.
+
+        This mirrors Godot's ss_library_fs.glsl ss_mask_passes(), float-emulated
+        (no integer bitwise ops in ES 1.00): writer ``i`` lives in tile i/24, at
+        channel (i%24)/8, bit i%8 (mod/exp2 test). The two OPs replay into
+        SEPARATE accumulators (parity for invert, counter for increment) and the
+        coverage is their union — see mask.mask_passes, the CPU authority this
+        must reproduce. The tiled variant samples each tile once, up front: the
+        tiles map the same bbox, so the same UV lands in each at its own offset.
+        """
+        if tiled:
+            sample = """
+                    vec2 tpx = u_cov_size / u_mask_tiles;   // one tile, in px
+                    vec2 tuv = (floor(uv * tpx) + 0.5) / tpx;
+                    vec4 cov0 = texture2D(tex1, tuv / u_mask_tiles);
+                    vec4 cov1 = texture2D(tex1, (tuv + vec2(1.0, 0.0)) / u_mask_tiles);
+                    vec4 cov2 = texture2D(tex1, (tuv + vec2(0.0, 1.0)) / u_mask_tiles);
+                    vec4 cov3 = texture2D(tex1, (tuv + vec2(1.0, 1.0)) / u_mask_tiles);
+            """
+            pick = """
+                        float tile = floor(fi / 24.0);
+                        fi -= tile * 24.0;
+                        vec4 cov = (tile < 0.5) ? cov0 : (tile < 1.5) ? cov1
+                                 : (tile < 2.5) ? cov2 : cov3;
+            """
+        else:
+            sample = """
+                    vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
+                    vec4 cov = texture2D(tex1, cuv);
+            """
+            pick = ""
+        return """
+            {
+                bool inside = u_mask_inside > 0.5;
+                vec2 uv = v_mask_uv;
+                if (u_mask_count <= 0 || uv.x < 0.0 || uv.x > 1.0 ||
+                    uv.y < 0.0 || uv.y > 1.0) {
+                    // No writer, or bbox-outside == no writer covers it: a
+                    // visible-inside target discards, an outside target draws.
+                    if (inside) discard;
+                } else {
+                    // snap to texel centre -> nearest sampling (the coverage
+                    // packs writer bits; linear filtering would corrupt the
+                    // per-bit decode).
+""" + sample + """
+                    // Two accumulators, never one: invert and increment do not
+                    // commute, so a shared one would make the coverage depend on
+                    // writer order.
+                    float parity = 0.0;   // mask_influence == 1: odd overlap
+                    float count = 0.0;    // mask_influence == 0: any overlap
+                    for (int i = 0; i < %d; i++) {
+                        if (i >= u_mask_count) break;
+                        vec4 m = u_mask_meta[i];
+                        if (!(u_mask_seq > m.x && u_mask_seq < m.y))
+                            continue;   // outside the writer's interval
+                        float fi = float(i);
+""" % n + pick + """
+                        float chan = floor(fi / 8.0);
+                        float b = fi - chan * 8.0;
+                        float cval = (chan < 0.5) ? cov.r
+                                   : (chan < 1.5) ? cov.g : cov.b;
+                        float byte = floor(cval * 255.0 + 0.5);
+                        if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
+                            continue;
+                        if (m.z > 0.5) parity = 1.0 - parity;     // invert
+                        else count += 1.0;                       // incr
+                    }
+                    bool masked = parity >= 0.5 || count >= 0.5; // union
+                    if (masked != inside) discard;               // inside/outside rule
+                }
+            }
+            // ss.partcolor colour math (premultiplied in/out), PER-VERTEX
+            // (v_ss_color/v_ss_varg) so a gradient / shape fill masks with its
+            // true per-vertex colour — not a flat average.
+            vec4 p = texture2D(tex0, v_tex_coord);
+            vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
+            vec3 wp = mix(vec3(1.0), s, v_ss_varg.z);
+            vec3 rgb = s * v_ss_varg.x + wp * v_ss_color.rgb * v_ss_varg.y;
+            float a = p.a * v_ss_color.a;
+            gl_FragColor = vec4(rgb * a, a);
+        """
+
     # PartColor shader, used by the
     # "mesh" backend. The CPU reference is framedata.eval_partcolor — keep this
     # GLSL in step with it. Registered defensively: older Ren'Py without
@@ -471,7 +585,7 @@ init -10 python:
             renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
 
         # -- Mask / clipping (coverage-bitmap hybrid) ------------------------
-        # Two shaders implement the spec's stencil over an offscreen coverage:
+        # These shaders implement the spec's stencil over an offscreen coverage:
         #
         #   ss.mask_write   — rasterizes ONE writer into the coverage bitmap.
         #       Cuts out by the part's texture alpha vs the per-frame threshold
@@ -485,15 +599,21 @@ init -10 python:
         #       a_position (Live2D's mask pattern), samples the coverage (nearest,
         #       emulated by snapping the
         #       UV to texel centres — Ren'Py has no per-texture nearest filter),
-        #       replays the writers in draw order and discards by the inside/
-        #       outside test. All in float math: Ren'Py shaders are GLSL ES 1.00
-        #       / 120 with NO integer bitwise ops, so `~s & 0xFF` -> `255 - s`,
-        #       `s + 1 & 0xFF` -> `mod(s + 1, 256)`, and the bit test is
-        #       `mod(floor(byte / exp2(b)), 2)`. The loop is a constant 24 with an
-        #       early `break` (ES 1.00 forbids uniform/while loop bounds).
+        #       replays the writers that hold their bit at the target's position
+        #       and discards by the inside/outside test. All in float math:
+        #       Ren'Py shaders are GLSL ES 1.00 / 120 with NO integer bitwise
+        #       ops, so the bit test is `mod(floor(byte / exp2(b)), 2)`. The loop
+        #       is a constant 24 with an early `break` (ES 1.00 forbids
+        #       uniform/while loop bounds).
         #
-        # mask_meta[i] = (writer_rank, op_invert, is_clipping, _); the writer's
-        # bit is the array index i itself (channel i/8, bit i%8).
+        #   ss.partcolor_mask_tiled — the same replay for up to 96 writers, the
+        #       coverage split into 2 or 2x2 tiles. Drawn only when a tree has
+        #       more than 24, so the common case keeps the small uniform array
+        #       and the short unrolled loop.
+        #
+        # mask_meta[i] = (open, close, op_invert, _): the writer holds its bit
+        # for a target whose tree position lies strictly between open and
+        # close. Its bit is the array index i itself (channel i/8, bit i%8).
         try:
             renpy.register_shader(
                 "ss.mask_write",
@@ -516,102 +636,19 @@ init -10 python:
                     gl_FragColor = vec4(u_bit_color, 1.0);
                 """,
             )
-            renpy.register_shader(
-                "ss.partcolor_mask",
-                variables="""
-                    uniform sampler2D tex0;
-                    uniform sampler2D tex1;     // coverage bitmap
-                    attribute vec4 a_position;  // for the coverage UV (Live2D-style)
-                    attribute vec2 a_tex_coord;
-                    attribute vec4 a_ss_color;  // PER-VERTEX PartColor (not uniform)
-                    attribute vec3 a_ss_varg;   // PER-VERTEX PartColor varg
-                    varying vec2 v_tex_coord;
-                    varying vec4 v_ss_color;
-                    varying vec3 v_ss_varg;
-                    uniform vec2 u_mask_origin;  // screen px of bbox min
-                    uniform vec2 u_mask_size;    // bbox size (world px)
-                    uniform vec2 u_cov_size;     // coverage tex px (nearest snap)
-                    uniform int u_mask_count;
-                    uniform float u_mask_rank;
-                    uniform float u_mask_inside;     // 1 = draw inside, 0 = outside
-                    uniform vec4 u_mask_meta[24];    // (rank, op_invert, clip, _)
-                    varying vec2 v_mask_uv;
-                """,
-                vertex_300="""
-                    v_tex_coord = a_tex_coord;
-                    v_ss_color = a_ss_color;
-                    v_ss_varg = a_ss_varg;
-                    v_mask_uv = (a_position.xy - u_mask_origin) / u_mask_size;
-                """,
-                # NOTE: everything that references a uniform/varying MUST live in
-                # this fragment_NNN part — Ren'Py only declares variables it sees
-                # *here* (it does not scan fragment_functions), so the replay is
-                # inlined. SINGLE-TAP by design: a multi-tap AA grid would nest
-                # with the 24-iteration replay loop (ES 1.00 / GLSL 120 must
-                # unroll constant loops) — up to 96 unrolled iterations, each
-                # with a texture sample, too large for reliable Metal/ANGLE
-                # compilation. The mask edge is antialiased by
-                # SS_MASK_COVERAGE_SUPERSAMPLE instead.
-                # This mirrors Godot's ss_library_fs.glsl ss_mask_passes() exactly,
-                # float-emulated (no integer bitwise ops in ES 1.00): the writer's
-                # bit lives in coverage channel i/8 bit i%8 (mod/exp2 test). The
-                # two OPs replay into SEPARATE accumulators (parity for invert,
-                # counter for increment) and the coverage is their union — see
-                # mask.mask_passes, the CPU authority this must reproduce.
-                fragment_300="""
-                    if (u_mask_count > 0) {
-                        bool inside = u_mask_inside > 0.5;
-                        vec2 uv = v_mask_uv;
-                        if (uv.x < 0.0 || uv.x > 1.0 ||
-                            uv.y < 0.0 || uv.y > 1.0) {
-                            // bbox-outside == no writer covers it: a
-                            // visible-inside target discards, an outside target
-                            // draws.
-                            if (inside) discard;
-                        } else {
-                            // snap to texel centre -> nearest sampling (the
-                            // coverage packs writer bits; linear filtering would
-                            // corrupt the per-bit decode).
-                            vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
-                            vec4 cov = texture2D(tex1, cuv);
-                            // Two accumulators, never one: invert and increment
-                            // do not commute, so a shared one would make the
-                            // coverage depend on writer order.
-                            float parity = 0.0;   // mask_influence == 1: odd overlap
-                            float count = 0.0;    // mask_influence == 0: any overlap
-                            for (int i = 0; i < 24; i++) {
-                                if (i >= u_mask_count) break;
-                                vec4 m = u_mask_meta[i];
-                                bool clip = m.z > 0.5;
-                                bool is_active = clip ? (u_mask_rank > m.x)
-                                                      : (u_mask_rank < m.x);
-                                if (!is_active) continue;
-                                float fi = float(i);
-                                float chan = floor(fi / 8.0);
-                                float b = fi - chan * 8.0;
-                                float cval = (chan < 0.5) ? cov.r
-                                           : (chan < 1.5) ? cov.g : cov.b;
-                                float byte = floor(cval * 255.0 + 0.5);
-                                if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
-                                    continue;
-                                if (m.y > 0.5) parity = 1.0 - parity;     // invert
-                                else count += 1.0;                       // incr
-                            }
-                            bool masked = parity >= 0.5 || count >= 0.5; // union
-                            if (masked != inside) discard;               // inside/outside rule
-                        }
-                    }
-                    // ss.partcolor colour math (premultiplied in/out), PER-VERTEX
-                    // (v_ss_color/v_ss_varg) so a gradient / shape fill masks with
-                    // its true per-vertex colour — not a flat average.
-                    vec4 p = texture2D(tex0, v_tex_coord);
-                    vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
-                    vec3 wp = mix(vec3(1.0), s, v_ss_varg.z);
-                    vec3 rgb = s * v_ss_varg.x + wp * v_ss_color.rgb * v_ss_varg.y;
-                    float a = p.a * v_ss_color.a;
-                    gl_FragColor = vec4(rgb * a, a);
-                """,
-            )
+            for _name, _n, _tiled in (("ss.partcolor_mask", 24, False),
+                                      ("ss.partcolor_mask_tiled", 96, True)):
+                renpy.register_shader(
+                    _name,
+                    variables=_ss_mask_replay_variables(_n, _tiled),
+                    vertex_300="""
+                        v_tex_coord = a_tex_coord;
+                        v_ss_color = a_ss_color;
+                        v_ss_varg = a_ss_varg;
+                        v_mask_uv = (a_position.xy - u_mask_origin) / u_mask_size;
+                    """,
+                    fragment_300=_ss_mask_replay_fragment(_n, _tiled),
+                )
         except Exception as e:
             renpy.log("ss: register_shader(ss.mask_*) failed: %r" % (e,))
 
@@ -2319,6 +2356,11 @@ init -10 python:
             for tag, payload in items:
                 if tag == "mesh":
                     ap = payload.mask
+                    if (SS_ENABLE_MASK and ap is not None and ap.visible_inside
+                            and ap.frame_mask.count == 0):
+                        # Draws only inside a mask, and the tree has none this
+                        # frame: nothing of it shows.
+                        continue
                     cov = (cov_by_id.get(id(ap.frame_mask))
                            if ap is not None and cov_by_id else None)
                     if cov is not None:
@@ -2615,6 +2657,11 @@ init -10 python:
                 if key in seen:
                     continue
                 seen.add(key)
+                if fm.capped:
+                    self._warn_once("mask-capped",
+                                    "more than %d live mask writers in one "
+                                    "animation; the rest are ignored"
+                                    % mask.MAX_WRITERS)
                 try:
                     cov = self._build_coverage(fm, ox, oy, st, at, width, height)
                     if cov is not None:
@@ -2635,28 +2682,35 @@ init -10 python:
             SS_MASK_COVERAGE_MAX_DIM); each writer is drawn with ``ss.mask_write``
             under *additive* blend so disjoint bits OR together.
             Built in bbox-local pixel space so the target's ``v_mask_uv`` (derived
-            from a_position via the same bbox) indexes it directly."""
+            from a_position via the same bbox) indexes it directly. Past 24
+            writers the same size splits into tiles (``FrameMask.tiles``), each
+            mapping the whole bbox at a lower resolution."""
             if _SS_Mesh2 is None or not fm.writers:
                 return None
             bx, by = fm.bmin
             bw, bh = fm.bsize
+            tx, ty = fm.tiles
             ss = max(1.0, SS_MASK_COVERAGE_SUPERSAMPLE)
-            cw = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bw * ss))))
-            ch = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bh * ss))))
-            sx, sy = cw / bw, ch / bh             # world -> coverage px
+            tw = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bw * ss))) // tx)
+            th = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bh * ss))) // ty)
+            cw, ch = tw * tx, th * ty
+            sx, sy = tw / bw, th / bh             # world -> tile px
             add_prop = _ss_gl_blend("add")
             cov = renpy.Render(cw, ch)
             for w in fm.writers:
+                tile, bit = divmod(w.bit, mask.TILE_WRITERS)
                 try:
-                    self._blit_writer(cov, w, bx, by, sx, sy, cw, ch,
-                                      st, at, width, height, add_prop)
+                    self._blit_writer(cov, w, bit, bx, by, sx, sy,
+                                      (tile % tx) * tw, (tile // tx) * th,
+                                      cw, ch, st, at, width, height, add_prop)
                 except Exception:
                     pass   # one bad writer must not blank the whole coverage
             return (cov, cw, ch)
 
-        def _blit_writer(self, cov, w, bx, by, sx, sy, cw, ch,
-                         st, at, width, height, add_prop):
-            """Additively rasterize one writer's bit into the coverage ``cov``."""
+        def _blit_writer(self, cov, w, bit, bx, by, sx, sy, tile_x, tile_y,
+                         cw, ch, st, at, width, height, add_prop):
+            """Additively rasterize one writer's ``bit`` into the coverage
+            ``cov``, in the tile whose top-left is (``tile_x``, ``tile_y``)."""
             pts = w.positions
             npts, ntri = len(pts), len(w.triangles)
             if npts < 3 or ntri < 1:
@@ -2685,8 +2739,8 @@ init -10 python:
             g_app = geom.append
             i_app = idx.append
             for (x, y) in pts:
-                g_app((x - bx) * sx)
-                g_app((y - by) * sy)
+                g_app((x - bx) * sx + tile_x)
+                g_app((y - by) * sy + tile_y)
             if textured:
                 attrs = []
                 a_app = attrs.append
@@ -2709,8 +2763,8 @@ init -10 python:
             if textured and _SS_TEXTURE_WRAP is not None:
                 wr.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
             wr.add_shader("ss.mask_write")
-            chan = w.bit // 8
-            val = float(1 << (w.bit % 8)) / 255.0
+            chan = bit // 8
+            val = float(1 << (bit % 8)) / 255.0
             bc = [0.0, 0.0, 0.0]
             bc[chan] = val
             wr.add_uniform("u_bit_color", (bc[0], bc[1], bc[2]))
@@ -2723,7 +2777,8 @@ init -10 python:
             cov.blit(wr, (0, 0))
 
         def _mask_meta_uniform(self, fm):
-            """Flat ``vec4[MAX_WRITERS]`` of (rank, op_invert, is_clipping, 0).
+            """Flat ``vec4[24]`` — ``vec4[96]`` past 24 writers, for the tiled
+            shader — of (open, close, op_invert, 0).
 
             The writer's bit is its index, so it is not stored. Padded to the
             full array length the shader declares. Depends only on the mask, so
@@ -2731,12 +2786,13 @@ init -10 python:
             than once per target."""
             vals = []
             v_app = vals.append
-            for (rank, _bit, op, clip) in fm.meta:
-                v_app(float(rank))
+            for (w_open, w_close, _bit, op) in fm.meta:
+                v_app(float(w_open))
+                v_app(float(w_close))
                 v_app(float(op))
-                v_app(float(clip))
                 v_app(0.0)
-            need = mask.MAX_WRITERS * 4
+            need = (mask.MAX_WRITERS if fm.count > mask.TILE_WRITERS
+                    else mask.TILE_WRITERS) * 4
             diff = need - len(vals)
             if diff > 0:
                 vals.extend([0.0] * diff)
@@ -2776,15 +2832,19 @@ init -10 python:
                 if _SS_TEXTURE_WRAP is not None:
                     rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
                 rv.mesh = mesh
-                rv.add_shader("ss.partcolor_mask")
                 fm = ap.frame_mask
+                if fm.count > mask.TILE_WRITERS:
+                    rv.add_shader("ss.partcolor_mask_tiled")
+                    rv.add_uniform("u_mask_tiles", tuple(float(t) for t in fm.tiles))
+                else:
+                    rv.add_shader("ss.partcolor_mask")
                 bx, by = fm.bmin
                 bw, bh = fm.bsize
                 rv.add_uniform("u_mask_origin", (ox + bx, oy + by))
                 rv.add_uniform("u_mask_size", (bw, bh))
                 rv.add_uniform("u_cov_size", (float(cw), float(ch)))
                 rv.add_uniform("u_mask_count", len(fm.meta))
-                rv.add_uniform("u_mask_rank", float(ap.rank))
+                rv.add_uniform("u_mask_seq", float(ap.seq))
                 rv.add_uniform("u_mask_inside", 1.0 if ap.visible_inside else 0.0)
                 rv.add_uniform("u_mask_meta", mask_meta)
                 self._apply_blend(rv, mp)

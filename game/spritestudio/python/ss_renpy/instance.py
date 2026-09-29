@@ -39,8 +39,8 @@ def display_frame(frame_no: float, sub_frame: bool):
 
 
 def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
-                    parent_looped, sub_frame, part_infos=None, frame_mask=None,
-                    inherited=None, parts=None, clip_out=None):
+                    parent_looped, sub_frame, part_infos=None, tree=None,
+                    inherited=None, parts=None):
     """Z-ordered renderables for ``rt`` at the current frame.
 
     Returns a list of ``("mesh", MeshPart)`` / ``("fx", EffectBatch)`` in draw
@@ -49,18 +49,16 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     Effect parts are stepped. Shared by the root player and Instance-child
     players (both ``SSInternalPlayer``, via :meth:`SSInternalPlayer.render_at`).
 
-    Masking: the root's ``update`` supplies
-    ``part_infos`` + ``frame_mask`` and each Normal/Mesh target is stamped via
-    :func:`mask.attach_target`. An Instance part hands its sub-animation the
-    **composed** context from :func:`mask.inherit_for` (``mask_influence``
-    by AND, ``visible_inside_mask`` by OR), which arrives here as ``inherited``
-    when this player *is* that sub-animation; its parts then compose their own
-    settings on top. The sub-animation is therefore not judged as one opaque
-    blob by the Instance part alone — a caller cannot force "inside" onto a child
-    that opted out, nor the reverse. Composing on the way down (rather than
-    patching the child's output afterwards) is what makes nesting chain for
-    free. Children never build coverage: ``frame_mask`` stays ``None`` for them
-    and they sample the root's, exactly as the spec / Godot port require.
+    Masking: the root passes ``tree`` (a :class:`mask.MaskTree`), a
+    sub-animation gets ``inherited`` (a :class:`mask.MaskInherit` that carries
+    the same tree). Every animation takes its numbers from the tree's running
+    ``seq`` in draw order, and a sub-animation's are taken in its Instance
+    part's place, so the numbers order the whole tree as it is drawn. Each
+    Normal/Mesh target is stamped with its number and the flags its Instance
+    part handed down (:func:`mask.target_mask`). This animation's own writers
+    get their interval on that sequence and go up to the caller in
+    ``inherited.writers`` — mapped into the caller's space at each level — or
+    straight into the root's coverage.
 
     ``parts`` is an optional pre-decoded :func:`framedata.bulk_part_states` array
     the caller already holds for this frame.
@@ -68,8 +66,33 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     # Materialize first: this fully drains the transient SoA buffers into copied
     # MeshParts / matrices, so the child/effect Brain calls below are safe.
     plan = list(framedata.iter_draw_plan(rt, fd, parts))
-    do_mask = part_infos is not None and (frame_mask is not None
-                                          or inherited is not None)
+    if inherited is not None:
+        tree = inherited.tree
+    do_mask = part_infos is not None and tree is not None
+    if do_mask:
+        if inherited is not None:
+            ctx = (inherited.influence, inherited.visible_inside)
+            start_seq = inherited.start_seq
+            writers_out = inherited.writers
+        else:
+            ctx, start_seq = mask.ROOT_CONTEXT, -1.0
+            writers_out = tree.frame_mask.writers
+        # Read from the same SoA as the plan, before any slot below steps.
+        own_writers = mask.collect_writers(rt, fd, part_infos, parts, ctx[0])
+        do = framedata._draw_order_array(fd)
+        rank_of = {p: r for r, p in enumerate(do)}
+        seq_of = [0.0] * len(do)
+        numbered = 0          # ranks below this have their seq
+
+        def number_to(rank):
+            # Number every slot up to ``rank`` that has none yet, in order. A
+            # slot the plan never yields (a pure mask, a skipped kind) still
+            # takes its number, so a writer there has a position too.
+            nonlocal numbered
+            while numbered <= rank:
+                seq_of[numbered] = tree.seq
+                tree.seq += 1.0
+                numbered += 1
     out = []
     # Part indices whose slot the draw-plan walk below steps this frame. The
     # Brain omits Hide'd Instance/Effect parts from draw_order,
@@ -83,40 +106,27 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
         if tag == "mesh":
             mp = item[1]
             if do_mask:
-                mask.attach_target(mp, frame_mask, part_infos, inherited)
+                p = mp.part_index
+                rank = rank_of.get(p)
+                pinfo = part_infos[p] if 0 <= p < len(part_infos) else None
+                if rank is not None and pinfo is not None:
+                    number_to(rank)
+                    mp.mask = mask.target_mask(tree, pinfo, ctx, seq_of[rank])
             out.append(("mesh", mp))
-            # When an owner asked for them (``clip_out`` — only ever passed to a
-            # sub-animation, never the root), record this player's clipping
-            # writers so the owner can bubble them into its coverage.
-            # Collected regardless of the inherited influence: a
-            # mask_influence==0 instance still carries its child's writers out,
-            # onto the union plane (the owner composes the OP). A pure mask closes
-            # within the child, so only clipping writers (which apply to *higher*
-            # ranks) carry out.
-            if clip_out is not None and part_infos is not None:
-                cpi = (part_infos[mp.part_index]
-                       if 0 <= mp.part_index < len(part_infos) else None)
-                if cpi is not None and cpi.is_clipping:
-                    cps = fd.Parts(mp.part_index)
-                    cmv = cps.Mask() if cps is not None else 0.0
-                    if cmv:                       # mask == 0 → writes nothing
-                        clip_out.append(mask.clip_writer_desc(mp, cmv))
         elif tag == "instance":
             _, p, mat, alpha, hidden = item
             stepped_inst.add(p)
-            # Composed BEFORE the child is built, so the child stamps its own
-            # parts with the effective context and the parent has nothing left to
-            # patch afterwards.
-            child_ctx = (mask.inherit_for(p, part_infos, frame_mask, inherited)
-                         if do_mask else None)
-            # Only the coverage owner (the root, which holds ``frame_mask``)
-            # gathers a child's clipping writers to carry out;
-            # deeper players carry nothing (single-stage, matching the reference
-            # ports — ForGodot bdfbf02 / ForWeb 7fd8275).
-            child_clip = [] if frame_mask is not None else None
+            # Handed down BEFORE the child is built, so the child stamps its own
+            # parts and the parent has nothing left to patch afterwards.
+            child_ctx = None
+            if do_mask:
+                rank = rank_of.get(p)
+                pinfo = part_infos[p] if 0 <= p < len(part_infos) else None
+                if rank is not None and pinfo is not None:
+                    number_to(rank)
+                    child_ctx = mask.child_context(tree, pinfo, seq_of[rank])
             child_items = (instances.collect(
-                p, parent_frame, dt, parent_looped, sub_frame, child_ctx,
-                clip_out=child_clip)
+                p, parent_frame, dt, parent_looped, sub_frame, child_ctx)
                 if instances is not None else [])
             if hidden:
                 continue   # stepped for timing above; just not drawn
@@ -130,16 +140,12 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
                 else:  # "fx"
                     out.append(("fx",
                                 transform_effect_batch(payload, mat, alpha)))
-            # Bubble the visible child's clipping writers into this coverage,
-            # ranked at the instance part and transformed by its slot matrix, with
-            # the OP composed against the influence handed down.
-            if child_clip and frame_mask is not None and part_infos is not None:
-                rank = frame_mask.rank_of.get(p)
-                pin = (part_infos[p] if 0 <= p < len(part_infos) else None)
-                if rank is not None and pin is not None:
-                    inh_infl = mask.compose(mask.ROOT_CONTEXT, pin)[0]
-                    for desc in child_clip:
-                        frame_mask.add_bubbled(desc, mat, rank, inh_infl)
+            # The visible child's writers — already on their intervals — go up
+            # with this animation's, placed by the Instance part's matrix. A
+            # hidden child's never get here: it masks nothing.
+            if child_ctx is not None:
+                for w in child_ctx.writers:
+                    writers_out.append(mask.transform_writer(w, mat))
         elif tag == "effect":
             _, p, mat, alpha, hidden = item
             stepped_fx.add(p)
@@ -150,6 +156,19 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
             for eb in batches:
                 out.append(("fx", eb))
         # "skip": unsupported kind (Text / Nines / Mask) — ignored
+    if do_mask:
+        number_to(len(seq_of) - 1)
+        # A pure mask holds its bit from the start of its own animation up to
+        # itself, so it never reaches what the caller draws next; a clipping
+        # writer from itself to the end of the tree, so one written in a
+        # sub-animation keeps clipping the caller's later parts, at any depth.
+        for w in own_writers:
+            s = seq_of[w.rank]
+            if w.is_clipping:
+                w.open, w.close = s, mask.SEQ_END
+            else:
+                w.open, w.close = start_seq, s
+            writers_out.append(w)
     # Leftover pass: step every Instance/Effect slot the Brain dropped from
     # draw_order (Hide'd parts), so independent children keep their own clock
     # advancing instead of freezing. Stepping is driven from the full slot set,
@@ -264,7 +283,7 @@ class InstanceRig:
             ch.sub.reset_slots()
 
     def collect(self, part_index, parent_frame, dt, parent_looped, sub_frame,
-                inherited=None, clip_out=None):
+                inherited=None):
         """Step one instance part and return the child's child-space renderables.
 
         Returns ``[]`` when the part has no resolvable child or the slot reports
@@ -276,11 +295,9 @@ class InstanceRig:
         Brain drops from ``draw_order``). On an ``EventInstance`` edge the child
         is (re)started so its own start events fire.
 
-        ``inherited`` is the composed mask context for the sub-animation,
-        passed straight through to the
-        child's ``render_at`` so it can stamp its own parts. ``clip_out``, when
-        given, is the list the child appends its own clipping-writer descriptors
-        to so the caller can carry them out into its coverage.
+        ``inherited`` is the :class:`mask.MaskInherit` the Instance part hands
+        the sub-animation, passed straight through to the child's ``render_at``
+        so it can number and stamp its own parts and hand its writers back.
         """
         ch = self._children.get(part_index)
         if ch is None:
@@ -303,32 +320,18 @@ class InstanceRig:
                                    sub_frame)
             return []
         return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame,
-                                inherited, clip_out=clip_out)
+                                inherited)
 
-    def has_clipping_children(self) -> bool:
-        """True if any instance child's sub-animation statically holds a clipping
-        writer part — so its masks can carry out into this owner.
-        Lets the owner decide up front whether to build a coverage at all."""
+    def mask_uses(self):
+        """``(writes, draws_inside)`` over every sub-animation below, recursively
+        — whether any of them holds a writer part, or a part that draws inside a
+        mask. Pack-static; the owner folds it into its own once per build."""
+        writes = inside = False
         for ch in self._children.values():
-            pinfos = getattr(ch.sub, "_part_infos", None) or ()
-            if any(getattr(pi, "is_clipping", False) for pi in pinfos):
-                return True
-        return False
-
-    def pending_clip_ranks(self, rank_of):
-        """Owner-draw-order ranks of the instance parts whose sub-animation holds
-        a clipping writer, so the owner can pre-count their carry-over in the
-        mask scope (``FrameMask.note_pending_clip_ranks``) before the children are
-        stepped and the writers actually gathered."""
-        out = []
-        for pidx, ch in self._children.items():
-            r = rank_of.get(pidx)
-            if r is None:
-                continue
-            pinfos = getattr(ch.sub, "_part_infos", None) or ()
-            if any(getattr(pi, "is_clipping", False) for pi in pinfos):
-                out.append(r)
-        return out
+            w, i = ch.sub.mask_uses()
+            writes = writes or w
+            inside = inside or i
+        return writes, inside
 
     def part_indices(self):
         """Part indices of every Instance slot this rig owns — the full set to

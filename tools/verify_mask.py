@@ -6,19 +6,20 @@ Exercises the engine-independent half of masking without a GUI:
   * **static classification** — that ``SsabMeta`` reads the four mask flags and
     the ``is_pure_mask`` / ``is_mask_writer`` / ``is_clipping`` helpers match the
     spec's three formulas on the ``overall/Mask`` fixture;
-  * **per-frame coverage build** — that :func:`ss_renpy.mask.build_frame_mask`
-    finds the writers, assigns unique bits (≤ 24), drops ``mask == 0`` writers,
-    produces finite geometry + a finite, positive bbox, and parallel
-    ``mask_meta``; and that drawing targets are stamped (``MeshPart.mask``) with
-    the right rank / polarity;
+  * **per-frame coverage build** — that the player's frame walk finds the
+    writers, assigns unique bits (≤ :data:`ss_renpy.mask.MAX_WRITERS`), drops
+    writers that write nothing (``mask == 0``, or a hidden ``draw_as_mask``
+    part), produces finite geometry + a finite, positive bbox, well-formed
+    intervals and parallel ``mask_meta``; and that drawing targets are stamped
+    (``MeshPart.mask``) in draw order;
   * **replay reference** — that :func:`ss_renpy.mask.mask_passes` (the CPU twin
-    of the GLSL ``ss_mask_passes``) honours scope, OP, polarity and
-    bbox-outside handling, and that the two OPs replay into separate
-    accumulators so coverage never depends on writer order;
-  * **instance composition** — that :func:`ss_renpy.mask.inherit_for` /
-    :func:`ss_renpy.mask.attach_target` compose a caller's context with each
-    sub-animation part's own settings (``mask_influence`` by AND,
-    ``visible_inside_mask`` by OR), chaining through nesting.
+    of the GLSL ``ss_mask_passes``) honours the writers' intervals, OP,
+    polarity, the no-writer and bbox-outside cases, and that the two OPs replay
+    into separate accumulators so coverage never depends on writer order;
+  * **instance composition** — that an Instance part hands its sub-animation
+    only its own ``mask_influence`` / ``visible_inside_mask`` (one level, never
+    what it received), that each part combines them with its own (AND / OR),
+    and that a part that draws inside a mask is tested even with no writer.
 
 Actual GL2 coverage rendering / replay still needs a GUI run (Shift+B browser).
 
@@ -98,13 +99,15 @@ def check_pack(lib, path: str, anim=None) -> bool:
 
         frames_with_mask = 0
         max_writers = 0
+        last_fm = None
         for fr in range(total + 1):
             plan = pl.update(0.0 if fr == 0 else dt)
             fm = plan.frame_mask
-            if fm is None:
+            if fm is None or fm.count == 0:
                 continue
             frames_with_mask += 1
             max_writers = max(max_writers, fm.count)
+            last_fm = fm
 
             # bits + part indices unique; cap respected.
             bits = [w.bit for w in fm.writers]
@@ -113,6 +116,9 @@ def check_pack(lib, path: str, anim=None) -> bool:
             _check(len(pidx) == len(set(pidx)), "writer parts not unique", fails)
             _check(fm.count <= mask.MAX_WRITERS, "writer count over cap", fails)
             _check(len(fm.meta) == fm.count, "mask_meta not parallel", fails)
+            n_tiles = fm.tiles[0] * fm.tiles[1]
+            _check(n_tiles * mask.TILE_WRITERS >= fm.count,
+                   "too few coverage tiles for the writers", fails)
 
             # bbox finite + positive.
             _check(all(math.isfinite(v) for v in (*fm.bmin, *fm.bsize)),
@@ -122,8 +128,14 @@ def check_pack(lib, path: str, anim=None) -> bool:
             for i, w in enumerate(fm.writers):
                 _check(0.0 < w.mask_value <= 255.0,
                        f"writer {w.part_index} mask out of range", fails)
-                _check(w.bit == i and fm.meta[i][1] == w.bit,
+                _check(w.bit == i and fm.meta[i] == (w.open, w.close, w.bit,
+                                                     1 if w.op_invert else 0),
                        f"writer {w.part_index} bit/meta mismatch", fails)
+                # A pure mask closes at itself, a clipping writer at the end.
+                _check(w.open < w.close and (w.close == mask.SEQ_END)
+                       == w.is_clipping,
+                       f"writer {w.part_index} interval {w.open}..{w.close}",
+                       fails)
                 _check(all(math.isfinite(x) and math.isfinite(y)
                            for (x, y) in w.positions),
                        f"writer {w.part_index} geometry not finite", fails)
@@ -145,20 +157,38 @@ def check_pack(lib, path: str, anim=None) -> bool:
                            f"writer {w.part_index} texture {w.texture_hash} "
                            "unresolved", fails)
 
-            # Drawing targets that were stamped: rank present, polarity matches
-            # the static flag, and the rank is a real draw-order slot.
+            # Stamped targets: the tree's coverage, numbered in draw order, and
+            # none left that no writer reaches unless it draws inside.
+            last_seq = -1.0
             for tag, mp in plan.items:
                 if tag != "mesh" or mp.mask is None:
                     continue
                 ap = mp.mask
                 _check(ap.frame_mask is fm, "target references foreign coverage",
                        fails)
-                _check(ap.rank in fm.rank_of.values(), "target rank not a slot",
+                _check(ap.seq > last_seq, "targets not numbered in draw order",
+                       fails)
+                last_seq = ap.seq
+                _check(ap.visible_inside or fm.covers(ap.seq),
+                       f"part {mp.part_index} stamped but no writer reaches it",
                        fails)
 
         print(f"    frames_with_mask={frames_with_mask}/{total + 1}  "
               f"max_writers={max_writers}")
         _check(frames_with_mask > 0, "no frame produced a coverage", fails)
+
+        # A hidden draw_as_mask part still has its Mask batch in the plan; it
+        # must write nothing all the same.
+        dam = [w.part_index for w in (last_fm.writers if frames_with_mask else ())
+               if parts[w.part_index].draw_as_mask]
+        if dam:
+            pi = dam[0]
+            pl.set_part_visibility_override(names[pi], True)
+            plan = pl.update(dt)
+            fm = plan.frame_mask
+            _check(fm is not None and all(w.part_index != pi for w in fm.writers),
+                   f"hidden draw_as_mask part {names[pi]!r} still writes", fails)
+            pl.clear_part_visibility_override(names[pi])
     finally:
         pl.close()
 
@@ -170,11 +200,13 @@ def check_pack(lib, path: str, anim=None) -> bool:
 # --------------------------------------------------------------------------
 # 3. mask_passes — CPU reference of the replay shader
 # --------------------------------------------------------------------------
-def _fm(meta, max_mask_rank=-1, min_clip_rank=None):
-    """A bare FrameMask carrying just the replay metadata (no geometry)."""
-    fm = mask.FrameMask(writers=[None] * len(meta), meta=meta,
-                        max_mask_rank=max_mask_rank, min_clip_rank=min_clip_rank)
-    return fm
+E = mask.SEQ_END
+
+
+def _fm(meta):
+    """A bare FrameMask carrying just the replay metadata (no geometry):
+    ``meta`` is ``(open, close, bit, op_invert)`` per writer."""
+    return mask.FrameMask(writers=[None] * len(meta), meta=meta)
 
 
 def check_replay() -> bool:
@@ -186,46 +218,60 @@ def check_replay() -> bool:
         s = set(bits)
         return lambda b: b in s
 
-    # No writers -> always draws.
+    # No writers: nothing is masked, so the polarity alone decides — a part
+    # that draws inside a mask is hidden when there is no mask at all.
     _check(mask.mask_passes(_fm([]), 0, False, inside, covered()),
-           "empty coverage should draw", fails)
+           "no writer: an outside target should draw", fails)
+    _check(mask.mask_passes(_fm([]), 0, True, inside, covered()) is False,
+           "no writer: an inside target should discard", fails)
 
     # bbox-outside: visible_inside discards, outside-target draws.
-    one_mask = [(5, 0, 0, 0)]   # rank 5, bit 0, increment, pure mask
+    one_mask = [(-1, 5, 0, 0)]  # pure mask at 5 in a top-level animation
     _check(mask.mask_passes(_fm(one_mask), 2, True, outside, covered(0)) is False,
            "visible_inside outside-bbox should discard", fails)
     _check(mask.mask_passes(_fm(one_mask), 2, False, outside, covered(0)) is True,
            "outside-polarity outside-bbox should draw", fails)
 
-    # Pure mask (keeps OUTSIDE, visible_inside=0), target rank 2 < slot 5 (scope).
+    # Pure mask (keeps OUTSIDE, visible_inside=0), target 2 in (-1, 5).
     #   inside the hole (bit set)  -> stencil 1 -> masked -> discard
     #   outside the hole (no bit)  -> stencil 0 -> draw
     _check(mask.mask_passes(_fm(one_mask), 2, False, inside, covered(0)) is False,
            "pure mask: inside hole should discard", fails)
     _check(mask.mask_passes(_fm(one_mask), 2, False, inside, covered()) is True,
            "pure mask: outside hole should draw", fails)
-    # Out of scope: target rank 9 > slot 5 -> mask does not apply -> draw.
+    # Past it: target 9 is outside (-1, 5) -> mask does not apply -> draw.
     _check(mask.mask_passes(_fm(one_mask), 9, False, inside, covered(0)) is True,
-           "pure mask: out-of-scope target should draw", fails)
+           "pure mask: a target drawn after it should draw", fails)
+    # A sub-animation's pure mask opens at its Instance part (20): it does not
+    # reach the caller's parts drawn before the instance.
+    sub_mask = [(20, 25, 0, 0)]
+    _check(mask.mask_passes(_fm(sub_mask), 22, False, inside, covered(0)) is False,
+           "sub-animation pure mask: its own earlier part is masked", fails)
+    _check(mask.mask_passes(_fm(sub_mask), 10, False, inside, covered(0)) is True,
+           "sub-animation pure mask: the caller's earlier part is not", fails)
 
-    # Clipping (keeps INSIDE, visible_inside=1), writer rank 3, target rank 6>3.
-    one_clip = [(3, 0, 0, 1)]
+    # Clipping (keeps INSIDE, visible_inside=1), writer at 3, target 6 in (3, E).
+    one_clip = [(3, E, 0, 0)]
     _check(mask.mask_passes(_fm(one_clip), 6, True, inside, covered(0)) is True,
            "clipping: inside should draw", fails)
     _check(mask.mask_passes(_fm(one_clip), 6, True, inside, covered()) is False,
            "clipping: outside should discard", fails)
-    # Clipping scope: target rank 1 < slot 3 -> writer inactive -> outside -> discard.
+    # Clipping scope: target 1 before it -> writer inactive -> discard if inside.
     _check(mask.mask_passes(_fm(one_clip), 1, True, inside, covered(0)) is False,
-           "clipping: out-of-scope target is unmasked (discard if vis_inside)",
+           "clipping: a target before it is unmasked (discard if vis_inside)",
            fails)
+    # The writer itself is not in its own interval: its colour is not clipped
+    # by the mask it writes.
+    _check(mask.mask_passes(_fm(one_clip), 3, True, inside, covered(0)) is False,
+           "clipping: the writer must not clip itself", fails)
 
     # OP invert: a single invert writer flips 0 -> 0xFF (masked).
-    inv = [(5, 0, 1, 0)]        # invert pure mask
+    inv = [(-1, 5, 0, 1)]       # invert pure mask
     _check(mask.mask_passes(_fm(inv), 2, False, inside, covered(0)) is False,
            "invert: covered -> masked -> discard (vis_inside=0)", fails)
 
     # Two increment masks stack but masked stays "nonzero": covered by both -> 2.
-    two = [(5, 0, 0, 0), (6, 1, 0, 0)]
+    two = [(-1, 5, 0, 0), (-1, 6, 1, 0)]
     _check(mask.mask_passes(_fm(two), 2, False, inside, covered(0, 1)) is False,
            "two masks: covered -> discard", fails)
     _check(mask.mask_passes(_fm(two), 2, False, inside, covered()) is True,
@@ -236,8 +282,8 @@ def check_replay() -> bool:
     # Two overlapping inverts cancel; three cover. (Two alone cannot tell parity
     # from an "exactly one" reading — three is what distinguishes them, and
     # SS7.5 is parity.)
-    inv2 = [(5, 0, 1, 0), (6, 1, 1, 0)]
-    inv3 = [(5, 0, 1, 0), (6, 1, 1, 0), (7, 2, 1, 0)]
+    inv2 = [(-1, 5, 0, 1), (-1, 6, 1, 1)]
+    inv3 = [(-1, 5, 0, 1), (-1, 6, 1, 1), (-1, 7, 2, 1)]
     _check(mask.mask_passes(_fm(inv2), 2, False, inside, covered(0, 1)) is True,
            "invert x2: even overlap cancels -> draw", fails)
     _check(mask.mask_passes(_fm(inv3), 2, False, inside, covered(0, 1, 2)) is False,
@@ -246,8 +292,8 @@ def check_replay() -> bool:
     # Mixed influence overlapping: the coverage is the UNION of the two planes
     # and must NOT depend on the order the writers were emitted in. With one
     # shared accumulator `incr -> invert` covered while `invert -> incr` did not.
-    incr_first = [(5, 0, 0, 0), (6, 1, 1, 0)]     # increment at 5, invert at 6
-    inv_first = [(5, 0, 1, 0), (6, 1, 0, 0)]      # invert at 5, increment at 6
+    incr_first = [(-1, 5, 0, 0), (-1, 6, 1, 1)]   # increment at 5, invert at 6
+    inv_first = [(-1, 5, 0, 1), (-1, 6, 1, 0)]    # invert at 5, increment at 6
     for label, meta in (("incr->invert", incr_first), ("invert->incr", inv_first)):
         _check(mask.mask_passes(_fm(meta), 2, False, inside,
                                 covered(0, 1)) is False,
@@ -261,7 +307,7 @@ def check_replay() -> bool:
 
     # An invert writer must not be able to cancel a counter writer's coverage:
     # two inverts (which cancel each other) plus one increment stays covered.
-    mixed3 = [(5, 0, 1, 0), (6, 1, 0, 0), (7, 2, 1, 0)]
+    mixed3 = [(-1, 5, 0, 1), (-1, 6, 1, 0), (-1, 7, 2, 1)]
     _check(mask.mask_passes(_fm(mixed3), 2, False, inside,
                             covered(0, 1, 2)) is False,
            "mixed OP: cancelling inverts must not clear the counter", fails)
@@ -272,7 +318,7 @@ def check_replay() -> bool:
 
 
 # --------------------------------------------------------------------------
-# 4. instance-hierarchy composition (inherit_for / attach_target)
+# 4. instance composition (child_context / target_mask / settle)
 # --------------------------------------------------------------------------
 class _FakePart:
     def __init__(self, mask_influence, visible_inside_mask):
@@ -286,74 +332,91 @@ class _FakeMesh:
         self.mask = None
 
 
-def _child_mask(caller_ctx, child_part):
-    """``attach_target`` on a one-part sub-animation under ``caller_ctx``."""
-    mp = _FakeMesh(0)
-    mask.attach_target(mp, None, [child_part], caller_ctx)
-    return mp.mask
+def _ctx(inherit):
+    return (inherit.influence, inherit.visible_inside)
 
 
 def check_composition() -> bool:
     fails: list = []
-    # One pure-mask writer at rank 5: ranks below it are in scope.
-    fm = mask.FrameMask(writers=[None], meta=[(5, 0, 0, 0)], max_mask_rank=5,
-                        rank_of={0: 2, 1: 7})
+    tree = mask.MaskTree(writes=True)
 
-    # -- inherit_for: the Instance part composes onto ROOT_CONTEXT ---------
-    ctx = mask.inherit_for(0, [_FakePart(True, False)], fm)
-    _check(ctx is not None and ctx.rank == 2 and ctx.influence is True and
-           ctx.visible_inside is False and ctx.frame_mask is fm,
-           "instance target should yield a context at its own rank", fails)
-
-    # mask_influence == 0 latches the AND off: nothing below can be masked.
-    _check(mask.inherit_for(0, [_FakePart(False, True)], fm) is None,
-           "opted-out instance must yield no context", fails)
-
-    # -- composition rules on the sub-animation's own parts ----------------
-    # AND: a child that opts out is not masked even under a masked caller.
-    _check(_child_mask(ctx, _FakePart(False, False)) is None,
-           "AND: opted-out child under a masked caller is not masked", fails)
-
-    # AND: a child that opts in under a masked caller IS masked, at the
-    # instance part's rank (not the child's own part index / rank).
-    ma = _child_mask(ctx, _FakePart(True, False))
-    _check(ma is not None and ma.rank == 2 and ma.frame_mask is fm,
-           "AND: opted-in child under a masked caller is masked at inst rank",
+    # -- the Instance part hands down its own flags, one level only --------
+    # child_context never sees what the Instance part itself received, so an
+    # opted-out caller cannot reach a nested instance's parts, and a caller
+    # that masks nothing does not stop the flags reaching down.
+    c = mask.child_context(tree, _FakePart(True, False), 7.0)
+    _check(_ctx(c) == (True, False) and c.start_seq == 7.0 and c.tree is tree,
+           "child_context: the instance part's own flags at its position",
+           fails)
+    _check(_ctx(mask.child_context(tree, _FakePart(False, True), 7.0))
+           == (False, True),
+           "child_context: an instance part's own flags reach its child",
            fails)
 
-    # OR: the child's own visible_inside_mask raises polarity even when the
-    # caller draws outside. (The pre-fix code judged the whole sub-animation by
-    # the instance part alone, so this came out False.)
-    mb = _child_mask(ctx, _FakePart(True, True))
+    # -- each part combines them with its own: MI by AND, VIM by OR --------
+    def stamp(ctx, part, t=tree):
+        return mask.target_mask(t, part, ctx, 9.0)
+
+    _check(stamp((False, False), _FakePart(True, False)) is None,
+           "AND: an opted-out instance part leaves its parts unmasked", fails)
+    _check(stamp((True, False), _FakePart(False, False)) is None,
+           "AND: a part that opts out is unmasked under a masking caller", fails)
+    ma = stamp((True, False), _FakePart(True, False))
+    _check(ma is not None and ma.seq == 9.0 and ma.visible_inside is False
+           and ma.frame_mask is tree.frame_mask,
+           "AND: an opted-in part is stamped at its own position", fails)
+    mb = stamp((True, False), _FakePart(True, True))
     _check(mb is not None and mb.visible_inside is True,
-           "OR: child's visible_inside_mask must raise polarity", fails)
-
-    # OR: and the caller's raises it for a child that does not set it.
-    ctx_in = mask.inherit_for(0, [_FakePart(True, True)], fm)
-    mc = _child_mask(ctx_in, _FakePart(True, False))
+           "OR: the part's own visible_inside_mask raises polarity", fails)
+    mc = stamp((True, True), _FakePart(True, False))
     _check(mc is not None and mc.visible_inside is True,
-           "OR: caller's visible_inside_mask must reach a child without it",
-           fails)
+           "OR: the instance part's visible_inside_mask reaches the part", fails)
 
-    # -- nesting: both rules chain, and the rank stays the outermost one ---
-    nested = mask.inherit_for(0, [_FakePart(True, False)], None, ctx_in)
-    _check(nested is not None and nested.rank == 2 and
-           nested.visible_inside is True,
-           "nesting: OR stays latched on and rank stays the outermost", fails)
-    _check(mask.inherit_for(0, [_FakePart(False, False)], None, ctx_in) is None,
-           "nesting: an inner opt-out latches the AND off", fails)
-
-    # -- scope: an out-of-scope caller masks nothing, but an inside-target
-    # still discards (it is only visible where a mask covers it).
-    ctx_out = mask.inherit_for(1, [_FakePart(True, False),
-                                   _FakePart(True, False)], fm)   # rank 7 > 5
-    _check(_child_mask(ctx_out, _FakePart(True, False)) is None,
-           "scope: out-of-scope outside-target child is not masked", fails)
-    md = _child_mask(ctx_out, _FakePart(True, True))
+    # -- a tree with no writer at all -------------------------------------
+    bare = mask.MaskTree(writes=False)
+    _check(stamp((True, False), _FakePart(True, False), bare) is None,
+           "no writer: a part that draws outside needs no test", fails)
+    md = stamp((True, False), _FakePart(True, True), bare)
     _check(md is not None and md.visible_inside is True,
-           "scope: out-of-scope inside-target child is still evaluated", fails)
+           "no writer: a part that draws inside is still tested", fails)
 
-    print("### composition (inherit_for / attach_target)",
+    # -- settle: stamps no writer reaches are dropped, unless inside -------
+    fm = tree.frame_mask
+    fm.meta = [(-1.0, 5.0, 0, 0)]              # one pure mask at 5
+    fm.writers = [None]
+    items = []
+    for seq, inside in ((2.0, False), (8.0, False), (8.0, True)):
+        mp = _FakeMesh()
+        mp.mask = mask.MaskApply(fm, seq, inside)
+        items.append(("mesh", mp))
+    mask.settle(items, fm)
+    _check(items[0][1].mask is not None,
+           "settle: a target a writer reaches keeps its stamp", fails)
+    _check(items[1][1].mask is None,
+           "settle: an outside target no writer reaches draws plainly", fails)
+    _check(items[2][1].mask is not None,
+           "settle: an inside target keeps its stamp everywhere", fails)
+
+    # -- finalize: bits, tiles and the cap ---------------------------------
+    big = mask.FrameMask()
+    for i in range(mask.MAX_WRITERS + 3):
+        big.writers.append(mask.MaskWriter(
+            part_index=i, is_clipping=False, op_invert=False, mask_value=255.0,
+            texture_hash=0, has_texture=False,
+            positions=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], uvs=[(0, 0)] * 3,
+            triangles=[(0, 1, 2)]))
+    big.finalize()
+    _check(big.count == mask.MAX_WRITERS and big.capped,
+           "finalize: writers past the cap are dropped and flagged", fails)
+    _check([w.bit for w in big.writers] == list(range(mask.MAX_WRITERS)),
+           "finalize: bits number the writers in order", fails)
+    _check(big.tiles == (2, 2), "tiles: 96 writers take 2x2 tiles", fails)
+    del big.writers[mask.TILE_WRITERS + 1:]
+    _check(big.tiles == (2, 1), "tiles: 25 writers take 2 tiles", fails)
+    del big.writers[mask.TILE_WRITERS:]
+    _check(big.tiles == (1, 1), "tiles: 24 writers fit one tile", fails)
+
+    print("### composition (child_context / target_mask / settle)",
           "PASS" if not fails else f"FAIL ({len(fails)})")
     return not fails
 
