@@ -132,8 +132,8 @@ def check_pack(lib, path: str, anim=None) -> bool:
                                                      1 if w.op_invert else 0),
                        f"writer {w.part_index} bit/meta mismatch", fails)
                 # A pure mask closes at itself, a clipping writer at the end.
-                _check(w.open < w.close and (w.close == mask.SEQ_END)
-                       == w.is_clipping,
+                _check(w.open < w.close and (w.close == fm.end)
+                       == w.is_clipping and fm.end < mask.SEQ_END,
                        f"writer {w.part_index} interval {w.open}..{w.close}",
                        fails)
                 _check(all(math.isfinite(x) and math.isfinite(y)
@@ -380,6 +380,16 @@ def check_composition() -> bool:
     _check(md is not None and md.visible_inside is True,
            "no writer: a part that draws inside is still tested", fails)
 
+    # -- a draw without masks leaves out what shows only inside one --------
+    _check(mask.draws_only_inside(_FakePart(True, True), (True, False)),
+           "no-mask draw: an inside part is left out", fails)
+    _check(mask.draws_only_inside(_FakePart(True, False), (True, True)),
+           "no-mask draw: the instance part's inside reaches its part", fails)
+    _check(not mask.draws_only_inside(_FakePart(True, True), (False, False)),
+           "no-mask draw: an opted-out part is drawn whole", fails)
+    _check(not mask.draws_only_inside(_FakePart(True, False), (True, False)),
+           "no-mask draw: an outside part is drawn whole", fails)
+
     # -- settle: stamps no writer reaches are dropped, unless inside -------
     fm = tree.frame_mask
     fm.meta = [(-1.0, 5.0, 0, 0)]              # one pure mask at 5
@@ -411,6 +421,26 @@ def check_composition() -> bool:
     _check([w.bit for w in big.writers] == list(range(mask.MAX_WRITERS)),
            "finalize: bits number the writers in order", fails)
     _check(big.tiles == (2, 2), "tiles: 96 writers take 2x2 tiles", fails)
+    # Over the cap, what goes is what the tree draws last: a sub-animation's
+    # writers arrive before their caller's, so list order would drop the
+    # top-level animation's own first.
+    late = mask.FrameMask()
+    for i in range(mask.MAX_WRITERS + 2):
+        clip = i % 2 == 0
+        pos = float(mask.MAX_WRITERS + 2 - i)          # arrives last-drawn first
+        late.writers.append(mask.MaskWriter(
+            part_index=i, is_clipping=clip, op_invert=False, mask_value=255.0,
+            texture_hash=0, has_texture=False,
+            positions=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], uvs=[(0, 0)] * 3,
+            triangles=[(0, 1, 2)],
+            open=pos if clip else -1.0, close=mask.SEQ_END if clip else pos))
+    late.finalize(end=500.0)
+    kept = sorted(w.open if w.is_clipping else w.close for w in late.writers)
+    _check(kept == [float(k) for k in range(1, mask.MAX_WRITERS + 1)],
+           "finalize: over the cap, the writers drawn last are dropped", fails)
+    _check(all(w.close == 500.0 for w in late.writers if w.is_clipping)
+           and late.end == 500.0,
+           "finalize: clipping intervals close at the tree's end", fails)
     del big.writers[mask.TILE_WRITERS + 1:]
     _check(big.tiles == (2, 1), "tiles: 25 writers take 2 tiles", fails)
     del big.writers[mask.TILE_WRITERS:]

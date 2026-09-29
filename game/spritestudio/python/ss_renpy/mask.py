@@ -32,9 +32,9 @@ Field provenance is split across two tables:
   * **static** (``PartInfo`` from ``ssab_meta``): ``mask_influence`` /
     ``mask_write`` / ``visible_inside_mask`` / ``draw_as_mask`` / part type.
   * **per-frame** (``PartState``): ``Mask`` (cutout 0..255) / ``Priority`` /
-    ``Hide``. A writer writes only where ``mask != 0`` and it is not hidden: the
-    Brain drops a hidden Mask part from ``draw_order``, but a hidden
-    ``draw_as_mask`` part keeps its Mask batch, so ``Hide`` is checked here.
+    ``Hide``. A writer writes only where ``mask != 0`` and it is not hidden, and
+    both are checked here: a hidden ``draw_as_mask`` part still has its Mask
+    batch in the plan, so what the plan holds cannot stand in for ``Hide``.
 """
 
 from __future__ import annotations
@@ -57,8 +57,11 @@ MAX_WRITERS = TILE_WRITERS * 4
 # (tiles across, tiles down) for 1, 2 and 4 tiles.
 _TILE_LAYOUTS = ((1, 1), (2, 1), (2, 2), (2, 2))
 
-# Past every ``seq`` a tree can reach: a clipping writer's interval closes here.
-# Still an exact float, so the shader compares it like any other position.
+# Past every ``seq`` a tree can reach: a clipping writer's interval closes here
+# while the tree is walked. :meth:`FrameMask.finalize` brings it down to the
+# tree's own end, so the shader never compares a number larger than the tree:
+# a GLES device without highp fragment floats holds integers exactly only up
+# to 2048.
 SEQ_END = 16777216.0
 
 # What an Instance part hands its sub-animation, as ``(influence,
@@ -134,6 +137,7 @@ class FrameMask:
     bmin: tuple = (0.0, 0.0)
     bsize: tuple = (1.0, 1.0)
     capped: bool = False
+    end: float = SEQ_END          # where clipping intervals close (finalize)
 
     @property
     def count(self) -> int:
@@ -158,12 +162,26 @@ class FrameMask:
                 return True
         return False
 
-    def finalize(self) -> None:
-        """Keep the first :data:`MAX_WRITERS` writers, number their bits and
-        derive ``bmin`` / ``bsize`` / ``meta`` from them."""
+    def finalize(self, end: Optional[float] = None) -> None:
+        """Keep the first :data:`MAX_WRITERS` writers in draw order, number
+        their bits and derive ``bmin`` / ``bsize`` / ``meta`` from them.
+
+        ``end`` is the tree's last ``seq`` + 1 (``MaskTree.seq`` after the
+        walk): a clipping writer's interval closes there instead of at
+        :data:`SEQ_END`, which reaches the same targets with a smaller number.
+        """
         if len(self.writers) > MAX_WRITERS:
+            # The writers arrive a sub-animation's first, then its caller's, so
+            # sort them by where they are drawn: what is dropped is what the
+            # tree draws last, not the top-level animation's own.
+            self.writers.sort(key=lambda w: w.open if w.is_clipping else w.close)
             del self.writers[MAX_WRITERS:]
             self.capped = True
+        if end is not None:
+            self.end = end
+            for w in self.writers:
+                if w.close > end:
+                    w.close = end
         x0 = y0 = float("inf")
         x1 = y1 = float("-inf")
         for i, w in enumerate(self.writers):
@@ -255,6 +273,18 @@ def target_mask(tree, pinfo, ctx, seq) -> Optional[MaskApply]:
     if not inside and not tree.writes:
         return None
     return MaskApply(tree.frame_mask, seq, inside)
+
+
+def draws_only_inside(pinfo, ctx) -> bool:
+    """Whether a part reached with ``ctx`` shows only where a mask covers it —
+    the same effective flags as :func:`target_mask`.
+
+    For a draw that has to go without masks (the mask walk failed): such a part
+    is left out rather than drawn whole, which is what it would show with no
+    mask at all. A part that draws outside is drawn whole, as with no mask.
+    """
+    return bool(pinfo.mask_influence and ctx[0]
+                and (pinfo.visible_inside_mask or ctx[1]))
 
 
 def settle(items, frame_mask: FrameMask) -> None:
