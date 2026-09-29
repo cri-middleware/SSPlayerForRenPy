@@ -82,22 +82,13 @@ init python:
                         on_hide=store.ss_pf_on_hide)
 
     def ss_pf_rebuild():
-        """(Re)build the held SSPlayer for the current animation, then re-pin.
-        A fresh instance is needed on an animation change: an in-place ss_play is
-        clobbered when the screen interaction re-shows the displayable (see
-        asset_picker.rpy). Rebuilding makes `ss_pf_anim` the new initial, so the
-        re-show replays the right motion. The (name, skinned) list is cached here
-        so the picker does not re-query every screen refresh."""
+        """(Re)build the held SSPlayer with `ss_pf_anim` as its initial
+        animation, then re-pin. The (name, skinned) list is cached here so the
+        picker does not re-query every screen refresh."""
         try:
+            # `add ss_pf_player` shows this very instance, so the attaches
+            # ss_pf_apply makes on it reach the screen as they are made.
             p = SSPlayer(SS_PF_SRC, animation=store.ss_pf_anim, size=SS_PF_BOX)
-            # We hold ONE instance and mutate its attachments live (ss_pf_apply).
-            # `add <player>` in a screen otherwise renders a _duplicate() COPY, made
-            # once and frozen, so a later ss_attach on the template never reaches
-            # what is on screen (the marker only re-pins when a whole new instance is
-            # built, e.g. on an animation switch). Marking this instance
-            # non-duplicatable makes `add` render it directly, so in-place attaches
-            # show immediately. Safe here: this screen never uses `show <tag> <attr>`.
-            p._duplicatable = False
             store.ss_pf_parts = [(n, bool(p.ss_is_part_skinned_mesh(n)))
                                  for n in p.ss_part_names()]
             store.ss_pf_player = p
