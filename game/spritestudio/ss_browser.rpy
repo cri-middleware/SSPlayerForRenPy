@@ -147,9 +147,8 @@ init python:
     def _ss_browser_reset_view():
         """Put the preview back the way a pack opens: fitted, centred.
 
-        The drag group keeps a dropped drag's position under its drag_name
-        and hands it to any drag built with that name again, so the name
-        carries a view number, and a new number is a drag placed afresh."""
+        A new view number is a new drag, placed afresh; see the drag in
+        ss_browser for why it takes one."""
         store.ss_browser_zoom = 1.0
         store.ss_browser_view += 1
 
@@ -309,15 +308,22 @@ screen ss_browser():
                             # and the drag's hit area is what that draws. Mirrors
                             # the demo picker (asset_picker.rpy).
                             draggroup:
-                                drag:
-                                    drag_name "%s#%d" % (ss_browser_pack, ss_browser_view)
-                                    draggable True
-                                    drag_offscreen True
-                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    # reset: a screen update hands the new transform the old
-                                    # one's properties, and Fit's size and fit would outlive
-                                    # a switch to 1:1.
-                                    add ss_browser_player at (Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom, reset=True) if ss_browser_fit else Transform(zoom=ss_browser_zoom, reset=True))
+                                # One drag per pack and view number. The screen hands a
+                                # rebuilt drag the one it replaces, and a drag takes that
+                                # one's position, so a new pack or a Reset view would stay
+                                # where the last drag was dropped; a new index key builds
+                                # the drag afresh. The name changes with it because the
+                                # group also keeps each dropped drag's position by name.
+                                for _view index _view in [(ss_browser_pack, ss_browser_view)]:
+                                    drag:
+                                        drag_name "%s#%d" % _view
+                                        draggable True
+                                        drag_offscreen True
+                                        xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                        # reset: a screen update hands the new transform the old
+                                        # one's properties, and Fit's size and fit would outlive
+                                        # a switch to 1:1.
+                                        add ss_browser_player at (Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom, reset=True) if ss_browser_fit else Transform(zoom=ss_browser_zoom, reset=True))
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
                     # Percent, not a "x1.25" factor: at this size the decimal point

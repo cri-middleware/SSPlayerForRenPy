@@ -52,9 +52,8 @@ init python:
     def ss_picker_reset_view():
         """Put the preview back the way a pack opens: fitted, centred.
 
-        The drag group keeps a dropped drag's position under its drag_name
-        and hands it to any drag built with that name again, so the name
-        carries a view number, and a new number is a drag placed afresh."""
+        A new view number is a new drag, placed afresh; see the drag in
+        ss_asset_picker for why it takes one."""
         store.ss_picker_zoom = 1.0
         store.ss_picker_view += 1
 
@@ -197,18 +196,25 @@ screen ss_asset_picker():
                     background Solid("#101216")
                     if ss_picker_player is not None:
                         draggroup:
-                            drag:
-                                drag_name "%s#%d" % (ss_picker_pack, ss_picker_view)
-                                draggable True
-                                drag_offscreen True
-                                xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                # The zoom scales the whole rendered sprite, so the
-                                # drag's hit area grows with it and a scaled-up
-                                # sprite stays draggable by any of its pixels.
-                                # reset: a screen update hands the new transform the old
-                                # one's properties, and Fit's size and fit would outlive
-                                # a switch to 1:1.
-                                add ss_picker_player at (Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom, reset=True) if ss_picker_fit else Transform(zoom=ss_picker_zoom, reset=True))
+                            # One drag per pack and view number. The screen hands a
+                            # rebuilt drag the one it replaces, and a drag takes that
+                            # one's position, so a new pack or a Reset view would stay
+                            # where the last drag was dropped; a new index key builds
+                            # the drag afresh. The name changes with it because the
+                            # group also keeps each dropped drag's position by name.
+                            for _view index _view in [(ss_picker_pack, ss_picker_view)]:
+                                drag:
+                                    drag_name "%s#%d" % _view
+                                    draggable True
+                                    drag_offscreen True
+                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                    # The zoom scales the whole rendered sprite, so the
+                                    # drag's hit area grows with it and a scaled-up
+                                    # sprite stays draggable by any of its pixels.
+                                    # reset: a screen update hands the new transform the old
+                                    # one's properties, and Fit's size and fit would outlive
+                                    # a switch to 1:1.
+                                    add ss_picker_player at (Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom, reset=True) if ss_picker_fit else Transform(zoom=ss_picker_zoom, reset=True))
                     else:
                         text _("(no preview)") xalign 0.5 yalign 0.5 color "#888888"
                 # Percent, not a "x1.25" factor: at 11px the decimal point is
