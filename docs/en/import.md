@@ -77,6 +77,8 @@ If a file update is detected during the startup initialization phase, the conver
 > **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped, and the in-game notice and the console say which. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
 >
 > **Updating SpriteStudio Player for Ren'Py converts every project once more.** A project is converted again whenever the converter in `game/spritestudio/` differs from the one that last converted it, so after you replace that folder with a newer release, the next launch brings every project up to date. That launch takes longer than usual.
+>
+> **The importer deletes nothing.** Remove or rename an `.ssae`, an image or a sound, and the file converted from it stays in `game/ss_assets/<project>/`, where it still loads, lists in the Asset Browser, is registered as an image and ships with the game. After each conversion the importer names such files on the console and counts them in the in-game notice; delete the ones nothing uses.
 
 ### Hot reload
 

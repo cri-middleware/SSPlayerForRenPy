@@ -82,6 +82,17 @@ label start:
     r attack "Attack! (It automatically returns to wait1 when attack1 ends)"
 ```
 
+> [!NOTE]
+> **Keep the attributes on the `SSPlayer` image, and scale or place it when you show it.** An image defined with an ATL block or `At()` around the player is a Transform, and a Transform takes no attributes — Ren'Py's rule, not this player's — so `show ringo happy` on such an image fails in developer mode and is ignored in a release. Put the transform on the show instead, `show ringo happy at half`, or on every show of the tag that has no `at` with Ren'Py's `config.tag_transform`:
+>
+> ```renpy
+> transform half:
+>     zoom 0.5
+>
+> init python:
+>     config.tag_transform["ringo"] = half
+> ```
+
 ### Even Easier: Talking Character (`SSCharacter`)
 Using `SSCharacter`, you can define a "living character" in one line that **automatically switches to 'talk' while speaking, and 'idle' when stopped**. This prepares the `image` declaration, `Character` definition, and lip-sync synchronization all at once, removing the need for line-by-line Python.
 
@@ -408,7 +419,7 @@ image boss = SSPlayer(
 - `on_animation_started`: Called when animation playback starts
 
 > [!NOTE]
-> Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
+> Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions. A callback runs as its frame is drawn, and Ren'Py keeps drawing the scene under the game menu, so one can run while the player is on the save screen — just as SpriteStudio sounds keep playing there. Keep a callback to what may happen at any moment, such as setting a variable or `renpy.notify()`, rather than jumping to or calling a label.
 
 *Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `scene_viewer.rpy` of the demo project.*
 
@@ -443,7 +454,7 @@ Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in
 The window has three panes:
 
 1. **Pack list (left).** Every `.ssab` the resolver can find under `ss_assets/` — including packs bundled inside an `.rpa` archive. Click one to select it.
-2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly. A pack opens with the whole canvas it was authored on fitted into the preview and centred, however big or small that canvas is; that fit is what the zoom readout calls 100%. **Drag** the sprite to move it and **scroll the wheel** (or press `+` / `-`) to scale it, up to 16 times the fit; **Reset view** (or `0`) puts it back as it opened. Scaling never interrupts playback, and the zoom is kept while you click through the animations of one pack. When the pack came from the [Auto Importer](import.md), the pane also names its `.sspj`, and **Open .sspj** beside the pack's name opens that project with the app your system opens `.sspj` files with — on Windows and macOS, where SpriteStudio runs.
+2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly. A pack opens with the whole canvas it was authored on fitted into the preview and centred, however big or small that canvas is; that fit is what the zoom readout calls 100%. **1:1** shows the canvas at its own pixels instead — 100% is then its own size — and **Fit** goes back; the choice holds as you pick other packs. **Drag** the sprite to move it and **scroll the wheel** (or press `+` / `-`) to scale it, up to 16 times; **Reset view** (or `0`) puts it back as it opened. Scaling never interrupts playback, and the zoom is kept while you click through the animations of one pack. When the pack came from the [Auto Importer](import.md), the pane also names its `.sspj`, and **Open .sspj** beside the pack's name opens that project with the app your system opens `.sspj` files with — on Windows and macOS, where SpriteStudio runs. On macOS a SpriteStudio that is already running keeps the project it has open, so the button then brings it forward and puts the path on the clipboard, for its File menu.
 3. **Snippet (right).** Pick a **role** — Character / One-shot / UI — and a ready-to-paste `.rpy` snippet is generated for that pack. The default role is inferred from the pack's contents (an effect-only pack defaults to One-shot, for example), so you choose the role while watching the animation instead of guessing.
 
 Exporting the snippet appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.

@@ -44,7 +44,7 @@ init -10 python:
     # stdout — log.txt under the launcher — which is not where a creator is
     # looking while iterating, so the outcome is also raised in-game; the bottom
     # of this file delivers it.
-    def _ss_import_notice(imported, failed, skipped):
+    def _ss_import_notice(imported, failed, skipped, stale):
         parts = []
         if imported:
             parts.append("imported " + ", ".join(sorted(imported)))
@@ -53,6 +53,9 @@ init -10 python:
         if skipped:
             parts.append("SKIPPED %d .sspj named like another project — see the console"
                          % len(skipped))
+        if stale:
+            parts.append("%d file(s) the projects no longer make are still in the "
+                         "output — see the console" % stale)
         if parts:
             renpy.session["_ss_import_notice"] = "SpriteStudio: " + "; ".join(parts)
 
@@ -141,6 +144,7 @@ init -10 python:
         imported = []
         failed = []
         skipped = []
+        stale = 0
 
         def _shown(path):
             return os.path.relpath(path, config.basedir).replace("\\", "/")
@@ -196,6 +200,7 @@ init -10 python:
                 def on_log(msg):
                     print(f"  [Converter] {msg.strip()}")
 
+                started = time.time()
                 converter.convert(sspj_path, project_out_dir, on_log)
                 
                 # Block the init phase until conversion is finished
@@ -213,6 +218,15 @@ init -10 python:
                         print(f"[SpriteStudio] Warning: could not write import marker ({e})")
                     changed = True
                     imported.append(project_name)
+                    # The converter overwrites and deletes nothing, so a pack
+                    # from a removed .ssae stays, loading and shipping. Name
+                    # it; deleting is the creator's call.
+                    left = import_marker.stale_outputs(project_out_dir, started)
+                    if left:
+                        print(f"[SpriteStudio] {project_name}: not made by the project "
+                              f"any more, delete if unused: "
+                              + ", ".join(_shown(p) for p in left))
+                        stale += len(left)
                 else:
                     err = converter.get_error()
                     print(f"[SpriteStudio] Error converting {project_name}: {err}")
@@ -232,7 +246,7 @@ init -10 python:
                 print(f"[SpriteStudio] Warning: could not refresh asset index ({e}); "
                       "newly imported packs may not appear in the browser until restart.")
 
-        _ss_import_notice(imported, failed, skipped)
+        _ss_import_notice(imported, failed, skipped, stale)
 
         # The watch is only live in autoreload mode, and the key that turns that
         # on is a TOGGLE with nothing on screen to say which side it is on

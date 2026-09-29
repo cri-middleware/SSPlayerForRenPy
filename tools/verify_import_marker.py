@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Headless check for the auto-importer's output plan and freshness marker (no Ren'Py).
 
-Validates that projects sharing a name get one output folder between them, and
-that the marker skips reconversion only when the .sspj, its sources and the
-converter are all what they were at the last successful conversion
-(``ss_renpy.import_marker``, driven by ``auto_importer.rpy``).
+Validates that projects sharing a name get one output folder between them, that
+the marker skips reconversion only when the .sspj, its sources and the
+converter are all what they were at the last successful conversion, and which
+files a conversion left behind (``ss_renpy.import_marker``, driven by
+``auto_importer.rpy``).
 
 Usage:  python tools/verify_import_marker.py
 """
@@ -101,6 +102,23 @@ def main() -> int:
         os.utime(cell, (1_000_050.0, 1_000_050.0))
         check("a source put back to an older copy",
               import_marker.read_marker(outdir) != import_marker.snapshot(sspj, "7.0.0+aaaaaaa"))
+
+    print("### stale_outputs: what a conversion did not write")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "Ringo")
+        _touch(os.path.join(out, "Ringo.ssab"), 2_000_000.0)
+        _touch(os.path.join(out, "Ringo.png"), 2_000_000.0)
+        _touch(os.path.join(out, "OldPack.ssab"), 1_000_000.0)
+        _touch(os.path.join(out, "sound", "gone.wav"), 1_000_000.0)
+        _touch(os.path.join(out, "Late.ssab"), 1_999_999.0)   # within the slack
+        _touch(os.path.join(out, ".ss_import_ok"), 1_000_000.0)
+        stale = [os.path.relpath(p, out).replace(os.sep, "/")
+                 for p in import_marker.stale_outputs(out, 2_000_000.0)]
+        check("files left untouched are named, sorted", stale == ["OldPack.ssab", "sound/gone.wav"])
+        check("a file just inside the slack is not", "Late.ssab" not in stale)
+        check("the hidden marker is not an output", ".ss_import_ok" not in stale)
+        check("an absent folder names nothing",
+              import_marker.stale_outputs(os.path.join(tmp, "nope"), 2_000_000.0) == [])
 
     print("\n== RESULT:", "ALL PASS" if _ok else "FAILURES PRESENT", "==")
     return 0 if _ok else 1

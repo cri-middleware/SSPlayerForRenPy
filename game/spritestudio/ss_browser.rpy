@@ -43,15 +43,53 @@ init python:
             return path
         return path if rel.startswith("..") else rel.replace("\\", "/")
 
+    # The application id SpriteStudio registers on macOS. A SpriteStudio that
+    # is already running takes no request to open another project — `open`
+    # returns success and nothing loads — so the button has to know.
+    _SS_SPRITESTUDIO_ID = "jp.co.webtech.SpriteStudio"
+
+    def _ss_spritestudio_running():
+        """Whether SpriteStudio is running (macOS). Asks by application id,
+        which needs no automation permission; any failure reads as no."""
+        try:
+            r = _ss_subprocess.run(
+                ["osascript", "-e", 'application id "%s" is running' % _SS_SPRITESTUDIO_ID],
+                capture_output=True, text=True, timeout=5)
+            return r.stdout.strip() == "true"
+        except Exception:
+            return False
+
     def _ss_browser_open_source(sspj):
-        """Open `sspj` with the app the system opens .sspj files with."""
+        """Open `sspj` with the app the system opens .sspj files with.
+
+        On macOS a SpriteStudio already running keeps its project, so it is
+        brought forward and the path goes to the clipboard, with a notice to
+        open it from SpriteStudio's File menu."""
+        name = _ss_os.path.basename(sspj)
         try:
             if _ss_sys.platform.startswith("win"):
                 _ss_os.startfile(sspj)
-            else:
-                _ss_subprocess.Popen(["open", sspj])
+                return
+            running = _ss_spritestudio_running()
+            r = _ss_subprocess.run(["open", sspj], capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                renpy.notify("Could not open %s (%s)" % (name, r.stderr.strip() or r.returncode))
+            elif running:
+                _ss_browser_copy(sspj)
+                renpy.notify("SpriteStudio is already open and keeps its project: open %s "
+                             "from its File menu (the path is on the clipboard)." % name)
         except Exception as e:
-            renpy.notify("Could not open %s (%s)" % (_ss_os.path.basename(sspj), e))
+            renpy.notify("Could not open %s (%s)" % (name, e))
+
+    def _ss_browser_copy(text):
+        """Put `text` on the system clipboard, where the platform allows it.
+
+        Through Ren'Py's CopyToClipboard action, the one way Ren'Py offers:
+        there is no renpy.* function for it. It does nothing on the web."""
+        try:
+            CopyToClipboard(text)()
+        except Exception:
+            pass
 
     def _ss_browser_escape(s):
         # For text written into a screen statement, where Ren'Py reads { as a
@@ -87,6 +125,8 @@ init python:
     # it and centred — the framing a Reset view returns to, and what 100% on
     # the zoom readout means — so a canvas far bigger or smaller than the box,
     # or an origin far from the canvas's centre, still opens fully in view.
+    # The 1:1 button shows the canvas at its own pixels instead, around the same
+    # centre, where a stage-sized canvas's fit would be too small to read.
     SS_BROWSER_BOX = (470, 360)
 
     # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
@@ -107,11 +147,16 @@ init python:
     def _ss_browser_reset_view():
         """Put the preview back the way a pack opens: fitted, centred.
 
-        The drag group keeps a dropped drag's position under its drag_name
-        and hands it to any drag built with that name again, so the name
-        carries a view number, and a new number is a drag placed afresh."""
+        A new view number is a new drag, placed afresh; see the drag in
+        ss_browser for why it takes one."""
         store.ss_browser_zoom = 1.0
         store.ss_browser_view += 1
+
+    def _ss_browser_set_fit(fit):
+        """Fit the canvas to the box (True) or show it at its own pixels, and
+        start that framing at 100%, centred. The choice holds across packs."""
+        store.ss_browser_fit = fit
+        _ss_browser_reset_view()
 
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
@@ -161,11 +206,7 @@ init python:
             target = "ss_snippets.txt"
         except Exception:
             pass
-        try:
-            if hasattr(renpy, "copy_to_clipboard"):
-                renpy.copy_to_clipboard(snip)
-        except Exception:
-            pass
+        _ss_browser_copy(snip)
         renpy.notify("Snippet saved to %s" % target)
 
     # Dev-only hotkey: register the Shift+B toggle screen as an overlay.
@@ -182,6 +223,7 @@ default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
 default ss_browser_player = None
 default ss_browser_zoom = 1.0
 default ss_browser_view = 0
+default ss_browser_fit = True
 
 
 screen _ss_browser_key():
@@ -266,12 +308,22 @@ screen ss_browser():
                             # and the drag's hit area is what that draws. Mirrors
                             # the demo picker (asset_picker.rpy).
                             draggroup:
-                                drag:
-                                    drag_name "%s#%d" % (ss_browser_pack, ss_browser_view)
-                                    draggable True
-                                    drag_offscreen True
-                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    add ss_browser_player at Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom)
+                                # One drag per pack and view number. The screen hands a
+                                # rebuilt drag the one it replaces, and a drag takes that
+                                # one's position, so a new pack or a Reset view would stay
+                                # where the last drag was dropped; a new index key builds
+                                # the drag afresh. The name changes with it because the
+                                # group also keeps each dropped drag's position by name.
+                                for _view index _view in [(ss_browser_pack, ss_browser_view)]:
+                                    drag:
+                                        drag_name "%s#%d" % _view
+                                        draggable True
+                                        drag_offscreen True
+                                        xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                        # reset: a screen update hands the new transform the old
+                                        # one's properties, and Fit's size and fit would outlive
+                                        # a switch to 1:1.
+                                        add ss_browser_player at (Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom, reset=True) if ss_browser_fit else Transform(zoom=ss_browser_zoom, reset=True))
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
                     # Percent, not a "x1.25" factor: at this size the decimal point
@@ -280,6 +332,8 @@ screen ss_browser():
                     hbox:
                         spacing 10
                         text "drag to move | wheel (or + / -) to zoom: [_zoom_disp]" size 11 yalign 0.5
+                        textbutton "Fit" action Function(_ss_browser_set_fit, True) selected ss_browser_fit text_size 11 yalign 0.5
+                        textbutton "1:1" action Function(_ss_browser_set_fit, False) selected (not ss_browser_fit) text_size 11 yalign 0.5
                         textbutton "Reset view (0)" action Function(_ss_browser_reset_view) text_size 11 yalign 0.5
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]
