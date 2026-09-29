@@ -4,8 +4,7 @@
 # resolver can find (all discovered packs, incl. instance sub-packs), previews any
 # animation live (drag to move it, wheel to scale it), and saves a ready-to-paste
 # snippet for the role you pick (character / one-shot / UI) — so a creator picks
-# the role while watching the animation, instead of guessing. A pack the auto
-# importer converted also names its .sspj, and opens it in SpriteStudio.
+# the role while watching the animation, instead of guessing.
 #
 # It sits on top of the zero-config resolver + SSInternalPlayer. Only the hotkey
 # registration is dev-gated, so this file is harmless in a release build (the
@@ -13,73 +12,7 @@
 
 init python:
     import os as _ss_os
-    import subprocess as _ss_subprocess
-    import sys as _ss_sys
-    from ss_renpy import import_marker as _ss_import_marker
     from ss_renpy import snippet as _ss_snippet
-
-    # SpriteStudio runs on Windows and macOS, so the button that opens a pack's
-    # .sspj is offered there only; elsewhere the source is still named.
-    _SS_BROWSER_CAN_OPEN = (_ss_sys.platform == "darwin"
-                            or _ss_sys.platform.startswith("win"))
-
-    def _ss_browser_source(rel):
-        """The .sspj the pack at gamedir-relative `rel` was converted from, or
-        None when nothing records one or it is no longer there.
-
-        The auto importer records it in the freshness marker beside the pack
-        (tools/ss_stamp_import.py does too), so a pack converted any other way,
-        or read from a .rpa, has none."""
-        folder = _ss_os.path.join(renpy.config.gamedir, *rel.split("/")[:-1])
-        marker = _ss_import_marker.read_marker(folder) or {}
-        sspj = marker.get("sspj")
-        return sspj if sspj and _ss_os.path.isfile(sspj) else None
-
-    def _ss_browser_shown_path(path):
-        """`path` relative to the project, or whole when it is not under it."""
-        try:
-            rel = _ss_os.path.relpath(path, renpy.config.basedir)
-        except ValueError:          # another Windows drive
-            return path
-        return path if rel.startswith("..") else rel.replace("\\", "/")
-
-    # The application id SpriteStudio registers on macOS. A SpriteStudio that
-    # is already running takes no request to open another project — `open`
-    # returns success and nothing loads — so the button has to know.
-    _SS_SPRITESTUDIO_ID = "jp.co.webtech.SpriteStudio"
-
-    def _ss_spritestudio_running():
-        """Whether SpriteStudio is running (macOS). Asks by application id,
-        which needs no automation permission; any failure reads as no."""
-        try:
-            r = _ss_subprocess.run(
-                ["osascript", "-e", 'application id "%s" is running' % _SS_SPRITESTUDIO_ID],
-                capture_output=True, text=True, timeout=5)
-            return r.stdout.strip() == "true"
-        except Exception:
-            return False
-
-    def _ss_browser_open_source(sspj):
-        """Open `sspj` with the app the system opens .sspj files with.
-
-        On macOS a SpriteStudio already running keeps its project, so it is
-        brought forward and the path goes to the clipboard, with a notice to
-        open it from SpriteStudio's File menu."""
-        name = _ss_os.path.basename(sspj)
-        try:
-            if _ss_sys.platform.startswith("win"):
-                _ss_os.startfile(sspj)
-                return
-            running = _ss_spritestudio_running()
-            r = _ss_subprocess.run(["open", sspj], capture_output=True, text=True, timeout=10)
-            if r.returncode != 0:
-                renpy.notify("Could not open %s (%s)" % (name, r.stderr.strip() or r.returncode))
-            elif running:
-                _ss_browser_copy(sspj)
-                renpy.notify("SpriteStudio is already open and keeps its project: open %s "
-                             "from its File menu (the path is on the clipboard)." % name)
-        except Exception as e:
-            renpy.notify("Could not open %s (%s)" % (name, e))
 
     def _ss_browser_copy(text):
         """Put `text` on the system clipboard, where the platform allows it.
@@ -100,11 +33,10 @@ init python:
     def _ss_browser_detail(name):
         """Resolve + read richer meta for the detail pane. Never raises."""
         d = {"path": "", "anims": [], "fps": 0, "has_effects": False,
-             "instance_packs": [], "sspj": None}
+             "instance_packs": []}
         try:
             rec = _ss_get_index().find(name)
             d["path"] = rec.rel_path
-            d["sspj"] = _ss_browser_source(rec.rel_path)
             d["anims"] = list(rec.anim_names)
             # Read via the archive-aware loader (like the rest of the library), so
             # the detail pane also works for packs shipped inside a .rpa.
@@ -218,8 +150,7 @@ default ss_browser_pack = None
 default ss_browser_anim = None
 default ss_browser_role = None
 default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
-                             "has_effects": False, "instance_packs": [],
-                             "sspj": None}
+                             "has_effects": False, "instance_packs": []}
 default ss_browser_player = None
 default ss_browser_zoom = 1.0
 default ss_browser_view = 0
@@ -292,12 +223,7 @@ screen ss_browser():
                 spacing 8
                 xsize 480
                 if ss_browser_pack:
-                    $ _sspj = ss_browser_detail.get("sspj")
-                    hbox:
-                        spacing 12
-                        text "[ss_browser_pack!q]" size 20 yalign 0.5
-                        if _sspj and _SS_BROWSER_CAN_OPEN:
-                            textbutton "Open .sspj" action Function(_ss_browser_open_source, _sspj) text_size 12 yalign 0.5
+                    text "[ss_browser_pack!q]" size 20
                     frame:
                         xsize SS_BROWSER_BOX[0]
                         ysize SS_BROWSER_BOX[1]
@@ -342,9 +268,6 @@ screen ss_browser():
                     if ss_browser_detail["instance_packs"]:
                         $ _ip = ", ".join(ss_browser_detail["instance_packs"])
                         text "instance packs: [_ip]" size 12
-                    if _sspj:
-                        $ _src = _ss_browser_shown_path(_sspj)
-                        text "source: [_src!q]" size 12
                     text "click an animation to preview:" size 12
                     viewport:
                         mousewheel True
