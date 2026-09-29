@@ -86,6 +86,35 @@ def plan_outputs(sspj_paths, out_dir: str):
     return plan
 
 
+def stale_outputs(out_dir: str, since: float) -> list:
+    """Files under ``out_dir`` that a conversion begun at ``since`` did not
+    write, sorted.
+
+    The converter rewrites every ``.ssab``, ``.ssqb`` and asset it produces on
+    each run and deletes nothing, so what it left untouched belongs to an
+    ``.ssae``, image or sound the project no longer has. Such a file still
+    loads, lists in the browser and ships, which is why the auto importer
+    names it. Two seconds of slack keep a file written just after ``since``
+    from reading as older on a filesystem that stores mtimes in whole or
+    even seconds (FAT stores even ones). Hidden files, the marker among
+    them, are not outputs.
+    """
+    cutoff = since - 2.0
+    rv = []
+    for root, dirs, files in os.walk(out_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.startswith("."):
+                continue
+            path = os.path.join(root, f)
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    rv.append(path)
+            except OSError:
+                continue  # vanished mid-scan
+    return sorted(rv)
+
+
 def snapshot(sspj_path: str, converter_version: str) -> dict:
     """What a conversion of ``sspj_path`` right now would be made from.
 
