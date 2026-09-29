@@ -46,6 +46,12 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xa
 ---
 
 ## 2. 立ち絵としての利用 (image 宣言と Character 連携)
+変換したパックは、Ren'Py が `images/` の下のファイルを画像にするのと同じように、最初から画像になっています。`ss_assets/Ringo/Ringo.ssab` は `show ringo` で表示でき、そのアニメーションはそれぞれ属性として `show ringo wait1` のように指定できます。Interactive Director（開発者モードで **D**）にもこれらの画像とアニメーションが並び、そこで別のアニメーションを選ぶと表示中のものと入れ替わります。
+
+- タグはファイル名を小文字にしたもので、`show` に書けない文字（空白や括弧）は `_` に置き換わります。`BG art w pink.ssab` なら `bg_art_w_pink` です。対象のパックはアセットブラウザに並ぶもの（`ss_assets/` と Auto Importer の `ss_output_dir` の下）です。
+- ゲームがすでに定義しているタグ（`image` 文、`SSCharacter`、`images/` の下のファイル）には手を付けないので、下の定義を書けばそちらが使われます。同じタグになるパックが 2 つあるときは、パス順で先のものがそのタグになります。
+- `define ss_auto_images = False` で無効にできます。
+
 Ren'Pyの `image` ステートメントと組み合わせることで、ノベルゲームにおける**キャラクターの立ち絵**として強力に機能します。`aliases` 引数を使うと、Ren'Pyのアトリビュート名とSpriteStudio内のモーション名を紐付けることができます。
 
 ```renpy

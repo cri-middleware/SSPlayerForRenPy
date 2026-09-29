@@ -1508,10 +1508,17 @@ init -10 python:
             return self._available_animations
 
         def _list_attributes(self, tag, attributes):
-            """Tell Ren'Py what attributes (animations/aliases) this displayable accepts."""
+            """Tell Ren'Py what attributes (animations/aliases) this displayable accepts.
+
+            A player plays one animation, so once `attributes` holds one of
+            ours, it is the only one that goes with them. The Interactive
+            Director keeps just what this returns for the attribute a creator
+            picks, which makes picking another animation replace the first
+            instead of stacking `ringo wait1 walk`, where only walk would play."""
             available = set(self._get_available_animations())
             available.update(self.aliases.keys())
-            return list(available)
+            chosen = [a for a in attributes if a in available]
+            return chosen or list(available)
 
         def _choose_attributes(self, tag, required, optional):
             """Resolve `show <tag> <attr>` to a canonical name when the pack was

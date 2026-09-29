@@ -47,6 +47,12 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xa
 ---
 
 ## 2. Using as Standing Images (`image` statement and Character integration)
+Every converted pack is already an image, the way Ren'Py makes one of every file under `images/`: `ss_assets/Ringo/Ringo.ssab` shows with `show ringo`, and each of its animations is an attribute — `show ringo wait1`. The Interactive Director (**D** in developer mode) lists these images with their animations, and picking another animation there replaces the one shown.
+
+- The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the Asset Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
+- A tag the game already defines — an `image` statement, an `SSCharacter`, a file under `images/` — is left alone, so the definitions below take over as soon as you write one. Of two packs that spell one tag, the first in path order has it.
+- `define ss_auto_images = False` turns this off.
+
 By combining it with Ren'Py's `image` statement, it functions powerfully as a **character standing image** (tachie) in visual novels. Using the `aliases` argument, you can link Ren'Py attribute names to SpriteStudio motion names.
 
 ```renpy
