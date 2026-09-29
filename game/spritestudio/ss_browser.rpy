@@ -83,10 +83,19 @@ init python:
     def _ss_browser_default_role(d):
         return _ss_snippet.default_role(len(d["anims"]), d["has_effects"])
 
+    # The preview box. A pack opens with its whole authored canvas fitted into
+    # it and centred — the framing a Reset view returns to, and what 100% on
+    # the zoom readout means — so a canvas far bigger or smaller than the box,
+    # or an origin far from the canvas's centre, still opens fully in view.
+    SS_BROWSER_BOX = (470, 360)
+
     # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
     # scaling neither rebuilds the player nor restarts the animation.
     SS_BROWSER_ZOOM_MIN = 0.2
-    SS_BROWSER_ZOOM_MAX = 5.0
+    # Up to 16 times the fitted size, as the Flutter player's demo allows: a
+    # canvas the size of an Animate stage fits at a few percent, and this still
+    # reaches its own pixels.
+    SS_BROWSER_ZOOM_MAX = 16.0
     SS_BROWSER_ZOOM_STEP = 1.1       # one wheel notch
 
     def _ss_browser_zoom_by(factor):
@@ -96,7 +105,7 @@ init python:
                                     min(SS_BROWSER_ZOOM_MAX, z))
 
     def _ss_browser_reset_view():
-        """Put the preview back the way a pack opens: 1:1, centred.
+        """Put the preview back the way a pack opens: fitted, centred.
 
         The drag group keeps a dropped drag's position under its drag_name
         and hands it to any drag built with that name again, so the name
@@ -116,7 +125,7 @@ init python:
                 _old.ss_stop_audio()
             except Exception:
                 pass
-        # A new pack is a new subject: start it at 1:1. Switching ANIMATION comes
+        # A new pack is a new subject: start it fitted. Switching ANIMATION comes
         # through here too and keeps the zoom, so two clips of one pack can be
         # compared at the same scale.
         if name != store.ss_browser_pack:
@@ -129,10 +138,10 @@ init python:
         store.ss_browser_anim = anim
         store.ss_browser_role = _ss_browser_default_role(d)
         try:
-            # size=(470, 360): give the preview a definite size so the draggable
-            # `drag` wrapping it has a real hit area — an unsized CDD can't be
-            # dragged. Same proven pattern as the demo picker (asset_picker.rpy).
-            store.ss_browser_player = SSPlayer(d["path"], animation=anim, size=(470, 360)) if d["path"] else None
+            # No size: the player is its authored canvas, which the preview then
+            # fits into SS_BROWSER_BOX. A pack without a canvas fills what it is
+            # offered instead, which the fit leaves at the box.
+            store.ss_browser_player = SSPlayer(d["path"], animation=anim) if d["path"] else None
         except Exception as e:
             store.ss_browser_player = None
             renpy.notify("Preview failed: %s" % (e,))
@@ -248,22 +257,21 @@ screen ss_browser():
                         if _sspj and _SS_BROWSER_CAN_OPEN:
                             textbutton "Open .sspj" action Function(_ss_browser_open_source, _sspj) text_size 12 yalign 0.5
                     frame:
-                        xsize 470
-                        ysize 360
+                        xsize SS_BROWSER_BOX[0]
+                        ysize SS_BROWSER_BOX[1]
                         background Solid("#222222")
                         if ss_browser_player is not None:
                             # Drag the preview to reposition it, wheel to scale it.
-                            # A definite size (SSPlayer size=) makes the Drag
-                            # grabbable, and the zoom scales the whole rendered
-                            # sprite, so its hit area grows with it. Mirrors the
-                            # demo picker (asset_picker.rpy).
+                            # The canvas is fitted into the box and then zoomed,
+                            # and the drag's hit area is what that draws. Mirrors
+                            # the demo picker (asset_picker.rpy).
                             draggroup:
                                 drag:
                                     drag_name "%s#%d" % (ss_browser_pack, ss_browser_view)
                                     draggable True
                                     drag_offscreen True
                                     xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    add ss_browser_player at Transform(zoom=ss_browser_zoom)
+                                    add ss_browser_player at Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom)
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
                     # Percent, not a "x1.25" factor: at this size the decimal point

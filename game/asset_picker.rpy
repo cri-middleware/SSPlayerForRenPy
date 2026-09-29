@@ -26,17 +26,19 @@ init python:
         except Exception:
             return []
 
-    # Fixed preview box. Giving the SSPlayer an explicit `size` makes it a
-    # definite-size displayable (so the draggable `drag` wrapping it has a real
-    # size) and centers the animation in that box; larger sprites overflow it and
-    # are clipped to the preview window — drag repositions them within the window.
+    # The preview box. A pack opens with its whole authored canvas fitted into
+    # it and centred — the framing a Reset view returns to, and what 100% on
+    # the zoom readout means.
     SS_PICKER_BOX = (820, 380)
 
     # Zoom range for the preview. The zoom is a Transform wrapped around the live
     # SSPlayer, so changing it neither rebuilds the player nor restarts the
     # animation — the sprite keeps playing while you scale it.
     SS_PICKER_ZOOM_MIN = 0.2
-    SS_PICKER_ZOOM_MAX = 5.0
+    # Up to 16 times the fitted size, as the Flutter player's demo allows: a
+    # canvas the size of an Animate stage fits at a few percent, and this still
+    # reaches its own pixels.
+    SS_PICKER_ZOOM_MAX = 16.0
     SS_PICKER_ZOOM_STEP = 1.1        # one wheel notch
 
     def ss_picker_zoom_by(factor):
@@ -46,7 +48,7 @@ init python:
                                    min(SS_PICKER_ZOOM_MAX, z))
 
     def ss_picker_reset_view():
-        """Put the preview back the way a pack opens: 1:1, centred.
+        """Put the preview back the way a pack opens: fitted, centred.
 
         The drag group keeps a dropped drag's position under its drag_name
         and hands it to any drag built with that name again, so the name
@@ -69,14 +71,14 @@ init python:
         """Select a pack by its .ssab path: build a live SSPlayer for its 1st anim."""
         _ss_picker_stop_audio()
         store.ss_picker_pack = rel_path
-        # A new pack is a new subject: start it at 1:1 rather than at whatever
+        # A new pack is a new subject: start it fitted rather than at whatever
         # scale the previous one needed. Switching ANIMATION keeps the zoom, so
         # you can compare two clips of one pack at the same scale.
         store.ss_picker_zoom = 1.0
         try:
             store.ss_picker_anims = list(anims)
             anim = store.ss_picker_anims[0] if store.ss_picker_anims else None
-            store.ss_picker_player = SSPlayer(rel_path, animation=anim, size=SS_PICKER_BOX)
+            store.ss_picker_player = SSPlayer(rel_path, animation=anim)
         except Exception as e:
             store.ss_picker_player = None
             store.ss_picker_anims = []
@@ -91,7 +93,7 @@ init python:
             return
         _ss_picker_stop_audio()
         try:
-            store.ss_picker_player = SSPlayer(rel, animation=anim, size=SS_PICKER_BOX)
+            store.ss_picker_player = SSPlayer(rel, animation=anim)
         except Exception as e:
             renpy.notify("Play failed: %s" % (e,))
 
@@ -175,13 +177,11 @@ screen ss_asset_picker():
             spacing 10
             if ss_picker_pack:
                 text "[ss_picker_pack]" size 24 color "#ffffff"
-                # Preview: the SSPlayer (built with size=SS_PICKER_BOX) is wrapped
-                # in a draggable `drag`, and scaled by ss_picker_zoom. We
-                # deliberately do NOT clip — a clip window smaller than the sprite
-                # hides the parts that overflow (Ringo would show up headless), and
-                # the whole point of the drag is to bring those parts into view. So
-                # the sprite renders in full (it may spill over the surrounding UI)
-                # and you drag it to reposition / zoom it to fit.
+                # Preview: the SSPlayer, its canvas fitted into SS_PICKER_BOX, is
+                # wrapped in a draggable `drag` and scaled by ss_picker_zoom. We
+                # deliberately do NOT clip: zoomed in, the parts past the box are
+                # what the drag is there to bring into view, so the sprite renders
+                # in full (it may spill over the surrounding UI).
                 frame:
                     xsize 820
                     ysize 380
@@ -197,7 +197,7 @@ screen ss_asset_picker():
                                 # The zoom scales the whole rendered sprite, so the
                                 # drag's hit area grows with it and a scaled-up
                                 # sprite stays draggable by any of its pixels.
-                                add ss_picker_player at Transform(zoom=ss_picker_zoom)
+                                add ss_picker_player at Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom)
                     else:
                         text _("(no preview)") xalign 0.5 yalign 0.5 color "#888888"
                 # Percent, not a "x1.25" factor: at 11px the decimal point is
