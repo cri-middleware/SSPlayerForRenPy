@@ -53,6 +53,16 @@ init python:
         except Exception as e:
             renpy.notify("Could not open %s (%s)" % (_ss_os.path.basename(sspj), e))
 
+    def _ss_browser_copy(text):
+        """Put `text` on the system clipboard, where the platform allows it.
+
+        Through Ren'Py's CopyToClipboard action, the one way Ren'Py offers:
+        there is no renpy.* function for it. It does nothing on the web."""
+        try:
+            CopyToClipboard(text)()
+        except Exception:
+            pass
+
     def _ss_browser_escape(s):
         # For text written into a screen statement, where Ren'Py reads { as a
         # tag and [ as a substitution. A value substituted in with [x!q] needs
@@ -161,11 +171,7 @@ init python:
             target = "ss_snippets.txt"
         except Exception:
             pass
-        try:
-            if hasattr(renpy, "copy_to_clipboard"):
-                renpy.copy_to_clipboard(snip)
-        except Exception:
-            pass
+        _ss_browser_copy(snip)
         renpy.notify("Snippet saved to %s" % target)
 
     # Dev-only hotkey: register the Shift+B toggle screen as an overlay.
