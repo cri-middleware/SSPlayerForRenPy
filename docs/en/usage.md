@@ -419,7 +419,7 @@ image boss = SSPlayer(
 - `on_animation_started`: Called when animation playback starts
 
 > [!NOTE]
-> Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions.
+> Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions. A callback runs as its frame is drawn, and Ren'Py keeps drawing the scene under the game menu, so one can run while the player is on the save screen — just as SpriteStudio sounds keep playing there. Keep a callback to what may happen at any moment, such as setting a variable or `renpy.notify()`, rather than jumping to or calling a label.
 
 *Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `scene_viewer.rpy` of the demo project.*
 
