@@ -82,6 +82,17 @@ label start:
     r attack "Attack! (It automatically returns to wait1 when attack1 ends)"
 ```
 
+> [!NOTE]
+> **Keep the attributes on the `SSPlayer` image, and scale or place it when you show it.** An image defined with an ATL block or `At()` around the player is a Transform, and a Transform takes no attributes — Ren'Py's rule, not this player's — so `show ringo happy` on such an image fails in developer mode and is ignored in a release. Put the transform on the show instead, `show ringo happy at half`, or on every show of the tag that has no `at` with Ren'Py's `config.tag_transform`:
+>
+> ```renpy
+> transform half:
+>     zoom 0.5
+>
+> init python:
+>     config.tag_transform["ringo"] = half
+> ```
+
 ### Even Easier: Talking Character (`SSCharacter`)
 Using `SSCharacter`, you can define a "living character" in one line that **automatically switches to 'talk' while speaking, and 'idle' when stopped**. This prepares the `image` declaration, `Character` definition, and lip-sync synchronization all at once, removing the need for line-by-line Python.
 

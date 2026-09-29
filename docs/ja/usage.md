@@ -81,6 +81,17 @@ label start:
     r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
 ```
 
+> [!NOTE]
+> **属性は `SSPlayer` の画像に持たせ、拡大縮小や配置は表示するときに指定してください。** ATL ブロックや `At()` でプレイヤーを包んで定義した画像は Transform で、Transform は属性を受け付けません（このプレイヤーではなく Ren'Py の決まりです）。そのため、そうした画像に `show ringo happy` と書くと、開発者モードではエラーになり、リリースでは無視されます。変形は `show ringo happy at half` のように表示のほうに付けるか、Ren'Py の `config.tag_transform` で、`at` の無いそのタグの表示すべてに付けてください。
+>
+> ```renpy
+> transform half:
+>     zoom 0.5
+>
+> init python:
+>     config.tag_transform["ringo"] = half
+> ```
+
 ### もっと簡単に：喋るキャラ (`SSCharacter`)
 `SSCharacter` を使うと、**台詞を喋っている間は talk、止まれば idle に自動で切り替わる**“生きたキャラ”を1行で定義できます。`image` 宣言と `Character` の準備、しゃべりへの同期がまとめて行われ、行ごとの Python は不要です。
 
