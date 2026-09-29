@@ -2215,9 +2215,9 @@ init -10 python:
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 # Mask: rasterize each distinct coverage once before drawing the
-                # targets that sample it.
-                # Failure leaves the dict empty so masked parts simply draw
-                # unmasked.
+                # targets that sample it. Failure leaves the dict empty: masked
+                # parts then draw as with no mask — plainly, or not at all for
+                # one that shows only inside a mask.
                 cov_by_id = {}
                 if SS_ENABLE_MASK:
                     self._build_coverages(cov_by_id, plan.items, ox, oy, st, at,
@@ -2356,13 +2356,15 @@ init -10 python:
             for tag, payload in items:
                 if tag == "mesh":
                     ap = payload.mask
-                    if (SS_ENABLE_MASK and ap is not None and ap.visible_inside
-                            and ap.frame_mask.count == 0):
-                        # Draws only inside a mask, and the tree has none this
-                        # frame: nothing of it shows.
-                        continue
                     cov = (cov_by_id.get(id(ap.frame_mask))
                            if ap is not None and cov_by_id else None)
+                    if (SS_ENABLE_MASK and ap is not None and cov is None
+                            and ap.visible_inside):
+                        # Shows only inside a mask, and there is none to test it
+                        # against: the tree has no writer this frame, or the
+                        # coverage could not be built. Left out, as with no
+                        # mask — drawing it whole would show what is hidden.
+                        continue
                     if cov is not None:
                         # Masked: flush the current run, then draw it on its own
                         # (the replay shader can't share a batched mesh). If the
@@ -2379,8 +2381,11 @@ init -10 python:
                                                  height, can_batch, use_mesh)
                             run = []
                             run_key = None
-                        if not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
-                                                      st, at, width, height):
+                        if (not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
+                                                       st, at, width, height)
+                                and not ap.visible_inside):
+                            # Unmasked is what a part that draws outside shows
+                            # with no mask; one that draws inside shows nothing.
                             self._flush_mesh_run(r, [payload], ox, oy, st, at,
                                                  width, height, can_batch, use_mesh)
                         continue
@@ -2641,7 +2646,7 @@ init -10 python:
 
             One coverage is shared by all targets of a mask (including instance
             children that inherit it). A build failure is warned once and that
-            coverage is simply skipped (its targets then draw unmasked).
+            coverage is simply skipped (its targets then draw as with no mask).
 
             The replay ``mask_meta`` is per *mask*, not per target, so it is built
             here alongside the coverage — ``cov_by_id`` is rebuilt every frame, so
@@ -2659,8 +2664,9 @@ init -10 python:
                 seen.add(key)
                 if fm.capped:
                     self._warn_once("mask-capped",
-                                    "more than %d live mask writers in one "
-                                    "animation; the rest are ignored"
+                                    "more than %d live mask writers in this "
+                                    "animation and its instances; the ones "
+                                    "drawn last are ignored"
                                     % mask.MAX_WRITERS)
                 try:
                     cov = self._build_coverage(fm, ox, oy, st, at, width, height)
@@ -2804,10 +2810,10 @@ init -10 python:
             Per-vertex colour (like :meth:`_draw_mesh_batch`, one part) so a
             gradient / textureless Shape fill masks with its TRUE colour, not a
             flat average. Binds the coverage as tex1 + the replay uniforms
-            (target rank / polarity + the writers' meta), and a 2x2 white tex0 for
+            (target position / polarity + the writers' meta), and a 2x2 white tex0 for
             a textureless Shape (``texture_hash == 0``) via :meth:`_tex0_render` so
             a Shape target is clipped instead of falling through unmasked. Returns
-            True on success; False makes the caller draw it unmasked."""
+            True on success; False makes the caller draw it as with no mask."""
             if _SS_Mesh2 is None or _SS_PC_LAYOUT is None:
                 return False
             try:

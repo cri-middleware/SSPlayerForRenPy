@@ -572,10 +572,29 @@ class SSInternalPlayer:
                                    part_infos=self._part_infos,
                                    inherited=inherited)
         except Exception:
-            fb2 = rt.get_frame_data_view(disp)
-            return ([("mesh", mp)
-                     for mp in framedata.build_mesh_parts(rt, framedata.parse(fb2))]
-                    if fb2 else [])
+            return self._plain_items(
+                disp, None if inherited is None
+                else (inherited.influence, inherited.visible_inside))
+
+    def _plain_items(self, disp, mask_ctx):
+        """Normal-part-only renderables for ``disp``, without masks — the draw
+        when the full walk failed. ``collect_ordered`` may have stepped slots
+        and invalidated the zero-copy view, so the frame is fetched again.
+        ``mask_ctx`` is the ``(influence, visible_inside)`` this animation was
+        reached with, or None when nothing in the tree masks: a part that shows
+        only inside a mask is then left out, as it would be with no mask."""
+        fb = self._rt.get_frame_data_view(disp)
+        if not fb:
+            return []
+        infos = self._part_infos
+        out = []
+        for mp in framedata.build_mesh_parts(self._rt, framedata.parse(fb)):
+            p = mp.part_index
+            if (mask_ctx is not None and 0 <= p < len(infos)
+                    and mask.draws_only_inside(infos[p], mask_ctx)):
+                continue
+            out.append(("mesh", mp))
+        return out
 
     def step_slots_only(self, frame_no, looped, dt_s, sub_frame=None):
         """Advance every Instance/Effect slot of this player (recursively) without
@@ -756,16 +775,11 @@ class SSInternalPlayer:
                                         tree=tree, parts=bulk_parts)
                 if tree is not None:
                     frame_mask = tree.frame_mask
-                    frame_mask.finalize()
+                    frame_mask.finalize(tree.seq)
                     mask.settle(items, frame_mask)
             except Exception:
-                # collect_ordered may have stepped slots and invalidated the
-                # zero-copy view; re-evaluate for a clean Normal/Mesh-only frame.
-                fb2 = rt.get_frame_data_view(disp)
-                items = ([("mesh", mp)
-                          for mp in framedata.build_mesh_parts(
-                              rt, framedata.parse(fb2))]
-                         if fb2 else [])
+                items = self._plain_items(
+                    disp, None if tree is None else mask.ROOT_CONTEXT)
                 frame_mask = None
         self._last_hidden = hidden
 
