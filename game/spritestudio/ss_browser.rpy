@@ -125,6 +125,8 @@ init python:
     # it and centred — the framing a Reset view returns to, and what 100% on
     # the zoom readout means — so a canvas far bigger or smaller than the box,
     # or an origin far from the canvas's centre, still opens fully in view.
+    # The 1:1 button shows the canvas at its own pixels instead, around the same
+    # centre, where a stage-sized canvas's fit would be too small to read.
     SS_BROWSER_BOX = (470, 360)
 
     # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
@@ -150,6 +152,12 @@ init python:
         carries a view number, and a new number is a drag placed afresh."""
         store.ss_browser_zoom = 1.0
         store.ss_browser_view += 1
+
+    def _ss_browser_set_fit(fit):
+        """Fit the canvas to the box (True) or show it at its own pixels, and
+        start that framing at 100%, centred. The choice holds across packs."""
+        store.ss_browser_fit = fit
+        _ss_browser_reset_view()
 
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
@@ -216,6 +224,7 @@ default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
 default ss_browser_player = None
 default ss_browser_zoom = 1.0
 default ss_browser_view = 0
+default ss_browser_fit = True
 
 
 screen _ss_browser_key():
@@ -305,7 +314,10 @@ screen ss_browser():
                                     draggable True
                                     drag_offscreen True
                                     xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    add ss_browser_player at Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom)
+                                    # reset: a screen update hands the new transform the old
+                                    # one's properties, and Fit's size and fit would outlive
+                                    # a switch to 1:1.
+                                    add ss_browser_player at (Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom, reset=True) if ss_browser_fit else Transform(zoom=ss_browser_zoom, reset=True))
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
                     # Percent, not a "x1.25" factor: at this size the decimal point
@@ -314,6 +326,8 @@ screen ss_browser():
                     hbox:
                         spacing 10
                         text "drag to move | wheel (or + / -) to zoom: [_zoom_disp]" size 11 yalign 0.5
+                        textbutton "Fit" action Function(_ss_browser_set_fit, True) selected ss_browser_fit text_size 11 yalign 0.5
+                        textbutton "1:1" action Function(_ss_browser_set_fit, False) selected (not ss_browser_fit) text_size 11 yalign 0.5
                         textbutton "Reset view (0)" action Function(_ss_browser_reset_view) text_size 11 yalign 0.5
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]

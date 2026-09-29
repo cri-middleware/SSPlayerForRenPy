@@ -23,6 +23,12 @@ translate japanese strings:
     old "drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]"
     new "ドラッグで移動  ｜  ホイール（または + / -）で拡大縮小: [_zoom_disp]"
 
+    old "Fit"
+    new "全体"
+
+    old "1:1"
+    new "等倍"
+
     old "Reset view (0)"
     new "表示をリセット (0)"
 

@@ -14,6 +14,7 @@ default ss_picker_anims = []      # animation names for the selected pack
 default ss_picker_player = None   # live SSPlayer for the preview
 default ss_picker_zoom = 1.0      # preview scale (wheel / + - keys, 0 resets)
 default ss_picker_view = 0        # bumped by a reset; see ss_picker_reset_view
+default ss_picker_fit = True      # canvas fitted to the box, else at its own pixels
 
 init python:
     def ss_picker_records():
@@ -28,7 +29,8 @@ init python:
 
     # The preview box. A pack opens with its whole authored canvas fitted into
     # it and centred — the framing a Reset view returns to, and what 100% on
-    # the zoom readout means.
+    # the zoom readout means. The 1:1 button shows the canvas at its own pixels
+    # instead, around the same centre.
     SS_PICKER_BOX = (820, 380)
 
     # Zoom range for the preview. The zoom is a Transform wrapped around the live
@@ -55,6 +57,12 @@ init python:
         carries a view number, and a new number is a drag placed afresh."""
         store.ss_picker_zoom = 1.0
         store.ss_picker_view += 1
+
+    def ss_picker_set_fit(fit):
+        """Fit the canvas to the box (True) or show it at its own pixels, and
+        start that framing at 100%, centred. The choice holds across packs."""
+        store.ss_picker_fit = fit
+        ss_picker_reset_view()
 
     def _ss_picker_stop_audio():
         # Held-and-swapped preview player: stop its sound before we replace it, so
@@ -197,7 +205,10 @@ screen ss_asset_picker():
                                 # The zoom scales the whole rendered sprite, so the
                                 # drag's hit area grows with it and a scaled-up
                                 # sprite stays draggable by any of its pixels.
-                                add ss_picker_player at Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom)
+                                # reset: a screen update hands the new transform the old
+                                # one's properties, and Fit's size and fit would outlive
+                                # a switch to 1:1.
+                                add ss_picker_player at (Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom, reset=True) if ss_picker_fit else Transform(zoom=ss_picker_zoom, reset=True))
                     else:
                         text _("(no preview)") xalign 0.5 yalign 0.5 color "#888888"
                 # Percent, not a "x1.25" factor: at 11px the decimal point is
@@ -206,6 +217,8 @@ screen ss_asset_picker():
                 hbox:
                     spacing 12
                     text _("drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]") size 11 color "#667085" yalign 0.5
+                    textbutton _("Fit") action Function(ss_picker_set_fit, True) selected ss_picker_fit text_size 11 yalign 0.5
+                    textbutton _("1:1") action Function(ss_picker_set_fit, False) selected (not ss_picker_fit) text_size 11 yalign 0.5
                     textbutton _("Reset view (0)") action Function(ss_picker_reset_view) text_size 11 yalign 0.5
                 $ _na = len(ss_picker_anims)
                 text _("animation: [_cur_disp]  |  [_na] animation(s)") size 14 color "#9aa0ab"
