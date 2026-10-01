@@ -85,8 +85,17 @@ plugins:
   # page beside its HTML, for readers who hand the docs to an AI assistant. Needs `site_url`,
   # which both locale configs set. `sections` takes globs relative to `docs_dir`, so one entry
   # covers every page in both locales and a new page is picked up without editing it.
+  # `markdown_description` opens both files. It is English for both locales: a per-locale text
+  # would move `llmstxt` into the locale files and split `plugins` across three files, which
+  # the sequence rule at the top forbids.
   - llmstxt:
       full_output: llms-full.txt
+      markdown_description: |
+        Ren'Py player, code-first: `SSPlayer` is a standard Ren'Py Displayable. `setup`
+        installs it, `import` converts a `.sspj` into an `.ssab` once during development, and
+        `usage` is the guide to playing animations from a script. `export` covers shipping a
+        game, `build` is for changing the player itself, and `limitations` lists what is not
+        supported.
       sections:
         Docs:
           - "*.md"
