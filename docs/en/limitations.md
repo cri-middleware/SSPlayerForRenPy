@@ -8,7 +8,6 @@ This page covers what is specific to **this** player. The constraints that come 
 
 > [!WARNING]
 > - **Text / NineSlice parts** — not rendered (they draw empty).
-> - **Nested timeline-event kinds inside Instance / Effect parts** — only the root animation's UserData / Signal / Audio events are surfaced.
 
 ## Partially Supported
 
