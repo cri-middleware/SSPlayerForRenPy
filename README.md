@@ -8,7 +8,7 @@
 
 An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
 
-## ✨ Why SpriteStudio Player?
+## ✨ Why use SpriteStudio with Ren'Py?
 
 - **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio) and the player just plays it. With bone rigs, mesh deformation, and particles, there's no long, complex ATL to hand-write.
 - **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back.
@@ -34,12 +34,12 @@ For detailed specifications, import procedures, and API references, please visit
 
 ---
 
-## 🎮 1. Quick Start
+## 🚀 1. Quick Start
 
 **Using it in your game?** Read on — drop the folder in, convert your `.sspj`, add one line.
 Everything after that (events, per-part overrides, `SSCharacter`) is the same path further in,
 in the [documentation](./docs/en/index.md).
-**Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdkplayer-developers).
+**Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdk--player-developers).
 
 ### Setup
 
@@ -96,7 +96,7 @@ scripts\run-demo.ps1
 *Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
 *For details, see the [Build Guide](docs/en/build.md).*
 
-## ⚙️ 2. Full Build Environment (For SDK/Player Developers)
+## ⚙️ 2. Full Build Environment (For SDK / Player Developers)
 If you want to develop and contribute to the core animation module (`SpriteStudio-SDK`), follow these steps.
 
 **macOS / Linux:**

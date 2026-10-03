@@ -8,7 +8,7 @@
 
 **[SpriteStudio](https://www.webtech.co.jp/spritestudio/)** のアニメーション (`.ssab`) を [Ren'Py](https://www.renpy.org/) でそのまま再生する拡張ライブラリ（プレイヤー）です。普段お使いの PNG / WebP 素材を専用エディタでアニメーションさせ、完成したアニメーションをプロジェクトに組み込むだけ——長くて複雑な ATL も、重い動画ファイルも要りません。
 
-## ✨ SpriteStudio Player の特長
+## ✨ SpriteStudio を Ren'Py で使うメリット
 
 - **立ち絵が“生きる”。** 呼吸・まばたき、なびく髪や衣装、斬撃・魔法のエフェクトまで——動きは専用エディタ（SpriteStudio）でビジュアルに作り込み、プレイヤーはそれを再生するだけ。ボーン階層・メッシュ変形・パーティクルに対応し、長くて複雑な ATL の手書きは要りません。
 - **動画（ムービー）の軽量な代替に。** Ren'Py の演出で多用される動画——`.webm` / `.ogv` / `.mp4` などを `Movie` で再生するオープニングムービー、動く背景、エフェクトのカットイン——を、軽量なネイティブ再生で置き換えます。実行時に自由に拡大縮小でき、シームレスにループし、ただ流れるだけでなくゲームの状態に反応します。
@@ -16,7 +16,7 @@
 - **フレームレートに縛られない滑らかな動き。** **サブフレーム補間**により、実際の表示タイミングちょうどの位置でフレームを生成します。固定フレームレートで焼き込まれた動画と違い、ディスプレイのリフレッシュレートや再生速度に追従した、より滑らかな表示が得られます。
 - **エディタから実行画面まで、シームレスな更新。** **オートインポーター機能**が開発中の `SpriteStudio_Source/` を監視します。**Shift+R** を 1 回押しておけば、あとは SpriteStudio で保存するだけ。変更のあったプロジェクトだけが再コンバートされ、実行中の Ren'Py が自分でリロードして反映します。書き出しの手作業は要りません。
 
-## 📚 ドキュメント (Documentation)
+## 📚 ドキュメント
 
 詳細な仕様、インポート手順、APIリファレンスなどの全容については、ドキュメントサイト（MkDocs）をご覧ください。
 
@@ -34,10 +34,10 @@
 
 ---
 
-## 🎮 1. クイックスタート
+## 🚀 1. クイックスタート
 
 **ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 1 行書く。その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
-**Player 自体や、その下の Rust コアを変更する場合**は [2 章](#%EF%B8%8F-2-sdkplayer開発者向け-フルビルド環境)へ。
+**Player 自体や、その下の Rust コアを変更する場合**は [2 章](#%EF%B8%8F-2-フル開発環境sdk--player-開発者)へ。
 
 ### 導入方法
 
@@ -89,7 +89,7 @@ scripts\run-demo.ps1
 ※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
 ※詳細は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
 
-## ⚙️ 2. SDK・Player開発者向け: フルビルド環境
+## ⚙️ 2. フル開発環境（SDK / Player 開発者）
 アニメーション計算のコア部分を担うRust製サブモジュール (`SpriteStudio-SDK`) も含めて開発・コントリビュートを行いたい方向けの手順です。
 
 **macOS / Linux:**
@@ -112,7 +112,7 @@ scripts\build-runtime.ps1
 - [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — `libssruntime` / `libssconverter` を提供する SDK 本体
 - [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — Player なしで `.sspj` を変換できるデスクトップ GUI
 
-## 📄 ライセンス (License)
+## 📄 ライセンス
 
 本プロジェクトのソースコードおよび成果物は、[LICENSE.md](LICENSE.md) (BSD-3-Clause) の条件下で提供されています。参考訳は [LICENSE.ja.md](LICENSE.ja.md) にあります。
 
