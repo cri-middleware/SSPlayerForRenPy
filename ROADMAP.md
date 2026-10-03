@@ -33,10 +33,8 @@ recreate an engine layer inside it:
 
 ## Player-side features
 
-These need no new SDK API — the runtime already provides everything required. They are
-listed because the [Player Porting Guide](./SpriteStudio-SDK/libs/ssruntime/docs) describes
-them as player responsibilities and other official players implement them, but this one does
-not yet.
+These need no new SDK API — the runtime already provides everything required. Each item's
+*Reference* names the sibling Players that have it, or that carry the same item.
 
 ### ☐ Per-frame callback
 
