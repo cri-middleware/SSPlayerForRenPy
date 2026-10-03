@@ -58,7 +58,7 @@ each self-contained and dev-gated.
 | What the plugin does, and how a creator uses it | [README.md](./README.md), the [docs site](./docs/en/) |
 | What is supported and what is not | [docs/en/limitations.md](./docs/en/limitations.md), the canonical list |
 | How to set up, run the demo, test and document | [CONTRIBUTING.md](./CONTRIBUTING.md) |
-| How the site is built and a release is cut | [RELEASING.md](./RELEASING.md), maintainers only |
+| How a release is cut | [RELEASING.md](./RELEASING.md), maintainers only |
 | What to build next, and what is out of scope | [ROADMAP.md](./ROADMAP.md) |
 | What each script does and takes | that script's `--help` |
 
