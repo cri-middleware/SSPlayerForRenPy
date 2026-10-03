@@ -1,14 +1,10 @@
-# SpriteStudio Player for Ren'Py — Player Roadmap
+# SpriteStudio Player for Ren'Py — Roadmap
 
-This is the **Ren'Py Player** roadmap for SpriteStudio Player for Ren'Py. It tracks Ren'Py-specific
-implementation tasks for capabilities exposed by the Rust runtime / converter
-([`SpriteStudio-SDK/ROADMAP.md`](./SpriteStudio-SDK/ROADMAP.md)).
+This file lists unfinished work only. Technical constraints live in
+[Limitations](./docs/en/limitations.md) ([日本語](./docs/ja/limitations.md)); SDK-side work lives
+in the [SDK ROADMAP](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/ROADMAP.md).
 
-For what the player deliberately does *not* support, see
-[Limitations](./docs/en/limitations.md) ([日本語](./docs/ja/limitations.md)) — that page is
-the user-facing list; this one is the development plan.
-
-## Design principle — Ren'Py-native integration
+## Design principles
 
 `SSPlayer` is a `renpy.Displayable`, so features should fit Ren'Py's idioms rather than
 recreate an engine layer inside it:
@@ -20,126 +16,89 @@ recreate an engine layer inside it:
   with no build step, so a feature must work without `scripts/`, `tools/` or the SDK
   checkout — and each sibling `.rpy` must stay independently removable.
 - **Naming and style.** Public API is `ss_`-prefixed `snake_case` on the displayable;
-  callbacks are constructor arguments (`on_finished`, …), matching how Ren'Py itself takes
-  them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
+  callbacks are constructor arguments (`on_animation_finished`, …), matching how Ren'Py itself
+  takes them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
 
-## Status legend
+## Playback & rendering
 
-- ☐ **Ready** — player-only, no SDK dependency; can start now
-- ⛔ **Blocked on SDK** — needs a `SpriteStudio-SDK/ROADMAP.md` phase first
-- 🕒 **Deferred** — intentionally postponed; recorded here so it can be picked up later
+These need no new SDK API — the runtime already provides everything required. Each item's
+*Reference* names the sibling Players that have it, or that carry the same item.
 
----
-
-## Player-side features
-
-These need no new SDK API — the runtime already provides everything required. They are
-listed because the [Player Porting Guide](./SpriteStudio-SDK/libs/ssruntime/docs) describes
-them as player responsibilities and other official players implement them, but this one does
-not yet.
-
-### ☐ Per-frame callback
-
-An `on_frame(player, frame_no)` constructor callback, fired once per processed tick after
-the frame's world matrices are final — the hook a game needs to drive its own logic off the
-animation clock.
-
-- *Current state*: not available. The attachment layer consumes the same point internally,
-  so the dispatch site already exists in `render()`.
-- *Reference*: `SSPlayerForGodot`'s `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
-
-### ☐ Screen-language integration
-
-A player is already a `Displayable`, so it drops into a `screen` and lays out there like an
-image: its natural size is the authored canvas, and Ren'Py's own `fit` / `xysize` / `align`
-place it in a box it was not authored for. What it lacks is the behaviour of a control. Two
-pieces, the second building on the first.
-
-- *Focus mask*. Ren'Py's `focus_mask` accepts a callable, which is exactly the hook a per-part
-  hit test fits: an irregular button then stops taking clicks across its bounding box. It
-  needs a **part rect read-out** first — `ss_part_rect(part)`, built from the `PartState`
-  fields the runtime already delivers every frame (`size_x` / `size_y`, `anchor`, `pivot`)
-  plus the `ss_part_transform()` this player already has — and then `ss_hit_test_part(x, y)`
-  over it.
-- *Button states*. `imagebutton` takes an image per state; a player takes none. Map
-  `idle` / `hover` / `selected_idle` / `selected_hover` / `insensitive` onto an animation or a
-  label so a player can back a `button` without the screen re-issuing `ss_set_animation` on
-  every hover.
-- *Reference*: this is the Ren'Py face of the same item the sibling ports carry — Godot's
-  `Control` node, Unity's uGUI `Graphic`, Flutter's intrinsic sizing + `hitTest`.
-
-### 🕒 Animation blending / crossfade
-
-Layer and cross-fade animations on one player through the runtime's track stack —
-`ss_runtime_set_track_animation`, `ss_runtime_crossfade`, `ss_runtime_add_track_source`,
-`ss_runtime_fade_track` and the rest of the track and source calls.
-
-- *Current state*: not available. The runtime side is complete; nothing on `SSPlayer` exposes
-  it.
-- *Reference*: `SSPlayerForWgpu`, the one official player that surfaces it
-  (`set_track_animation` / `crossfade` / `fade_track` / …, with regression tests in
-  `tests/tracks.rs`). The stems are fixed in the SDK's
-  [Player API Conventions](./SpriteStudio-SDK/libs/ssruntime/docs/20_design/30_api_conventions.md)
+- [ ] **Per-frame callback** — An `on_frame(player, frame_no)` constructor callback, fired once
+  per processed tick after the frame's world matrices are final: the hook a game needs to drive
+  its own logic off the animation clock. The attachment layer already consumes that point
+  inside `render()`, so the dispatch site exists. Reference: `SSPlayerForGodot`'s
+  `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
+- [ ] **Animation blending / crossfade** — Layer and cross-fade animations on one player
+  through the runtime's track stack (`ss_runtime_set_track_animation`, `ss_runtime_crossfade`,
+  `ss_runtime_add_track_source`, `ss_runtime_fade_track` and the rest of the track and source
+  calls); nothing on `SSPlayer` exposes it. Not started until after the first release: a
+  selling point, not a release blocker. Reference: `SSPlayerForWgpu`, the one official player
+  that surfaces it (`set_track_animation` / `crossfade` / `fade_track` / …, with regression
+  tests in `tests/tracks.rs`); the stems are fixed in the SDK's
+  [Player API Conventions](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/20_design/30_api_conventions.md)
   §3-2, and the design is its
-  [Animation mixing](./SpriteStudio-SDK/libs/ssruntime/docs/50_features/10_animation_mixing.md)
+  [Animation mixing](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/50_features/10_animation_mixing.md)
   page.
-- *Deferred*: until after the first release — a selling point, not a release blocker.
 
-### 🕒 Flip and offset — *low priority*
+## UI integration
 
-Mirror playback horizontally / vertically, and shift the drawn animation, without moving the
-host object.
+- [ ] **Screen-language integration** — A player is already a `Displayable`, so it drops into
+  a `screen` and lays out there like an image: its natural size is the authored canvas, and
+  Ren'Py's own `fit` / `xysize` / `align` place it in a box it was not authored for. What it
+  lacks is the behaviour of a control. This is the Ren'Py face of the item the sibling ports
+  carry — Godot's `Control` node, Unity's uGUI `Graphic`, Flutter's intrinsic sizing +
+  `hitTest`. Two steps, the second building on the first.
+  - [ ] **Focus mask** — Ren'Py's `focus_mask` accepts a callable, which is exactly the hook
+    a per-part hit test fits: an irregular button then stops taking clicks across its
+    bounding box. It needs a **part rect read-out** first — `ss_part_rect(part)`, built from
+    the `PartState` fields the runtime already delivers every frame (`size_x` / `size_y`,
+    `anchor`, `pivot`) plus the `ss_part_transform()` this player already has — and then
+    `ss_hit_test_part(x, y)` over it.
+  - [ ] **Button states** — `imagebutton` takes an image per state; a player takes none. Map
+    `idle` / `hover` / `selected_idle` / `selected_hover` / `insensitive` onto an animation or
+    a label so a player can back a `button` without the screen re-issuing `ss_set_animation`
+    on every hover.
 
-- *Current state*: not available as a player knob. Ren'Py hosts mirror and shift the whole
-  displayable instead — `at Transform(xzoom=-1.0)`, `at Transform(xoffset=…)` — which covers
-  the common case, so this is recorded for parity rather than for a gap in what creators can
-  do. What the sibling ports gain that a wrapping `Transform` does not is the ability to
-  mirror the artwork while leaving objects pinned to parts un-mirrored; here, attachments are
-  composited inside the player's own output, so a wrapping `Transform` flips them too.
-- *Motivating problem does not apply*: on the other ports the feature exists because negating
-  the host node's scale drags its children, colliders and particle systems along. `SSPlayer`
-  is a plain displayable with none of those, so mirroring it disturbs nothing.
-- *Reference*: `SSPlayerForGodot` (`flip_h` / `flip_v` / `offset`, folded into the root
-  `CanvasItem` transform); `SSPlayerForUnity` (`FlipX` / `FlipY` / `Offset`, folded into the
-  vertex positions); `SSPlayerForWeb` lists it at the same low priority.
-- *If it is ever implemented*: the root transform must reach `part_transform()` as well as the
-  geometry, or every attachment detaches the moment the player is flipped — this is the one
+## Needs SDK
+
+- [ ] **Stretch a NineSlice part to a screen's box** — The runtime evaluates a NineSlice
+  part's size from keyframes and hands over finished vertices, and the Override Layer covers
+  colour / cell / visibility only, so nothing can size the part to the box a screen gives it.
+  Waits for: Per-part size override (Phase 3).
+
+## Backlog
+
+- [ ] **Flip and offset** — Mirror playback horizontally / vertically, and shift the drawn
+  animation, without moving the host object. Low priority: Ren'Py hosts already mirror and
+  shift the whole displayable with `at Transform(xzoom=-1.0)` / `at Transform(xoffset=…)`,
+  which covers the common case, and `SSPlayer` has none of the children, colliders or
+  particle systems that make negating a host's scale a problem on the other ports. What a
+  wrapping `Transform` cannot do is mirror the artwork while leaving objects pinned to parts
+  un-mirrored, because attachments are composited inside the player's own output. Reference:
+  `SSPlayerForGodot` (`flip_h` / `flip_v` / `offset`, folded into the root `CanvasItem`
+  transform); `SSPlayerForUnity` (`FlipX` / `FlipY` / `Offset`, folded into the vertex
+  positions); `SSPlayerForWeb` (`flipX` / `flipY` / `offsetX` / `offsetY`, on every Web
+  player). If it is implemented, the root transform must reach `part_transform()` as well as
+  the geometry, or every attachment detaches the moment the player is flipped — the one
   mistake both sibling ports call out. Keep the sign convention they converged on (the mirror
   is carried on the **Y** axis), which is also what this player's `part_transform()` already
-  produces; see *Mirrored parts* in the usage guide, and `30_core/40_render_loop.md` in the
-  SDK docs for why the choice of axis is a convention rather than a detail.
-
----
-
-## Drop-in ergonomics
-
-Conveniences in the sibling `*.rpy` files. They are Ren'Py's alone — no other port has a
-say statement to hook — so the case for each is a creator who needs it, not parity.
-
-### 🕒 Per-emotion talk in `SSCharacter`
-
-While a line is spoken, `talk` replaces the attribute the sprite was showing, so a `happy`
-character talks with the one talk animation and turns happy again only when the line ends.
-
-- *Current state*: `talk` names a single animation; the attribute shown before the line is
-  put back when it ends.
-- *Shape*: let `talk` also take a mapping from that attribute to the animation to talk with —
-  `talk={"happy": "joy_talk", None: "talk"}` — so the mapping is the only new vocabulary.
-- *Deferred*: until there is a pack that authors a talk animation per emotion. Ringo has no
-  talk animation at all, so nothing here could check an implementation.
-
----
-
-## Shared with every port
-
-Text and NineSlice parts, and nested timeline events inside Instance / Effect parts, are
-exposed by the runtime but implemented by no official player yet, so they are tracked in the
-SDK roadmap rather than here — see [Limitations](./docs/en/limitations.md).
-
-Text and NineSlice are the two part kinds authored for UI, and the UI work above stops short
-of both. Text is settled SDK-side as a **player responsibility**, so drawing it — and
-substituting the string at runtime, which a localized UI label needs — is this side's work
-whenever it is picked up. Stretching a NineSlice part to a screen's box is not: the runtime
-evaluates its size from keyframes and hands over finished vertices, and the Override Layer
-covers colour / cell / visibility only, so it waits on the SDK roadmap's **Per-part size
-override** (Phase 3).
+  produces; see *Mirrored parts* in the usage guide, and the SDK's
+  [render loop](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/30_core/40_render_loop.md)
+  page for why the choice of axis is a convention rather than a detail.
+- [ ] **Per-emotion talk in `SSCharacter`** — While a line is spoken, `talk` replaces the
+  attribute the sprite was showing, so a `happy` character talks with the one talk animation
+  and turns happy again only when the line ends. Let `talk` also take a mapping from that
+  attribute to the animation to talk with — `talk={"happy": "joy_talk", None: "talk"}` — so
+  the mapping is the only new vocabulary. Not started until there is a pack that authors a
+  talk animation per emotion: Ringo has no talk animation at all, so nothing could check an
+  implementation. The case is a creator who needs it, not parity — no other port has a say
+  statement to hook.
+- [ ] **Text parts** — Not drawn. Text is one of the two part kinds authored for UI, and it is
+  settled SDK-side as a **player responsibility**, so drawing it — and substituting the string
+  at runtime, which a localized UI label needs — is this side's work. The SDK roadmap has no
+  entry for it.
+- [ ] **NineSlice parts** — Not drawn. The runtime hands over finished vertices, so this is a
+  Player-side draw path; the SDK roadmap has no entry for it.
+- [ ] **Timeline events of Instance / Effect parts** — Only the root animation's UserData /
+  Signal / Audio events are surfaced. The SDK roadmap has no entry for them.
