@@ -99,7 +99,8 @@ host object.
   is a plain displayable with none of those, so mirroring it disturbs nothing.
 - *Reference*: `SSPlayerForGodot` (`flip_h` / `flip_v` / `offset`, folded into the root
   `CanvasItem` transform); `SSPlayerForUnity` (`FlipX` / `FlipY` / `Offset`, folded into the
-  vertex positions); `SSPlayerForWeb` lists it at the same low priority.
+  vertex positions); `SSPlayerForWeb` (`flipX` / `flipY` / `offsetX` / `offsetY`, on every
+  Web player).
 - *If it is ever implemented*: the root transform must reach `part_transform()` as well as the
   geometry, or every attachment detaches the moment the player is flipped — this is the one
   mistake both sibling ports call out. Keep the sign convention they converged on (the mirror
