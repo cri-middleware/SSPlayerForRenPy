@@ -4,21 +4,6 @@ This file lists unfinished work only. Technical constraints live in
 [Limitations](./docs/en/limitations.md) ([日本語](./docs/ja/limitations.md)); SDK-side work lives
 in the [SDK ROADMAP](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/ROADMAP.md).
 
-## Design principles
-
-`SSPlayer` is a `renpy.Displayable`, so features should fit Ren'Py's idioms rather than
-recreate an engine layer inside it:
-
-- **Use Ren'Py's own systems.** Placement and scaling belong to `Transform` / ATL and the
-  `at` clause; volume belongs to the mixers; persistence belongs to the pickled displayable.
-  Do not rebuild them behind an `ss_*` method.
-- **Stay droppable.** Everything ships as `game/spritestudio/`, pasted into a stock project
-  with no build step, so a feature must work without `scripts/`, `tools/` or the SDK
-  checkout — and each sibling `.rpy` must stay independently removable.
-- **Naming and style.** Public API is `ss_`-prefixed `snake_case` on the displayable;
-  callbacks are constructor arguments (`on_animation_finished`, …), matching how Ren'Py itself
-  takes them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
-
 ## Playback & rendering
 
 These need no new SDK API — the runtime already provides everything required. Each item's

@@ -128,7 +128,7 @@ scripts\generate-fbs-code.ps1
 - **対象**プラットフォームのネイティブライブラリが `game/spritestudio/libs/` に配置済みであること — `scripts/download-sdk.*`（ビルド済み）または `scripts/build-runtime.*`
   （ソース）。デスクトップ / モバイル / Web はそれぞれ専用が必要です。例:
   `build-runtime.* platform=android build=release`、`platform=ios`、`platform=web`。
-- Ren'Py SDK（`scripts/fetch-renpy-sdk.*`）。deploy スクリプトは無ければ自動取得します。
+- Ren'Py SDK（`scripts/fetch-renpy-sdk.*`）。desktop / Android / iOS の deploy スクリプトは無ければ自動取得します（`deploy-web.*` は先に実行するよう促して終了します）。
 - プラットフォーム固有ツールチェーン（一度だけ）:
     - **Android**: `scripts/fetch-renpy-android.*`（RAPT）取得後、launcher GUI（→ Android）から **Install SDK**、**Configure**（`android.json` にパッケージ名を設定。必須）、
       **Generate Keys** を実施。
@@ -158,7 +158,7 @@ scripts\deploy-web.ps1     [dest_dir]
   `adb` で端末へ転送・起動します。
 - **iOS**: Xcode プロジェクトを生成 / 更新します。Brain は Xcode での一度きりの
   **Embed & Sign** が別途必要です（[エクスポートガイド](export.md) 参照）。
-- **Web**: 冪等です。エクスポートのたびに再実行し、正しい MIME タイプで HTTP 配信してください。
+- **Web**: 標準の Web エクスポートを実行するだけで、後処理はありません。出力は正しい MIME タイプで HTTP 配信してください。
 
 各スクリプトが内部で扱う SSPlayer 固有の要件（ABI ごとの `.so`、動的な iOS xcframework、
-Web の WASM 注入、`.rpa` の順序）については [エクスポートガイド](export.md) を参照してください。
+`.rpa` の順序）については [エクスポートガイド](export.md) を参照してください。

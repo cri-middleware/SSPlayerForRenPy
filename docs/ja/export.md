@@ -61,6 +61,6 @@ Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使いま�
 
 ## Web (ブラウザ) 向けエクスポート
 
-Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.html) をそのまま使います。SSPlayer 固有の後処理はありません。Brain の WebAssembly 版（`game/spritestudio/libs/web/`）はフォルダの他の部分と一緒に `game.zip` に入り、SSPlayer がゲーム起動時にそこから読み込むため、ランチャーが出力したものがそのまま動きます。この WebAssembly 版は **WebAssembly SIMD** を利用するため、対象ブラウザが SIMD に対応している必要があります（[仕様と制約事項](limitations.md) を参照）。
+Ren'Py 標準の [Web エクスポート](https://www.renpy.org/doc/html/web.html) をそのまま使います。SSPlayer 固有の後処理はありません。Brain の WebAssembly 版（`game/spritestudio/libs/web/`）はフォルダの他の部分と一緒に `game.zip` に入り、SSPlayer がゲーム起動時にそこから読み込むため、ランチャーが出力したものがそのまま動きます。この WebAssembly 版は **WebAssembly SIMD** を利用するため、対象ブラウザが SIMD に対応している必要があります（[制約と適用範囲](limitations.md) を参照）。
 
 **動作確認:** `file://` ではなく HTTP で配信します（Ren'Py 付属の web サーバで足ります）。再エクスポート後は、キャッシュされた **Service Worker の登録解除 / サイトデータのクリア**を行わないと、ブラウザが古いビルドを表示します。

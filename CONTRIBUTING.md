@@ -16,8 +16,10 @@ Please refer to [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 ### Technical Constraints & Guiding Principles
 To maintain high performance and native integration with Ren'Py, please adhere to the following principles:
 
-- **Ren'Py Idioms First:** Use Ren'Py's built-in systems (Creator-Defined Displayables, `image` declarations, Screen Language) instead of recreating them. Let Ren'Py handle the rendering and UI logic.
+- **Ren'Py Idioms First:** Use Ren'Py's built-in systems (Creator-Defined Displayables, `image` declarations, Screen Language) instead of recreating them. Let Ren'Py handle the rendering and UI logic: placement and scaling belong to `Transform` / ATL and the `at` clause, volume to the mixers, and persistence to the pickled displayable — do not rebuild them behind an `ss_*` method.
 - **Performance in the Hot Path:** Avoid unnecessary operations during the `render` method. Use the `DrawBatch` plans emitted by the runtime directly with Ren'Py's GL2 mesh and texture rendering APIs.
+- **Stay Droppable:** Everything ships as `game/spritestudio/`, pasted into a stock project with no build step, so a feature must work without `scripts/`, `tools/` or the SDK checkout — and each sibling `.rpy` must stay independently removable.
+- **Ren'Py Naming:** The public API is `ss_`-prefixed `snake_case` on the displayable, and callbacks are constructor arguments (`on_animation_finished`, …), the way Ren'Py itself takes them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
 - **SDK Separation:** The core playback logic resides in the `SpriteStudio-SDK` submodule (Rust). Changes to core logic should be directed to the SDK repository, while Ren'Py-specific integrations belong in `game/spritestudio/`.
 
 ### Reporting Bugs
@@ -116,8 +118,10 @@ SSPlayerForRenPy にご関心をお寄せいただき、ありがとうござい
 ### 技術的制約と設計原則
 Ren'Pyとのネイティブな統合と高いパフォーマンスを維持するため、以下の原則に従ってください。
 
-- **Ren'Pyのパラダイムを優先:** `image` 宣言や Screen 言語、Creator-Defined Displayable (CDD) など、Ren'Pyの標準的な機能を積極的に活用してください。独自の実装を行うよりもRen'Pyの設計に委ねることを優先します。
+- **Ren'Pyのパラダイムを優先:** `image` 宣言や Screen 言語、Creator-Defined Displayable (CDD) など、Ren'Pyの標準的な機能を積極的に活用してください。独自の実装を行うよりもRen'Pyの設計に委ねることを優先します。配置と拡大縮小は `Transform` / ATL と `at` 節、音量はミキサー、永続化は pickle される Displayable の役割です。これらを `ss_*` メソッドの裏で作り直さないでください。
 - **再生パスのパフォーマンス:** `render` メソッド等の描画ループ中での不要な処理は避けてください。Rustランタイムから提供される描画バッチ情報を直接Ren'PyのGL2描画APIに渡すように実装されています。
+- **ドロップインのまま保つ:** すべては `game/spritestudio/` として配布され、ビルド手順なしで標準のプロジェクトに貼り付けて使います。そのため機能は `scripts/`・`tools/`・SDK のチェックアウトなしで動く必要があり、同じフォルダの各 `.rpy` は個別に取り外せる状態を保ってください。
+- **Ren'Py の命名規則:** 公開 API は Displayable 上の `ss_` 接頭辞付き `snake_case` で、コールバックは Ren'Py 自身と同じくコンストラクタ引数（`on_animation_finished` など）で受け取ります。他の Player の綴りを写すのではなく、Ren'Py として自然な名前にしてください。
 - **SDKの分離:** コアのアニメーション計算ロジックは `SpriteStudio-SDK` サブモジュール(Rust)に存在します。アルゴリズムやコアロジックの修正はSDK側のリポジトリへ、Ren'Py特有の実装は `game/spritestudio/` へ行ってください。
 
 ### バグの報告

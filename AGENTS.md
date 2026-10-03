@@ -18,10 +18,9 @@
     belongs to none of them goes where it will be seen to go stale.
 *   **Never commit inside the `SpriteStudio-SDK` submodule.** A change the core needs is a pull request in
     the SDK repository, followed by a submodule bump here.
-*   **Playback and render semantics are the SDK's** — read [its AGENTS.md](./SpriteStudio-SDK/AGENTS.md)
-    first, then the porting guide under `SpriteStudio-SDK/libs/ssruntime/docs/`. The reference ports are
-    SSPlayerForGodot (closest — source of the `ss-*` shaders and the coverage-bitmap mask) and
-    SSPlayerForWeb (`GeometryBuilder.ts` is the render math).
+*   **Playback and rendering semantics are the SDK's** — see [its AGENTS.md](./SpriteStudio-SDK/AGENTS.md)
+    and the porting guide in `SpriteStudio-SDK/libs/ssruntime/docs/`; where the guide is silent,
+    SSPlayerForWgpu's behaviour decides. Do not reimplement the rules they own.
 *   **Code comments do not cite the SDK's porting guide** — no section numbers, page paths or quotes.
     Its sections move as it is revised and nothing checks a citation inside a comment; say what breaks
     if the code changes, and leave the rule to the guide.
