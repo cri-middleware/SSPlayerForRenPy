@@ -1,4 +1,4 @@
-# ⚠️ 仕様と制約事項 (Limitations & Scope)
+# ⚠️ 制約と適用範囲
 
 現在の SpriteStudio Player for Ren'Py における制限事項・未実装の機能の一覧です。（サポートしている機能の一覧は利用ガイドを参照してください。）
 

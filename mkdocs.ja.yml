@@ -31,4 +31,4 @@ nav:
   - ▶️ 再生と制御: usage.md
   - 📦 ゲームのエクスポート: export.md
   - 🛠️ ビルドガイド（開発者向け）: build.md
-  - ⚠️ 仕様と制約事項: limitations.md
+  - ⚠️ 制約と適用範囲: limitations.md

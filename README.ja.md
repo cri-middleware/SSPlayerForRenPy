@@ -30,7 +30,7 @@
 - [導入ガイド (Setup)](docs/ja/setup.md)
 - [データのコンバート (Import)](docs/ja/import.md)
 - [再生と制御 (Usage)](docs/ja/usage.md)
-- [制限事項と対応範囲](docs/ja/limitations.md)
+- [制約と適用範囲](docs/ja/limitations.md)
 
 ---
 
