@@ -82,7 +82,19 @@ Every engine-independent layer has a headless check in `tools/`, in plain CPytho
 Outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj` → `.ssab`), `ss_stamp_import.py` (stamp the auto-importer marker over an out-of-band pack), and `render_png.py` / `render_mask_png.py` (software raster, not GL2 — the only two needing Pillow).
 
 ### Documentation
-`docs/` is bilingual and ordered `setup → import → usage → export`, plus `build` and `limitations`; `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`, each locale owning its own `assets/`, with source-relative asset paths **including inside raw `<video>` / `<img>` HTML**. Keep `docs/` user-facing: never cite a dev script there. If you edit a page, build both locales before you finish — see [RELEASING.md](./RELEASING.md). Nothing builds the docs on a pull request, so that local build is the only gate.
+`docs/` is bilingual and ordered `setup → import → usage → export`, plus `build` and `limitations`; `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`, each locale owning its own `assets/`, with source-relative asset paths **including inside raw `<video>` / `<img>` HTML**. Keep `docs/` user-facing: never cite a dev script there. If you edit a page, build both locales before you finish: nothing builds the docs on a pull request, so that local build is the only gate.
+
+```bash
+scripts/prepare-docs.sh              # once: .venv + the pins in docs/requirements.txt
+scripts/build-docs.sh                # English then Japanese, both --strict
+scripts/build-pages.sh serve=yes     # + the released Web demo -> http://localhost:8000/
+```
+
+Both locales, English first: it clears `site/`, which contains `site/ja`, so an English-only build leaves a stale Japanese site behind and a page you just broke still looks fine. `mkdocs.base.yml` sets `strict: true`; `serve` validates nothing.
+
+`build-pages.sh` is the whole published site, and `pages.yml`'s build job **is** this script. `demo=download` needs `gh` and a Release carrying `SSPlayerForRenPy-web-demo.zip`; `zip=<path>` feeds one by hand, and `demo=build` runs the export here instead, for when no Release carries one. `sdk=` picks `download-sdk` or `build-runtime` and is consulted for `demo=build` only, since a downloaded demo brings its own runtime. An existing `renpy-sdk/` is never re-fetched.
+
+`game/options.rpy` excludes `site/**`: the docs build copies the screencasts into `site/*/assets/`, and Ren'Py would otherwise classify every `**.webm` into every package.
 
 ## Coding Standards
 
@@ -182,7 +194,19 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 スイートの外にあるもの: `tools/analyze.py`（DrawBatchKind の監査）、`cli_convert.py`（シェルからの `.sspj` → `.ssab` 変換）、`ss_stamp_import.py`（別経路で作ったパックに自動インポーターのマーカーを付ける）、`render_png.py` / `render_mask_png.py`（GL2 ではなくソフトウェアラスタ。Pillow が必要なのはこの 2 つだけ）。
 
 ### ドキュメント
-`docs/` は日英 2 言語で、`setup → import → usage → export`（＋ `build` と `limitations`）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。ページを編集したら、仕上げる前に両ロケールをビルドしてください（手順は [RELEASING.md](./RELEASING.md)）。プルリクエストでは docs はビルドされないため、手元のビルドが唯一のゲートです。
+`docs/` は日英 2 言語で、`setup → import → usage → export`（＋ `build` と `limitations`）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。ページを編集したら、仕上げる前に両ロケールをビルドしてください。プルリクエストでは docs はビルドされないため、手元のビルドが唯一のゲートです。
+
+```bash
+scripts/prepare-docs.sh              # 一度だけ: .venv と docs/requirements.txt のピン
+scripts/build-docs.sh                # 英語 → 日本語の順に、どちらも --strict
+scripts/build-pages.sh serve=yes     # + リリース済み Web デモ -> http://localhost:8000/
+```
+
+必ず両ロケールを、英語を先にビルドします。英語ビルドは `site/ja` を含む `site/` を消すため、英語だけビルドすると古い日本語サイトが残り、壊したページが無傷に見えます。`mkdocs.base.yml` が `strict: true` を設定します。`serve` は何も検証しません。
+
+`build-pages.sh` が公開サイト全体で、`pages.yml` のビルドジョブは**このスクリプト**です。`demo=download` には `gh` と、`SSPlayerForRenPy-web-demo.zip` を持つ Release が必要です。`zip=<path>` で手渡しもでき、`demo=build` はここでエクスポートを実行します（それを持つ Release が無いときに使います）。`sdk=` は `download-sdk` と `build-runtime` の選択で、参照されるのは `demo=build` のときだけです（ダウンロードしたデモは自前のランタイムを持っているため）。既存の `renpy-sdk/` は再取得しません。
+
+`game/options.rpy` は `site/**` を除外しています。docs のビルドがスクリーンキャストを `site/*/assets/` に複製するため、除外しないと Ren'Py が `**.webm` をすべてのパッケージに分類します。
 
 ## コーディング規約
 
