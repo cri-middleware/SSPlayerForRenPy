@@ -7,7 +7,7 @@ and the version is the `ss_renpy` package version
 (`game/spritestudio/python/ss_renpy/__init__.py`, [PEP 440](https://peps.python.org/pep-0440/),
 e.g. `7.0.0b1`).
 
-## [Unreleased]
+## [7.0.0b1] - Unreleased
 
 ### Added
 - Initial public release: `SSPlayer` displayable for SpriteStudio playback in
