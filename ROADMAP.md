@@ -20,8 +20,8 @@ recreate an engine layer inside it:
   with no build step, so a feature must work without `scripts/`, `tools/` or the SDK
   checkout — and each sibling `.rpy` must stay independently removable.
 - **Naming and style.** Public API is `ss_`-prefixed `snake_case` on the displayable;
-  callbacks are constructor arguments (`on_finished`, …), matching how Ren'Py itself takes
-  them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
+  callbacks are constructor arguments (`on_animation_finished`, …), matching how Ren'Py itself
+  takes them. Names read as idiomatic Ren'Py rather than mirroring another port's spelling.
 
 ## Status legend
 
