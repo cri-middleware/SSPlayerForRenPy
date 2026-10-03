@@ -93,7 +93,8 @@ Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html) — no
 SSPlayer-specific post-steps. The Brain's WebAssembly build
 (`game/spritestudio/libs/web/`) ships inside `game.zip` with the rest of the
 folder, and SSPlayer loads it from there when the game starts, so the export plays
-as the launcher produces it.
+as the launcher produces it. That build uses **WebAssembly SIMD**, so the target
+browser must support it — see [Limitations](limitations.md).
 
 **Testing:** serve over HTTP (not `file://`) — Ren'Py's own web server does. After
 re-exporting, **unregister the cached service worker / clear site data**, or the

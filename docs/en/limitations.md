@@ -42,3 +42,4 @@ This page covers what is specific to **this** player. The constraints that come 
 >
 > - **Android** ships the Brain as a native library in the APK's `lib/<abi>/`; Android only loads native code from there, not from the packaged game data, so the `.so` must be placed in the app's jniLibs — a step the SSPlayer Android export flow handles, but a plain launcher build needs done once by hand.
 > - **iOS** requires macOS + Xcode, and the Brain library must be embedded into the app target once by hand — Ren'Py has no hook to auto-link third-party native code.
+> - **Web** needs a browser with **WebAssembly SIMD** (Chrome / Edge 91+, Firefox 89+, Safari 16.4+): the Brain's WebAssembly build is compiled with SIMD instructions and will **not run on browsers without it**. Treat SIMD support as a browser requirement for your distribution.
