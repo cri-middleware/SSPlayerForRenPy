@@ -138,8 +138,8 @@ developer-side counterpart of the manual instructions in the
   `scripts/build-runtime.*` (source). Desktop / mobile / web each need their own,
   e.g. `build-runtime.* platform=android build=release`, `platform=ios`,
   `platform=web`.
-- The Ren'Py SDK (`scripts/fetch-renpy-sdk.*`); the deploy scripts fetch it on
-  demand if it is missing.
+- The Ren'Py SDK (`scripts/fetch-renpy-sdk.*`); the desktop, Android and iOS deploy
+  scripts fetch it on demand if it is missing, and `deploy-web.*` asks you to run it first.
 - Platform-specific toolchains, one-time:
     - **Android**: `scripts/fetch-renpy-android.*` (RAPT), then **Install SDK**,
       **Configure** (sets the package name in `android.json` — required), and
@@ -172,9 +172,9 @@ scripts\deploy-web.ps1     [dest_dir]
   start on a connected device via `adb`.
 - **iOS**: generates / refreshes the Xcode project; the Brain still needs the
   one-time **Embed & Sign** in Xcode (see the [Export Guide](export.md)).
-- **Web**: idempotent; re-run after each export, then serve over HTTP with the
-  right MIME types.
+- **Web**: the stock Web export, with nothing applied after it; serve the output over
+  HTTP with the right MIME types.
 
 For the SSPlayer-specific requirements these scripts encode (per-ABI `.so`, the
-dynamic iOS xcframework, the Web WASM injection, `.rpa` ordering), see the
+dynamic iOS xcframework, `.rpa` ordering), see the
 [Export Guide](export.md).
