@@ -62,7 +62,7 @@ screen demo():
 and the Auto Importer converts it on the next reload — which, with [hot reload](docs/en/import.md#hot-reload)
 armed (one **Shift+R**), happens by itself. There is no manual export step.
 [Asset Import](docs/en/import.md) also covers the two routes that do not need Ren'Py running:
-`SSConverterGUI` on the desktop, and `ssconverter-cli` in CI.
+SSConverter GUI on the desktop, and `ssconverter-cli` in CI.
 
 ### See it running from a checkout
 
@@ -117,7 +117,7 @@ scripts\build-runtime.ps1
 
 - [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/) — the documentation portal for the SDK and every official player
 - [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — the core SDK providing `libssruntime` and `libssconverter`
-- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — desktop GUI for converting `.sspj` to `.ssab` without a player
+- [SSConverter GUI](https://github.com/cri-middleware/SSConverterGUI) — desktop GUI for converting `.sspj` to `.ssab` without a player
 
 ## 📄 License
 

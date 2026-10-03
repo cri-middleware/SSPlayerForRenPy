@@ -56,7 +56,7 @@ screen demo():
 ```
 ※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
 
-**自分のアニメーションも同じ流れで入ります。** SpriteStudio のプロジェクトを `SpriteStudio_Source/` に置けば、次のリロードで Auto Importer が変換します（[ホットリロード](docs/ja/import.md#ホットリロード)をオンにしていれば、そのリロードも自動です）。手動の書き出し手順はありません。Ren'Py を起動せずに変換する 2 つの経路（デスクトップの `SSConverterGUI`、CI 向けの `ssconverter-cli`）も [アセットの取り込み](docs/ja/import.md) にあります。
+**自分のアニメーションも同じ流れで入ります。** SpriteStudio のプロジェクトを `SpriteStudio_Source/` に置けば、次のリロードで Auto Importer が変換します（[ホットリロード](docs/ja/import.md#ホットリロード)をオンにしていれば、そのリロードも自動です）。手動の書き出し手順はありません。Ren'Py を起動せずに変換する 2 つの経路（デスクトップの SSConverter GUI、CI 向けの `ssconverter-cli`）も [アセットの取り込み](docs/ja/import.md) にあります。
 
 ### チェックアウトから動かしてみる
 
@@ -110,7 +110,7 @@ scripts\build-runtime.ps1
 
 - [SpriteStudio Docs](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と公式 Player のドキュメントポータル
 - [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK) — `libssruntime` / `libssconverter` を提供する SDK 本体
-- [SSConverterGUI](https://github.com/cri-middleware/SSConverterGUI) — Player なしで `.sspj` を変換できるデスクトップ GUI
+- [SSConverter GUI](https://github.com/cri-middleware/SSConverterGUI) — Player なしで `.sspj` を変換できるデスクトップ GUI
 
 ## 📄 ライセンス
 

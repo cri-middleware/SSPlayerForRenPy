@@ -10,7 +10,7 @@ graph LR
 
     subgraph Convert ["① Development Phase (Convert Once)"]
         AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
-        GUI[[" SSConverterGUI<br>(GUI App) "]]
+        GUI[[" SSConverter GUI<br>(GUI App) "]]
         CLI[[" ssconverter-cli<br>(CLI Tool) "]]
         WEB[[" ssconverter-web<br>(Web Browser) "]]
     end
@@ -106,13 +106,13 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 
 ---
 
-## Method 2: Manual Conversion via Standalone GUI Tool (`SSConverterGUI`)
+## Method 2: Manual Conversion via Standalone GUI Tool (SSConverter GUI)
 
-If you are not familiar with command-line operations or prefer to convert files easily using drag-and-drop, we recommend using the dedicated desktop application **`SSConverterGUI`**.
+If you are not familiar with command-line operations or prefer to convert files easily using drag-and-drop, we recommend using the dedicated desktop application **SSConverter GUI**.
 
 ### Download and Usage
 
-1. Download and launch the latest version suitable for your OS from the [SSConverterGUI Releases page](https://github.com/cri-middleware/SSConverterGUI/releases).
+1. Download and launch the latest version suitable for your OS from the [SSConverter GUI Releases page](https://github.com/cri-middleware/SSConverterGUI/releases).
 2. Directly **drag and drop** the `.sspj` file or a folder containing `.sspj` files into the designated area of the application window.
 3. (Optional) Specify the output directory and press the "Convert" button to generate the `.ssab` files all at once.
 4. After conversion, manually move the output folder into your Ren'Py project's `game/` directory (e.g., `game/ss_assets/Ringo/`).

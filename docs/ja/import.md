@@ -10,7 +10,7 @@ graph LR
 
     subgraph Convert ["① 開発時（変換・1回だけ）"]
         AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
-        GUI[[" SSConverterGUI<br>(GUIアプリ) "]]
+        GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
         WEB[[" ssconverter-web<br>(Webブラウザ) "]]
     end
@@ -100,13 +100,13 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 
 ---
 
-## 方法2: 専用GUIツール (`SSConverterGUI`) による手動変換
+## 方法2: 専用GUIツール (SSConverter GUI) による手動変換
 
-コマンドライン操作に慣れていない方や、ドラッグ＆ドロップで手軽に変換したい場合は、専用のデスクトップアプリケーション **`SSConverterGUI`** の利用をおすすめします。
+コマンドライン操作に慣れていない方や、ドラッグ＆ドロップで手軽に変換したい場合は、専用のデスクトップアプリケーション **SSConverter GUI** の利用をおすすめします。
 
 ### ダウンロードと使い方
 
-1. [SSConverterGUI の Releases ページ](https://github.com/cri-middleware/SSConverterGUI/releases) から、お使いの OS に合った最新版をダウンロードして起動します。
+1. [SSConverter GUI の Releases ページ](https://github.com/cri-middleware/SSConverterGUI/releases) から、お使いの OS に合った最新版をダウンロードして起動します。
 2. アプリケーションウィンドウの指定エリアに、変換したい `.sspj` ファイル、または `.sspj` が含まれるフォルダを直接 **ドラッグ＆ドロップ** します。
 3. （オプション）出力先ディレクトリを指定し、「Convert」ボタンを押すと一括で `.ssab` が生成されます。
 4. 完了後、出力されたフォルダをご自身のRen'Pyプロジェクトの `game/` ディレクトリ内（例: `game/ss_assets/Ringo/`）に手動で配置してください。
