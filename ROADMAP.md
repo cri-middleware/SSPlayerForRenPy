@@ -131,9 +131,10 @@ character talks with the one talk animation and turns happy again only when the 
 
 ## Shared with every port
 
-Text and NineSlice parts, and nested timeline events inside Instance / Effect parts, are
-exposed by the runtime but implemented by no official player yet, so they are tracked in the
-SDK roadmap rather than here — see [Limitations](./docs/en/limitations.md).
+Text and NineSlice parts are exposed by the runtime but drawn by no official player yet, and
+this player does not surface the timeline events of Instance / Effect parts either — see
+[Limitations](./docs/en/limitations.md). These are Player-side gaps: the SDK roadmap has no
+entry for them.
 
 Text and NineSlice are the two part kinds authored for UI, and the UI work above stops short
 of both. Text is settled SDK-side as a **player responsibility**, so drawing it — and
