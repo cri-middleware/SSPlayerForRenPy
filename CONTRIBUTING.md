@@ -90,7 +90,7 @@ scripts/build-docs.sh                # English then Japanese, both --strict
 scripts/build-pages.sh serve=yes     # + the released Web demo -> http://localhost:8000/
 ```
 
-Both locales, English first: it clears `site/`, which contains `site/ja`, so an English-only build leaves a stale Japanese site behind and a page you just broke still looks fine. `mkdocs.base.yml` sets `strict: true`; `serve` validates nothing.
+Both locales, English first: it clears `site/`, which contains `site/ja`, so an English-only build leaves no Japanese site at all. `mkdocs.base.yml` sets `strict: true`; `serve` validates nothing.
 
 `build-pages.sh` is the whole published site, and `pages.yml`'s build job **is** this script. `demo=download` needs `gh` and a Release carrying `SSPlayerForRenPy-web-demo.zip`; `zip=<path>` feeds one by hand, and `demo=build` runs the export here instead, for when no Release carries one. `sdk=` picks `download-sdk` or `build-runtime` and is consulted for `demo=build` only, since a downloaded demo brings its own runtime. An existing `renpy-sdk/` is never re-fetched.
 
@@ -202,7 +202,7 @@ scripts/build-docs.sh                # 英語 → 日本語の順に、どちら
 scripts/build-pages.sh serve=yes     # + リリース済み Web デモ -> http://localhost:8000/
 ```
 
-必ず両ロケールを、英語を先にビルドします。英語ビルドは `site/ja` を含む `site/` を消すため、英語だけビルドすると古い日本語サイトが残り、壊したページが無傷に見えます。`mkdocs.base.yml` が `strict: true` を設定します。`serve` は何も検証しません。
+必ず両ロケールを、英語を先にビルドします。英語ビルドは `site/ja` を含む `site/` を消すため、英語だけビルドすると日本語サイトは残らず消えます。`mkdocs.base.yml` が `strict: true` を設定します。`serve` は何も検証しません。
 
 `build-pages.sh` が公開サイト全体で、`pages.yml` のビルドジョブは**このスクリプト**です。`demo=download` には `gh` と、`SSPlayerForRenPy-web-demo.zip` を持つ Release が必要です。`zip=<path>` で手渡しもでき、`demo=build` はここでエクスポートを実行します（それを持つ Release が無いときに使います）。`sdk=` は `download-sdk` と `build-runtime` の選択で、参照されるのは `demo=build` のときだけです（ダウンロードしたデモは自前のランタイムを持っているため）。既存の `renpy-sdk/` は再取得しません。
 
