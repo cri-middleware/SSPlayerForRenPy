@@ -10,10 +10,10 @@ An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spri
 
 ## ✨ Why use SpriteStudio with Ren'Py?
 
-- **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio) and the player just plays it. With bone rigs, mesh deformation, and particles, there's no long, complex ATL to hand-write.
-- **A lightweight alternative to video.** Where Ren'Py productions reach for video — a `Movie` playing a `.webm`, `.ogv`, or `.mp4` for animated openings, living backgrounds, effect cut-ins — this runs as lightweight native playback: it scales freely at runtime, loops seamlessly, and reacts to your game instead of just playing back.
-- **Still composes with ATL & `Transform`.** `SSPlayer` is a standard Ren'Py Displayable, so you keep ATL where it shines — position, slide, zoom, or fade the whole animated sprite exactly like any other image. And every converted pack already is one: `show ringo wait1` works with no `image` statement, and the Interactive Director lists it.
-- **Smooth motion, not locked to a frame rate.** **Sub-frame interpolation** renders each frame at the exact display time. Unlike video baked at a fixed frame rate, motion follows your display's refresh rate and playback speed for smoother movement.
+- **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio), and Ren'Py just plays it. With bone rigs, mesh deformation, and particles, there's no long, complex ATL to hand-write.
+- **Lip flap that follows your dialogue.** One `SSCharacter` line defines the image and the speaker together: the sprite plays its talk animation while a line is on screen and returns to idle when it ends — no per-line code.
+- **Use it like any other image.** `show ringo wait1` works with no `image` statement, and switching to another animation is one more `show`, just like changing an expression. ATL and `Transform` still position, slide, zoom, or fade it, and the Interactive Director lists it.
+- **A lightweight alternative to video.** Openings, living backgrounds, effect cut-ins — wherever you'd play a `Movie` — run as animation instead: it scales freely, loops seamlessly, changes on your script's cue, and moves at your display's refresh rate rather than a frame rate baked into a video. The bundled Ringo, every animation plus its texture, is under 300 KB.
 - **A seamless edit-to-runtime loop.** The **Auto Importer** watches `SpriteStudio_Source/` during development: arm it with one **Shift+R**, then just save in SpriteStudio — only the changed project is re-converted, and the running game reloads itself to show it. No manual export step.
 
 ## 📚 Documentation
