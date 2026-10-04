@@ -274,8 +274,19 @@ class SsAnimeBinary(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
         return o == 0
 
+    # SsAnimeBinary
+    def Keyframes(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
+        if o != 0:
+            x = self._tab.Indirect(o + self._tab.Pos)
+            from ss.format.Keyframes import Keyframes
+            obj = Keyframes()
+            obj.Init(self._tab.Bytes, x)
+            return obj
+        return None
+
 def SsAnimeBinaryStart(builder):
-    builder.StartObject(12)
+    builder.StartObject(13)
 
 def Start(builder):
     SsAnimeBinaryStart(builder)
@@ -405,6 +416,12 @@ def SsAnimeBinaryStartEmbeddedAssetsVector(builder, numElems):
 
 def StartEmbeddedAssetsVector(builder, numElems):
     return SsAnimeBinaryStartEmbeddedAssetsVector(builder, numElems)
+
+def SsAnimeBinaryAddKeyframes(builder, keyframes):
+    builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(keyframes), 0)
+
+def AddKeyframes(builder, keyframes):
+    SsAnimeBinaryAddKeyframes(builder, keyframes)
 
 def SsAnimeBinaryEnd(builder):
     return builder.EndObject()
