@@ -340,7 +340,13 @@ if [ "$VERIFY" = "yes" ]; then
 
   # Compiled bytecode and caches are excluded on purpose: .rpyc files built
   # against this Ren'Py would be stale in a creator's project.
-  if unzip -Z1 "$OUT/$ARTIFACT" | grep -qE '\.rpyc$|/__pycache__/'; then
+  #
+  # Every listing below is read into a variable before grep sees it. Piped
+  # straight into `grep -q`, grep exits at its first match, unzip dies of
+  # SIGPIPE writing the rest, and pipefail reports the whole pipeline as failed
+  # -- a file that is there reads as missing, and a stray .rpyc as absent.
+  ENTRIES="$(unzip -Z1 "$OUT/$ARTIFACT")"
+  if grep -qE '\.rpyc$|/__pycache__/' <<< "$ENTRIES"; then
     fail "$ARTIFACT contains .rpyc or __pycache__ (the -x patterns did not hold)"
   fi
 
@@ -348,16 +354,18 @@ if [ "$VERIFY" = "yes" ]; then
 
   if [ "$DEMO" = "build" ]; then
     # A Ren'Py Web export the browser can actually start.
+    ENTRIES="$(unzip -Z1 "$OUT/$DEMO_ZIP")"
     for f in index.html game.zip; do
-      unzip -Z1 "$OUT/$DEMO_ZIP" | grep -qx "$f" || fail "$DEMO_ZIP has no $f"
+      grep -qx "$f" <<< "$ENTRIES" || fail "$DEMO_ZIP has no $f"
     done
     # The Brain is read out of game.zip at startup (ssruntime_web.load_library),
     # so the export plays only if both runtime files were packed into it.
     DEMO_CHECK="$ROOT_DIR/build/release-democheck"
     rm -rf "$DEMO_CHECK"
     if unzip -q "$OUT/$DEMO_ZIP" game.zip -d "$DEMO_CHECK"; then
+      ENTRIES="$(unzip -Z1 "$DEMO_CHECK/game.zip")"
       for f in ssruntime.js ssruntime_bg.wasm; do
-        unzip -Z1 "$DEMO_CHECK/game.zip" | grep -qx "game/spritestudio/libs/web/$f" \
+        grep -qx "game/spritestudio/libs/web/$f" <<< "$ENTRIES" \
           || fail "$DEMO_ZIP: game.zip has no spritestudio/libs/web/$f"
       done
     fi

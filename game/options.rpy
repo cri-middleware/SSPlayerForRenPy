@@ -52,8 +52,13 @@ init -20 python:
     # rules classify `**.webm` into every package — so a working tree that has
     # ever built the docs was shipping ~20 MB of documentation video in the
     # demo, web export included.
+    #
+    # `release-dist/**` is where scripts/build-release.* write by default, CI
+    # included. The plugin zip lands there before the Web export runs, so without
+    # this the demo's game.zip carries the plugin zip twice, and every visitor
+    # downloads both before the demo starts.
     for _dev_pat in ('renpy-sdk/**', 'SpriteStudio-SDK/**', 'SpriteStudio_Source/**',
-                     'web_out/**', 'web_out.zip', 'dist/**', 'site/**',
+                     'web_out/**', 'web_out.zip', 'dist/**', 'site/**', 'release-dist/**',
                      'docs/**', 'mkdocs*.yml', 'overrides/**',
                      '*.md', '*.txt', '.git/**', 'tools/**', 'scripts/**'):
         build.classify(_dev_pat, None)
