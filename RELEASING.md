@@ -77,8 +77,8 @@ Then dispatch the release workflow from the branch. Nothing runs on a pull reque
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
-git push origin "${BRANCH:?}"
-RUN=$(gh workflow run release.yml --ref "${BRANCH:?}" | sed 's|.*/||')
+git push origin "${BRANCH:?}" &&
+  RUN=$(gh workflow run release.yml --ref "${BRANCH:?}" | sed 's|.*/||')
 gh run watch "${RUN:?}" --exit-status
 ```
 
@@ -110,8 +110,8 @@ gh pr merge "${BRANCH:?}" --merge
 Then tag `main`. The tag goes on the merge commit only when its tree is the branch's, which `git diff` confirms by printing nothing:
 
 ```bash
-git switch main && git pull --ff-only
-git diff --stat --exit-code HEAD^2 HEAD &&
+git switch main && git pull --ff-only &&
+  git diff --stat --exit-code HEAD^2 HEAD &&
   TAG=v$(scripts/release-version.sh) &&
   git tag -a "$TAG" -m "$TAG" && git push origin "$TAG"
 ```
@@ -149,8 +149,8 @@ Merge `main` into `develop`. After a patch release this conflicts where `develop
 ```bash
 git fetch origin --tags
 TAG=$(git describe --exact-match --tags --match 'v[0-9]*' origin/main)
-git switch develop && git pull --ff-only
-git merge --no-ff origin/main && git push origin develop
+git switch develop && git pull --ff-only &&
+  git merge --no-ff origin/main && git push origin develop
 git push origin --delete "release/$(echo "${TAG:?}" | sed 's/^v//' | cut -d. -f1,2)"
 ```
 
@@ -272,8 +272,8 @@ gh pr create -B main -H "${BRANCH:?}" --title "Release v$(scripts/release-versio
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
-git push origin "${BRANCH:?}"
-RUN=$(gh workflow run release.yml --ref "${BRANCH:?}" | sed 's|.*/||')
+git push origin "${BRANCH:?}" &&
+  RUN=$(gh workflow run release.yml --ref "${BRANCH:?}" | sed 's|.*/||')
 gh run watch "${RUN:?}" --exit-status
 ```
 
@@ -305,8 +305,8 @@ gh pr merge "${BRANCH:?}" --merge
 続けて `main` にタグを打ちます。タグはマージコミットのツリーがブランチと同じときにだけ打たれます。`git diff` が何も出力しないことがその確認です。
 
 ```bash
-git switch main && git pull --ff-only
-git diff --stat --exit-code HEAD^2 HEAD &&
+git switch main && git pull --ff-only &&
+  git diff --stat --exit-code HEAD^2 HEAD &&
   TAG=v$(scripts/release-version.sh) &&
   git tag -a "$TAG" -m "$TAG" && git push origin "$TAG"
 ```
@@ -344,8 +344,8 @@ gh run watch "${RUN:?}" --exit-status             # run が出るまで RUN は�
 ```bash
 git fetch origin --tags
 TAG=$(git describe --exact-match --tags --match 'v[0-9]*' origin/main)
-git switch develop && git pull --ff-only
-git merge --no-ff origin/main && git push origin develop
+git switch develop && git pull --ff-only &&
+  git merge --no-ff origin/main && git push origin develop
 git push origin --delete "release/$(echo "${TAG:?}" | sed 's/^v//' | cut -d. -f1,2)"
 ```
 
