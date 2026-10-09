@@ -127,7 +127,7 @@ RUN=$(gh workflow run release.yml --ref "${TAG:?}" -f upload_release=true | sed 
 gh run watch "${RUN:?}" --exit-status
 ```
 
-Nothing passes the tag around: `build-release.sh` reads `GITHUB_REF_NAME`, or the tag `HEAD` is checked out at, and refuses one that disagrees with `__version__` — a Release called `v1.2.3` carrying `SSPlayerForRenPy-1.2.4.zip` is worse than none. `upload_release=true` from anything but a `v*` tag fails the run rather than skipping the Release quietly.
+Nothing passes the tag around: `build-release.sh` reads `GITHUB_REF_NAME`, or the tag `HEAD` is checked out at, and refuses one that disagrees with `__version__` — a Release called `v1.2.3` carrying `SSPlayerForRenPy-1.2.4.zip` is worse than none. A tag that already has a Release, draft or published, keeps it as it is: the run builds, says so in a notice and creates nothing, so delete a draft before dispatching again ([Undoing a release](#undoing-a-release)). With `-f upload_release=false` a run from the tag only builds, its files kept on the run.
 
 ### 6. Publish
 
@@ -322,7 +322,7 @@ RUN=$(gh workflow run release.yml --ref "${TAG:?}" -f upload_release=true | sed 
 gh run watch "${RUN:?}" --exit-status
 ```
 
-タグは受け渡されません。`build-release.sh` が `GITHUB_REF_NAME`（ローカルでは `HEAD` のタグ）を読み、`__version__` と食い違うタグを拒否します。`v1.2.3` という Release に `SSPlayerForRenPy-1.2.4.zip` が入っているくらいなら、Release が無い方がましだからです。`v*` タグ以外からの `upload_release=true` は、Release を黙って飛ばさずに実行を失敗させます。
+タグは受け渡されません。`build-release.sh` が `GITHUB_REF_NAME`（ローカルでは `HEAD` のタグ）を読み、`__version__` と食い違うタグを拒否します。`v1.2.3` という Release に `SSPlayerForRenPy-1.2.4.zip` が入っているくらいなら、Release が無い方がましだからです。Release がすでにあるタグでは、下書きでも公開済みでも、その Release に触れません。run はビルドして notice を出すだけなので、もう一度実行するときは先に下書きを消します（[リリースの取り消し](#リリースの取り消し)）。`-f upload_release=false` を付けると、タグからの実行でもビルドだけを行い、成果物を run に残します。
 
 ### 6. 公開
 

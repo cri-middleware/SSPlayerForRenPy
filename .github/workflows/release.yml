@@ -1,10 +1,10 @@
 name: Release
 
-# - workflow_dispatch only. With upload_release=false (default) the run is a QA
+# - workflow_dispatch only, and the ref decides. From a branch the run is a QA
 #   build: test + package + Web demo, artifacts only, no Release is created.
 #   Dispatch it against release/X.Y branches to verify a release candidate.
-# - The GitHub Release is created only by an explicit dispatch with
-#   upload_release=true on a v* tag ref (guarded below).
+# - From a v* tag it also drafts the GitHub Release, unless upload_release is
+#   turned off or the tag already has one (decided below).
 # - The release version/tag/zip name come from the ss_renpy package's
 #   __version__ (PEP 440, e.g. 7.0.0b1 — the Ren'Py package's own version,
 #   independent of SDK_VERSION.txt, which only pins which native SDK libs
@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       upload_release:
-        description: 'Create a draft GitHub Release (publish by hand afterwards). Requires dispatching from a v* tag.'
+        description: 'Draft the GitHub Release, to publish by hand. Only from a v* tag that has no Release yet; from a branch the run is a build.'
         required: false
-        default: false
+        default: true
         type: boolean
 
 # Needed to create the release and upload assets.
@@ -79,15 +79,30 @@ jobs:
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
 
-      # A release is a tag that was pushed first and dispatched from second, so
-      # asking to upload from anything else is an operator error, not a mode.
-      # Fails before the heavy build rather than after it. (build-release.sh
-      # separately refuses a tag that disagrees with ss_renpy.__version__.)
-      - name: Refuse to release from a non-tag ref
-        if: inputs.upload_release && !startsWith(github.ref, 'refs/tags/v')
+      # The ref decides what the run is: a v* tag is a release, anything else is
+      # a build, kept on the run and drafting nothing. A tag that already has a
+      # Release, draft or published, keeps it as it is, so a run from an old tag
+      # rebuilds without touching the files people have downloaded and checked
+      # against its SHA256SUMS. To have a Release made again, delete it first.
+      - name: Decide on the GitHub Release
+        id: release
+        if: inputs.upload_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          echo "::error::upload_release=true needs a v* tag. Push the tag first, then dispatch this workflow from it (Use workflow from → the tag)."
-          exit 1
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::notice::${GITHUB_REF_NAME} is not a v* tag — a build, no Release."; exit 0 ;;
+          esac
+          if out="$(gh release view "$GITHUB_REF_NAME" --json isDraft 2>&1)"; then
+            echo "::notice::${GITHUB_REF_NAME} already has a Release — left as it is. Delete it to have it made again."
+          elif [ "$out" = "release not found" ]; then
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            exit 1
+          fi
 
       # scripts/build-release.sh IS the release: the SDK libs, the drop-in
       # spritestudio/ zip, the Web export and its zip, the stable version-less
@@ -102,8 +117,8 @@ jobs:
       # (zip follows symlinks unless told not to, which silently invalidates its
       # code signature — and consumers get that framework only through this zip).
       #
-      # demo=build is what makes a QA dispatch (upload_release=false) worth
-      # running: the Web export is the part most likely to break.
+      # demo=build is what makes a QA dispatch from a branch worth running: the
+      # Web export is the part most likely to break.
       - name: Build the release
         run: ./scripts/build-release.sh sdk=download demo=build out=release-dist verify=yes clean=yes
 
@@ -133,7 +148,7 @@ jobs:
       # decision, made once, where the release is actually published, which is
       # why there is no prerelease input.
       - name: Upload package to release
-        if: inputs.upload_release
+        if: steps.release.outputs.draft == 'true'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
