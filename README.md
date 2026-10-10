@@ -4,7 +4,7 @@
 
 **Give your visual novel editor-crafted 2D animation — in just a few lines of script, no video files.**
 
-▶️ **[Try the live demo in your browser](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — the bundled SpriteStudio animations running in Ren'Py Web. 🚧 Goes live once the first release is published.
+▶️ **[Try the live demo in your browser](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — the bundled SpriteStudio animations running in Ren'Py Web.
 
 An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
 
@@ -20,11 +20,11 @@ An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spri
 
 For detailed specifications, import procedures, and API references, please visit our MkDocs documentation site.
 
-- [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/) — 🚧 live after the first release
+- [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/)
 - [**Documentation (English)**](./docs/en/index.md)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
-- [**For AI assistants**](https://cri-middleware.github.io/SSPlayerForRenPy/llms.txt) — these docs as Markdown: `llms.txt` indexes the pages and `llms-full.txt` holds all of them in one file — 🚧 live after the first release
-- [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place — 🚧 live after the first release
+- [**For AI assistants**](https://cri-middleware.github.io/SSPlayerForRenPy/llms.txt) — these docs as Markdown: `llms.txt` indexes the pages and `llms-full.txt` holds all of them in one file
+- [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place
 
 ### Quick Links
 - [Setup Guide](docs/en/setup.md)
@@ -49,8 +49,6 @@ This is the easiest way to integrate the player using a pre-built package.
 
 Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and simply copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. That's it!
 
-*🚧 The download link goes live once the first release is published.*
-
 ```renpy
 # Example usage in a Ren'Py script
 screen demo():
@@ -66,8 +64,7 @@ SSConverter GUI on the desktop, and `ssconverter-cli` in CI.
 
 ### See it running from a checkout
 
-> 🚧 Until the first release, this is how to watch the player work. It is a checkout, not part
-> of the setup above — you do not need it to use the package.
+> This is a checkout, not part of the setup above — you do not need it to use the package.
 
 Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
 

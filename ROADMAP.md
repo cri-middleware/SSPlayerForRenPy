@@ -17,9 +17,8 @@ These need no new SDK API — the runtime already provides everything required. 
 - [ ] **Animation blending / crossfade** — Layer and cross-fade animations on one player
   through the runtime's track stack (`ss_runtime_set_track_animation`, `ss_runtime_crossfade`,
   `ss_runtime_add_track_source`, `ss_runtime_fade_track` and the rest of the track and source
-  calls); nothing on `SSPlayer` exposes it. Not started until after the first release: a
-  selling point, not a release blocker. Reference: `SSPlayerForWgpu`, the one official player
-  that surfaces it (`set_track_animation` / `crossfade` / `fade_track` / …, with regression
+  calls); nothing on `SSPlayer` exposes it. A selling point. Reference: `SSPlayerForWgpu`, the one
+  official player that surfaces it (`set_track_animation` / `crossfade` / `fade_track` / …, with regression
   tests in `tests/tracks.rs`); the stems are fixed in the SDK's
   [Player API Conventions](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/20_design/30_api_conventions.md)
   §3-2, and the design is its

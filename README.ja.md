@@ -4,7 +4,7 @@
 
 **ビジュアルノベルに、エディタで作り込んだ2Dアニメーションを。動画ファイル不要、たった数行で。**
 
-▶️ **[ブラウザでライブデモを試す](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — 同梱の SpriteStudio アニメーションを Ren'Py Web で再生できます。🚧 初回リリースの公開後に有効になります。
+▶️ **[ブラウザでライブデモを試す](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — 同梱の SpriteStudio アニメーションを Ren'Py Web で再生できます。
 
 **[SpriteStudio](https://www.webtech.co.jp/spritestudio/)** のアニメーション (`.ssab`) を [Ren'Py](https://www.renpy.org/) でそのまま再生する拡張ライブラリ（プレイヤー）です。普段お使いの PNG / WebP 素材を専用エディタでアニメーションさせ、完成したアニメーションをプロジェクトに組み込むだけ——長くて複雑な ATL も、重い動画ファイルも要りません。
 
@@ -20,11 +20,11 @@
 
 詳細な仕様、インポート手順、APIリファレンスなどの全容については、ドキュメントサイト（MkDocs）をご覧ください。
 
-- [**ドキュメントサイト (ホスト版)**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/) — 🚧 初回リリース後に公開
+- [**ドキュメントサイト (ホスト版)**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
 - [**Documentation (English)**](./docs/en/index.md)
-- [**AI アシスタント向け**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/llms.txt) — このドキュメントを Markdown で提供します。`llms.txt` はページの目次、`llms-full.txt` は全ページを 1 ファイルにまとめたものです — 🚧 初回リリース後に公開
-- [**SpriteStudio Docs（ポータル）**](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と全公式 Player の入口 — 🚧 初回リリース後に公開
+- [**AI アシスタント向け**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/llms.txt) — このドキュメントを Markdown で提供します。`llms.txt` はページの目次、`llms-full.txt` は全ページを 1 ファイルにまとめたものです
+- [**SpriteStudio Docs（ポータル）**](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と全公式 Player の入口
 
 ### クイックリンク
 - [導入ガイド (Setup)](docs/ja/setup.md)
@@ -47,8 +47,6 @@
 
 最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードし、展開してできる **`spritestudio/`** フォルダを、ご自身のRen'Pyプロジェクトの `game/` フォルダ内にそのままコピーしてください。これだけで導入は完了です。
 
-*🚧 ダウンロードリンクは初回リリースの公開後に有効になります。*
-
 ```renpy
 # ゲームプロジェクト内で呼び出す例
 screen demo():
@@ -60,7 +58,7 @@ screen demo():
 
 ### チェックアウトから動かしてみる
 
-> 🚧 初回リリースまでは、これが動いているところを見る方法です。上の導入手順の一部ではなくチェックアウトなので、パッケージを使うだけなら不要です。
+> これは上の導入手順の一部ではなくチェックアウトなので、パッケージを使うだけなら不要です。
 
 同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
 

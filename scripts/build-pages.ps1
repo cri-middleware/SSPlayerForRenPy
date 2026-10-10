@@ -16,8 +16,7 @@
 # SSPlayerForRenPy-web-demo.zip to the release; pages.yml only downloads it.
 # demo=download is that path and the default -- it is what a Pages deploy will
 # actually publish. demo=build runs those release.yml steps here instead, which
-# is the only way to see a demo that is not in a release yet (and the only way
-# at all before the first release carrying the asset is published).
+# is the only way to see a demo that is not in a release yet.
 #
 # Ordering: the English documentation build clears site\, and both the Japanese
 # site (site\ja) and the demo (site\demo) live inside it -- so the demo goes in
