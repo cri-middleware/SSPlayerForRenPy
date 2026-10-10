@@ -5,7 +5,6 @@ A plugin (player) to play animations created in [SpriteStudio](https://www.webte
 !!! tip "Try it in your browser"
     [▶️ Run the sample project](demo/) — a Ren'Py Web build published alongside this
     documentation. Nothing to install.
-    _Coming soon_: the demo ships with the first release, so the link 404s until then.
 
 !!! tip "No SpriteStudio data of your own yet?"
     The [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — that page is

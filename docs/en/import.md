@@ -170,9 +170,9 @@ If you want to try conversion quickly in your browser without installing any too
 - Unzip the downloaded `.zip` file, and place the generated `.ssab` and images together in your `game/` folder.
 
 It is hosted on the SpriteStudio Player for Web site at
-`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/` (_coming soon_ — the address is
-final, but it 404s until SpriteStudio Player for Web publishes its site). Folder selection uses
-the **File System Access API**, so a **Chromium-based browser (Chrome / Edge)** is required.
+[`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/).
+Folder selection uses the **File System Access API**, so a **Chromium-based browser
+(Chrome / Edge)** is required.
 
 For details, please refer to the documentation in the [SSPlayerForWeb repository](https://github.com/cri-middleware/SSPlayerForWeb).
 
