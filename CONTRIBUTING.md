@@ -70,7 +70,7 @@ Once built, deploy the example assets and run the demo:
 ./scripts/run-demo.sh
 ```
 
-Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `fetch-renpy-ios.sh`, which need macOS and Xcode anyway. All take `key=value` options and `--help`.
+Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `fetch-renpy-ios.sh`, which need macOS and Xcode anyway, and `scan-snippets.sh`, a release step that takes nothing. The others all take `key=value` options and `--help`.
 
 ### Test
 ```bash
@@ -185,7 +185,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ./scripts/run-demo.sh
 ```
 
-スクリプトはすべて `scripts/*.sh` と `.ps1` の双子です。ただし `deploy-ios.sh` と `fetch-renpy-ios.sh` はどのみち macOS と Xcode が必要なので `.sh` だけです。いずれも `key=value` オプションと `--help` を取ります。
+スクリプトはすべて `scripts/*.sh` と `.ps1` の双子です。ただし `deploy-ios.sh` と `fetch-renpy-ios.sh` はどのみち macOS と Xcode が必要なので `.sh` だけです。リリースの手順で使う `scan-snippets.sh` も `.sh` だけで、何も取りません。ほかはいずれも `key=value` オプションと `--help` を取ります。
 
 ### テスト
 ```bash
