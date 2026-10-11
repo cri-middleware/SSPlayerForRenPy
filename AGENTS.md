@@ -85,6 +85,3 @@ each self-contained and dev-gated.
 *   **Renaming a property on `SSInternalPlayer` has no compiler to catch the call sites.** It surfaces only
     as an `AttributeError` from whichever headless tool still reads the old name, so run the suite after
     touching anything under `game/spritestudio/python/`.
-*   **Not rendered**, and not to be presented as working: Text and NineSlice parts, animation blending, and
-    nested Instance / Effect timeline events. Audio is played by `SSPlayer` on the `sfx` mixer, round-robin,
-    and is muted in reverse.
