@@ -81,6 +81,8 @@ label start:
     r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
 ```
 
+属性を複数並べると、`aliases` のリストと同じように順番に再生します。`show ringo attack1 wait1` は attack1 を 1 回再生してから、プレイヤーの `loop` に従って wait1 を再生します。`still` を付けると止まります。`show ringo dead still` は dead を 1 回再生して最後の絵で止まり、`show ringo still` は画像が最初に再生するアニメーションの最初の絵で止まります。パックに `still` という名前のアニメーションやエイリアスがあるときは、そちらを再生します。Interactive Director では、`still` は表示中のアニメーションを差し替えずにオン・オフできます。
+
 > [!NOTE]
 > **属性は `SSPlayer` の画像に持たせ、拡大縮小や配置は表示するときに指定してください。** ATL ブロックや `At()` でプレイヤーを包んで定義した画像は Transform で、Transform は属性を受け付けません（このプレイヤーではなく Ren'Py の決まりです）。そのため、そうした画像に `show ringo happy` と書くと、開発者モードではエラーになり、リリースでは無視されます。変形は `show ringo happy at half` のように表示のほうに付けるか、Ren'Py の `config.tag_transform` で、`at` の無いそのタグの表示すべてに付けてください。
 >

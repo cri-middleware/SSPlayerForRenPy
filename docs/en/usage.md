@@ -82,6 +82,8 @@ label start:
     r attack "Attack! (It automatically returns to wait1 when attack1 ends)"
 ```
 
+Name several attributes to play them in turn, as a list in `aliases` does: `show ringo attack1 wait1` plays attack1 once, then wait1 under the player's `loop`. Add `still` to stop instead: `show ringo dead still` plays dead once and stays on its last frame, and `show ringo still` holds the first frame of the animation the image starts on. A pack with its own `still` animation or alias plays that instead. In the Interactive Director, `still` toggles on and off without replacing the animation shown.
+
 > [!NOTE]
 > **Keep the attributes on the `SSPlayer` image, and scale or place it when you show it.** An image defined with an ATL block or `At()` around the player is a Transform, and a Transform takes no attributes — Ren'Py's rule, not this player's — so `show ringo happy` on such an image fails in developer mode and is ignored in a release. Put the transform on the show instead, `show ringo happy at half`, or on every show of the tag that has no `at` with Ren'Py's `config.tag_transform`:
 >
