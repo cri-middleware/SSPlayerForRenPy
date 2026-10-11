@@ -226,6 +226,59 @@ def partcolor_varg(blend_idx: int, rate: float) -> tuple:
     return (1.0 + cx * rate, cy * rate, cz)
 
 
+def pack_pc_mesh(parts, ox, oy, tw, th):
+    """Pack a run of Normal / Shape parts into flat (geometry, attributes,
+    indices) arrays for the render layer's PartColor mesh (a_tex_coord +
+    a_ss_color + a_ss_varg) — the per-vertex build shared by the batched, masked
+    and user-shader mesh draws.
+
+    Per vertex: world position offset to screen px by (ox, oy); UV normalized
+    by the atlas size (tw, th); per-corner PartColor RGBA + the shader ``varg``
+    triple. Triangles are rebased by the running vertex count, so ``parts`` may
+    be a single part (masked / user-shader draw) or a whole same-texture run
+    (batched draw). Returns ``(geometry, attributes, indices, nverts)``.
+
+    The hottest loop in the render layer (every vertex of every part, every
+    frame), so the per-vertex work is kept to arithmetic on locals: the UV
+    divisor and the PartColor coefficients are loop-invariant and resolved
+    once per run / per part, and each vertex extends the flat arrays once. It
+    lives here, not in ``spritestudio.rpy``, because a list built in a ``.rpy``
+    is a ``RevertableList``: every extend is recorded for rollback and ``Mesh2``
+    reads every item back through a Python method, which costs more than the
+    packing itself.
+    """
+    geometry = []
+    attributes = []
+    indices = []
+    base = 0
+    inv_tw = (1.0 / tw) if tw > 0 else 1.0
+    inv_th = (1.0 / th) if th > 0 else 1.0
+    g_ext = geometry.extend
+    a_ext = attributes.extend
+    i_ext = indices.extend
+    for mp in parts:
+        cx, cy, cz = partcolor_coef(mp.color_blend)
+        if mp.has_partcolor:
+            for (x, y), (u, v), c, rate in zip(mp.positions, mp.uvs,
+                                               mp.colors, mp.rates):
+                g_ext((ox + x, oy + y))
+                a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
+                       1.0 + cx * rate, cy * rate, cz))
+        else:
+            # No PartColor on this part, i.e. every rate is 0, which collapses
+            # varg to the constant (1, 0, cz) for EVERY mode — the texel
+            # pass-through. Hoisting it drops the rate read and two multiplies
+            # per vertex on what is the common case for most packs.
+            for (x, y), (u, v), c in zip(mp.positions, mp.uvs, mp.colors):
+                g_ext((ox + x, oy + y))
+                a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
+                       1.0, 0.0, cz))
+        for (i, j, k) in mp.triangles:
+            i_ext((base + i, base + j, base + k))
+        base += len(mp.positions)
+    return geometry, attributes, indices, base
+
+
 def eval_partcolor(pixel_rgb, color_rgb, blend_idx: int, rate: float) -> tuple:
     """CPU reference of the PartColor fragment formula.
 
