@@ -5,8 +5,9 @@ Drives ``Effect.ssab`` through every frame: creates one Effect slot per effect
 part, steps it via the C-API each frame, decodes the returned ``EffectDrawPlan``
 with :mod:`ss_renpy.effectplan`, and validates the geometry. Prints how many
 effects produced visible particles, the UV span (pixel vs normalized), the
-blend modes and cellmap hashes seen, and whether all positions/colours are
-finite. Plain CPython — no Ren'Py.
+blend modes and cellmap hashes seen, whether all positions/colours are finite,
+and whether ``pack_fx_mesh`` packs each batch as it holds it. Plain CPython —
+no Ren'Py.
 
 Usage:  python tools/verify_effect.py [pack.ssab ...]   (default: Effect.ssab)
 """
@@ -79,6 +80,7 @@ def check_pack(lib, path: str) -> bool:
         total = max(1, a0.total_frame)
         visible_parts = set()
         bad = 0
+        packed_bad = 0
         total_quads = 0
         blends = set()
         chashes = set()
@@ -113,6 +115,14 @@ def check_pack(lib, path: str) -> bool:
                     for (r, g, bb, a) in b.colors:
                         if not all(math.isfinite(v) for v in (r, g, bb, a)):
                             bad += 1
+                    # The batched mesh the render layer hands Mesh2.
+                    pg, pa, pix = effectplan.pack_fx_mesh(b, 3.0, 5.0)
+                    if (pg != [c for (x, y) in b.positions
+                               for c in (x + 3.0, y + 5.0)]
+                            or pa != [c for (u, v), col in zip(b.uvs, b.colors)
+                                      for c in (u, v, *col)]
+                            or pix != [i for tri in b.triangles for i in tri]):
+                        packed_bad += 1
                 mu, mv = effectplan.uv_span(batches)
                 max_u = max(max_u, mu)
                 max_v = max(max_v, mv)
@@ -129,6 +139,9 @@ def check_pack(lib, path: str) -> bool:
               + (f"   UNRESOLVED cellmap_hashes={unresolved}" if unresolved else ""))
         if bad:
             print("    FAIL: non-finite geometry/colour")
+            ok = False
+        if packed_bad:
+            print(f"    FAIL: pack_fx_mesh disagrees with {packed_bad} batch(es)")
             ok = False
         if not visible_parts:
             print("    FAIL: no effect produced visible particles")

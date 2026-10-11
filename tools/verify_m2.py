@@ -15,7 +15,9 @@ tool proves the engine-independent core:
   3. checks the alpha-not-double-applied contract (part-colour-less vertices
      carry exactly ``PartState.alpha``);
   4. confirms M2 corner positions match the M1 :func:`build_normal_quads`
-     geometry (same world matrix x local verts), so M2 is a strict superset.
+     geometry (same world matrix x local verts), so M2 is a strict superset;
+  5. checks :func:`pack_pc_mesh` packs each frame's parts into the flat arrays
+     the render layer hands ``Mesh2`` without losing or reordering anything.
 
 Exits non-zero if any check fails.
 
@@ -232,6 +234,25 @@ def verify_pack(lib, path: str) -> dict:
                             or mp.shader_params != zp.shader_params):
                         err(f"f{fr} p{mp.part_index}: draw-plan and "
                             f"build_mesh_parts MeshParts differ")
+
+            # The batched mesh the render layer hands Mesh2: the parts' vertices
+            # in order, offset and UV-normalized, varg as partcolor_varg gives
+            # it (a part-colour-less part's rates are all 0), and each part's
+            # triangles rebased onto the run.
+            g, a, ix, nv = framedata.pack_pc_mesh(mesh, 3.0, 5.0, 256.0, 128.0)
+            want_g, want_a, want_ix = [], [], []
+            for mp in mesh:
+                base_v = len(want_g) // 2
+                for (x, y), (u, v), c, rate in zip(mp.positions, mp.uvs,
+                                                   mp.colors, mp.rates):
+                    want_g += [x + 3.0, y + 5.0]
+                    want_a += [u / 256.0, v / 128.0, *c,
+                               *framedata.partcolor_varg(mp.color_blend, rate)]
+                want_ix += [base_v + i for tri in mp.triangles for i in tri]
+            if not (nv * 2 == len(g) == len(want_g) and len(a) == len(want_a)
+                    and _approx(g, want_g) and _approx(a, want_a)
+                    and ix == want_ix):
+                err(f"f{fr}: pack_pc_mesh disagrees with the MeshParts")
 
             # alpha-not-double-applied: a part-colour-less part's vertex alpha
             # equals PartState.alpha exactly (no second multiply).

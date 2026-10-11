@@ -1255,54 +1255,6 @@ init -10 python:
         def images(self):
             return list(self._cache.values())
 
-    def _ss_pack_pc_mesh(parts, ox, oy, tw, th):
-        """Pack a run of Normal / Shape parts into flat (geometry, attributes,
-        indices) arrays for the ``_SS_PC_LAYOUT`` mesh (a_tex_coord + a_ss_color +
-        a_ss_varg) — the per-vertex build shared by the batched, masked and
-        user-shader mesh draws.
-
-        Per vertex: world position offset to screen px by (ox, oy); UV normalized
-        by the atlas size (tw, th); per-corner PartColor RGBA + the shader ``varg``
-        triple. Triangles are rebased by the running vertex count, so ``parts`` may
-        be a single part (masked / user-shader draw) or a whole same-texture run
-        (batched draw). Returns ``(geometry, attributes, indices, nverts)``.
-
-        The hottest loop in the render layer (every vertex of every part, every
-        frame), so the per-vertex work is kept to arithmetic on locals: the UV
-        divisor and the PartColor coefficients are loop-invariant and resolved
-        once per run / per part, and each vertex extends the flat arrays once.
-        """
-        geometry = []
-        attributes = []
-        indices = []
-        base = 0
-        inv_tw = (1.0 / tw) if tw > 0 else 1.0
-        inv_th = (1.0 / th) if th > 0 else 1.0
-        g_ext = geometry.extend
-        a_ext = attributes.extend
-        i_ext = indices.extend
-        for mp in parts:
-            cx, cy, cz = framedata.partcolor_coef(mp.color_blend)
-            if mp.has_partcolor:
-                for (x, y), (u, v), c, rate in zip(mp.positions, mp.uvs,
-                                                   mp.colors, mp.rates):
-                    g_ext((ox + x, oy + y))
-                    a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
-                           1.0 + cx * rate, cy * rate, cz))
-            else:
-                # No PartColor on this part, i.e. every rate is 0, which collapses
-                # varg to the constant (1, 0, cz) for EVERY mode — the texel
-                # pass-through. Hoisting it drops the rate read and two multiplies
-                # per vertex on what is the common case for most packs.
-                for (x, y), (u, v), c in zip(mp.positions, mp.uvs, mp.colors):
-                    g_ext((ox + x, oy + y))
-                    a_ext((u * inv_tw, v * inv_th, c[0], c[1], c[2], c[3],
-                           1.0, 0.0, cz))
-            for (i, j, k) in mp.triangles:
-                i_ext((base + i, base + j, base + k))
-            base += len(mp.positions)
-        return geometry, attributes, indices, base
-
     class SSPlayer(renpy.Displayable):
         """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
 
@@ -2671,7 +2623,7 @@ init -10 python:
                 try:
                     cov = self._build_coverage(fm, ox, oy, st, at, width, height)
                     if cov is not None:
-                        cov = cov + (self._mask_meta_uniform(fm),)
+                        cov = cov + (fm.meta_uniform(),)
                 except Exception as e:
                     self._warn_once("mask-coverage",
                                     "coverage build failed (%r); masks off this "
@@ -2728,8 +2680,7 @@ init -10 python:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return
-                inv_tw = (1.0 / tw) if tw > 0 else 1.0
-                inv_th = (1.0 / th) if th > 0 else 1.0
+                tex_size = (tw, th)
                 threshold = (255.0 - w.mask_value) / 255.0
             else:
                 # Texture-less writer — or one on a tiled atlas we cannot sample
@@ -2737,28 +2688,12 @@ init -10 python:
                 # Covering too much keeps the target visible; dropping the writer
                 # would clip the target away entirely.
                 cr = self._white_render(st, at)
+                tex_size = None
                 threshold = -1.0
 
             mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, npts, ntri)
-            geom = []
-            idx = []
-            g_app = geom.append
-            i_app = idx.append
-            for (x, y) in pts:
-                g_app((x - bx) * sx + tile_x)
-                g_app((y - by) * sy + tile_y)
-            if textured:
-                attrs = []
-                a_app = attrs.append
-                for (u, v) in w.uvs:
-                    a_app(u * inv_tw)
-                    a_app(v * inv_th)
-            else:
-                attrs = [0.0] * (npts * 2)   # texture-less: the UVs go unsampled
-            for tri in w.triangles:
-                i_app(tri[0])
-                i_app(tri[1])
-                i_app(tri[2])
+            geom, attrs, idx = mask.pack_writer_mesh(w, bx, by, sx, sy,
+                                                     tile_x, tile_y, tex_size)
             mesh.set_geometry_data(geom)
             mesh.set_attribute_data(attrs)
             mesh.set_triangle_data(idx)
@@ -2782,28 +2717,6 @@ init -10 python:
                     pass
             cov.blit(wr, (0, 0))
 
-        def _mask_meta_uniform(self, fm):
-            """Flat ``vec4[24]`` — ``vec4[96]`` past 24 writers, for the tiled
-            shader — of (open, close, op_invert, 0).
-
-            The writer's bit is its index, so it is not stored. Padded to the
-            full array length the shader declares. Depends only on the mask, so
-            :meth:`_build_coverages` builds it once per mask per frame rather
-            than once per target."""
-            vals = []
-            v_app = vals.append
-            for (w_open, w_close, _bit, op) in fm.meta:
-                v_app(float(w_open))
-                v_app(float(w_close))
-                v_app(float(op))
-                v_app(0.0)
-            need = (mask.MAX_WRITERS if fm.count > mask.TILE_WRITERS
-                    else mask.TILE_WRITERS) * 4
-            diff = need - len(vals)
-            if diff > 0:
-                vals.extend([0.0] * diff)
-            return vals
-
         def _draw_mesh_masked(self, r, mp, ap, cov, ox, oy, st, at, width, height):
             """Draw one masked part via ``ss.partcolor_mask`` (coverage replay).
 
@@ -2825,7 +2738,7 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     [mp], ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2884,7 +2797,7 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     [mp], ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2943,7 +2856,7 @@ init -10 python:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return False
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     parts, ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2994,31 +2907,7 @@ init -10 python:
         def _draw_fx_batched(self, r, eb, cr, ox, oy, width, height, blend_prop):
             """All particles of ``eb`` in one Mesh2 (per-vertex colour)."""
             try:
-                geometry = []
-                attributes = []
-                indices = []
-                g_app = geometry.append
-                a_app = attributes.append
-                i_app = indices.append
-                positions = eb.positions
-                uvs = eb.uvs
-                colors = eb.colors
-                for idx in range(len(positions)):
-                    x, y = positions[idx]
-                    g_app(ox + x)
-                    g_app(oy + y)
-                    u, v = uvs[idx]
-                    c = colors[idx]
-                    a_app(u)
-                    a_app(v)
-                    a_app(c[0])
-                    a_app(c[1])
-                    a_app(c[2])
-                    a_app(c[3])
-                for (i, j, k) in eb.triangles:
-                    i_app(i)
-                    i_app(j)
-                    i_app(k)
+                geometry, attributes, indices = effectplan.pack_fx_mesh(eb, ox, oy)
                 mesh = _SS_Mesh2(_SS_FX_LAYOUT, len(eb.positions),
                                  len(indices) // 3)
                 mesh.set_geometry_data(geometry)

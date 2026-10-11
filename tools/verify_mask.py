@@ -10,8 +10,9 @@ Exercises the engine-independent half of masking without a GUI:
     writers, assigns unique bits (≤ :data:`ss_renpy.mask.MAX_WRITERS`), drops
     writers that write nothing (``mask == 0``, or a hidden ``draw_as_mask``
     part), produces finite geometry + a finite, positive bbox, well-formed
-    intervals and parallel ``mask_meta``; and that drawing targets are stamped
-    (``MeshPart.mask``) in draw order;
+    intervals and parallel ``mask_meta``; that the coverage mesh and replay
+    uniform the render layer packs from them hold the same values; and that
+    drawing targets are stamped (``MeshPart.mask``) in draw order;
   * **replay reference** — that :func:`ss_renpy.mask.mask_passes` (the CPU twin
     of the GLSL ``ss_mask_passes``) honours the writers' intervals, OP,
     polarity, the no-writer and bbox-outside cases, and that the two OPs replay
@@ -116,6 +117,16 @@ def check_pack(lib, path: str, anim=None) -> bool:
             _check(len(pidx) == len(set(pidx)), "writer parts not unique", fails)
             _check(fm.count <= mask.MAX_WRITERS, "writer count over cap", fails)
             _check(len(fm.meta) == fm.count, "mask_meta not parallel", fails)
+            # The replay uniform: one vec4 per writer, padded to what the
+            # shader declares.
+            mu = fm.meta_uniform()
+            need = (mask.MAX_WRITERS if fm.count > mask.TILE_WRITERS
+                    else mask.TILE_WRITERS) * 4
+            _check(len(mu) == need and all(
+                       mu[4 * i:4 * i + 4] == [float(o), float(c), float(op), 0.0]
+                       for i, (o, c, _b, op) in enumerate(fm.meta))
+                   and not any(mu[4 * fm.count:]),
+                   "meta_uniform layout", fails)
             n_tiles = fm.tiles[0] * fm.tiles[1]
             _check(n_tiles * mask.TILE_WRITERS >= fm.count,
                    "too few coverage tiles for the writers", fails)
@@ -156,6 +167,20 @@ def check_pack(lib, path: str, anim=None) -> bool:
                     _check(w.texture_hash in texmap,
                            f"writer {w.part_index} texture {w.texture_hash} "
                            "unresolved", fails)
+                # The coverage mesh: every vertex moved into its tile, UVs over
+                # the atlas size, or zeros for a writer drawn untextured.
+                tex_size = (64.0, 32.0) if w.has_texture else None
+                g, a, ix = mask.pack_writer_mesh(w, 1.0, 2.0, 0.5, 0.25,
+                                                 8.0, 16.0, tex_size)
+                want_g = [c for (x, y) in w.positions
+                          for c in ((x - 1.0) * 0.5 + 8.0, (y - 2.0) * 0.25 + 16.0)]
+                want_a = ([c for (u, v) in w.uvs for c in (u / 64.0, v / 32.0)]
+                          if w.has_texture else [0.0] * (2 * len(w.positions)))
+                _check(len(g) == len(want_g) and len(a) == len(want_a)
+                       and all(abs(p - q) < 1e-6 for p, q in zip(g, want_g))
+                       and all(abs(p - q) < 1e-6 for p, q in zip(a, want_a))
+                       and ix == [i for tri in w.triangles for i in tri],
+                       f"writer {w.part_index} coverage mesh packing", fails)
 
             # Stamped targets: the tree's coverage, numbered in draw order, and
             # none left that no writer reaches unless it draws inside.

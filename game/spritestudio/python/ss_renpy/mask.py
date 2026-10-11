@@ -201,6 +201,25 @@ class FrameMask:
         self.meta = [(w.open, w.close, w.bit, 1 if w.op_invert else 0)
                      for w in self.writers]
 
+    def meta_uniform(self) -> list:
+        """Flat ``vec4[24]`` — ``vec4[96]`` past 24 writers, for the tiled
+        shader — of (open, close, op_invert, 0).
+
+        The writer's bit is its index, so it is not stored. Padded to the full
+        array length the shader declares. Depends only on the mask, so the
+        render layer builds it once per mask per frame rather than once per
+        target — here rather than in ``spritestudio.rpy``, for the reason
+        :func:`pack_writer_mesh` gives."""
+        vals = []
+        v_ext = vals.extend
+        for (w_open, w_close, _bit, op) in self.meta:
+            v_ext((float(w_open), float(w_close), float(op), 0.0))
+        need = (MAX_WRITERS if self.count > TILE_WRITERS else TILE_WRITERS) * 4
+        diff = need - len(vals)
+        if diff > 0:
+            vals.extend([0.0] * diff)
+        return vals
+
 
 class MaskTree:
     """The per-frame masking state one instance tree shares while it is walked.
@@ -466,6 +485,41 @@ def transform_writer(w: MaskWriter, m) -> MaskWriter:
     if m is not None:
         w.positions = [framedata._transform(m, x, y) for (x, y) in w.positions]
     return w
+
+
+def pack_writer_mesh(w: MaskWriter, bx, by, sx, sy, tile_x, tile_y,
+                     tex_size=None) -> tuple:
+    """Pack ``w`` into flat (geometry, attributes, indices) arrays for the
+    render layer's coverage mesh (a_tex_coord).
+
+    Positions go from root space into the coverage tile whose top-left is
+    (``tile_x``, ``tile_y``): ``(x - bx) * sx + tile_x``. UVs are normalized by
+    ``tex_size`` (the atlas ``(w, h)``); with None the writer draws untextured
+    and its UVs go unsampled, so they are zeros.
+
+    Kept out of ``spritestudio.rpy`` for the reason
+    :func:`ss_renpy.framedata.pack_pc_mesh` gives: a list built there is a
+    ``RevertableList``.
+    """
+    geometry = []
+    g_ext = geometry.extend
+    for (x, y) in w.positions:
+        g_ext(((x - bx) * sx + tile_x, (y - by) * sy + tile_y))
+    if tex_size is not None:
+        tw, th = tex_size
+        inv_tw = (1.0 / tw) if tw > 0 else 1.0
+        inv_th = (1.0 / th) if th > 0 else 1.0
+        attributes = []
+        a_ext = attributes.extend
+        for (u, v) in w.uvs:
+            a_ext((u * inv_tw, v * inv_th))
+    else:
+        attributes = [0.0] * (len(w.positions) * 2)
+    indices = []
+    i_ext = indices.extend
+    for tri in w.triangles:
+        i_ext(tri)
+    return geometry, attributes, indices
 
 
 def mask_passes(frame_mask: FrameMask, seq: float, visible_inside: bool,

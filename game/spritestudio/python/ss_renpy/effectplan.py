@@ -240,6 +240,29 @@ def transform_effect_batch(eb: EffectBatch, m, alpha_mul: float = 1.0) -> Effect
         uvs=list(eb.uvs), colors=colors, triangles=list(eb.triangles))
 
 
+def pack_fx_mesh(eb: EffectBatch, ox, oy) -> tuple:
+    """Pack ``eb`` into flat (geometry, attributes, indices) arrays for the
+    render layer's batched effect mesh (a_tex_coord + a_ss_color).
+
+    Per vertex: position offset to screen px by (ox, oy), the UV as given
+    (effect UVs are already normalized), then the RGBA colour. Kept out of
+    ``spritestudio.rpy`` for the reason :func:`ss_renpy.framedata.pack_pc_mesh`
+    gives: a list built there is a ``RevertableList``.
+    """
+    geometry = []
+    attributes = []
+    indices = []
+    g_ext = geometry.extend
+    a_ext = attributes.extend
+    i_ext = indices.extend
+    for (x, y), (u, v), c in zip(eb.positions, eb.uvs, eb.colors):
+        g_ext((ox + x, oy + y))
+        a_ext((u, v, c[0], c[1], c[2], c[3]))
+    for tri in eb.triangles:
+        i_ext(tri)
+    return geometry, attributes, indices
+
+
 def uv_span(batches: list) -> tuple:
     """``(max_u, max_v)`` across all batches — to tell pixel UVs from normalized.
 
