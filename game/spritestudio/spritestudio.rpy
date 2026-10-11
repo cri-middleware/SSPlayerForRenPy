@@ -1255,6 +1255,12 @@ init -10 python:
         def images(self):
             return list(self._cache.values())
 
+    # The image attribute that stops a player, named as Ren'Py's Live2D names
+    # its own: `show ringo dead still` plays dead once and holds its last frame,
+    # and `show ringo still` holds the first frame of the animation the image
+    # starts on. A pack's own animation or alias of this name plays instead.
+    _SS_STILL = "still"
+
     class SSPlayer(renpy.Displayable):
         """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
 
@@ -1297,6 +1303,9 @@ init -10 python:
 
             self._initial_animation = animation
             self._initial_loop = loop
+            # Set by _duplicate for `show <tag> still`: the copy starts paused on
+            # its first frame (see _start_initial).
+            self._still = False
 
             if isinstance(animation, (list, tuple)) and len(animation) > 0:
                 self._anim_queue = list(animation)
@@ -1497,17 +1506,20 @@ init -10 python:
             return self._available_animations
 
         def _list_attributes(self, tag, attributes):
-            """Tell Ren'Py what attributes (animations/aliases) this displayable accepts.
+            """Tell Ren'Py which attributes (animations, aliases and `still`)
+            go with `attributes`.
 
-            A player plays one animation, so once `attributes` holds one of
-            ours, it is the only one that goes with them. The Interactive
-            Director keeps just what this returns for the attribute a creator
-            picks, which makes picking another animation replace the first
-            instead of stacking `ringo wait1 walk`, where only walk would play."""
-            available = set(self._get_available_animations())
-            available.update(self.aliases.keys())
-            chosen = [a for a in attributes if a in available]
-            return chosen or list(available)
+            The Interactive Director keeps just what this returns for the
+            attribute a creator picks. An animation goes only with itself and
+            `still`, so picking another one replaces the one shown — a `show`
+            that names several plays them in turn, but the Director picks one.
+            `still` goes with every animation, so it toggles on and off without
+            replacing the one shown."""
+            names = set(self._get_available_animations())
+            names.update(self.aliases.keys())
+            still = [] if _SS_STILL in names else [_SS_STILL]
+            chosen = [a for a in attributes if a in names]
+            return (chosen or list(names)) + still
 
         def _choose_attributes(self, tag, required, optional):
             """Resolve `show <tag> <attr>` to a canonical name when the pack was
@@ -1520,12 +1532,13 @@ init -10 python:
             callback) finds no matching image and the sprite never switches — it
             only works when the FIRST show already carried an attribute (which
             takes the ImageReference.find_target path instead). Every required
-            attribute must name one of our animations or aliases, else this
-            image does not match. SSPlayer plays one animation at a time, so the
-            required attribute(s) fully determine it; stale `optional` (previous)
+            attribute must name one of our animations or aliases, or be
+            `still`, else this image does not match. The required attributes
+            fully determine what plays, so stale `optional` (previous)
             attributes are dropped."""
             valid = set(self._get_available_animations())
             valid.update(self.aliases.keys())
+            valid.add(_SS_STILL)
             for a in required:
                 if a not in valid:
                     return None
@@ -1549,15 +1562,29 @@ init -10 python:
                 return self
 
             # Start from the template's original spec (may be a list = sequence),
-            # then let any attribute(s) pick the alias / animation to play.
+            # then let the attributes pick what to play: every alias and
+            # animation they name, in the order given, as one sequence — the
+            # order Ren'Py's Live2D plays its motions in.
             target_anim = self._initial_animation
+            # The template's ORIGINAL loop — self.loop is mutated to 1 while a
+            # sequence is queued, and copying that would make the copy's final
+            # animation play once and freeze instead of honouring the
+            # constructor's loop.
+            loop = self._initial_loop
+            still = False
+            picked = []
             if args and getattr(args, "args", None):
+                names = self._get_available_animations()
                 for attr in args.args:
                     if attr in self.aliases:
-                        target_anim = self.aliases[attr]
-                    elif attr in self._get_available_animations():
-                        target_anim = attr
-                    elif getattr(args, "lint", False) and self._get_available_animations():
+                        alias = self.aliases[attr]
+                        picked.extend(alias if isinstance(alias, (list, tuple))
+                                      else [alias])
+                    elif attr in names:
+                        picked.append(attr)
+                    elif attr == _SS_STILL:
+                        still = True
+                    elif getattr(args, "lint", False) and names:
                         # Lint asks by calling this and treats a raise as "no
                         # such image" — the answer `show ringo typo` gets when
                         # it runs, from _choose_attributes. Without it every
@@ -1565,17 +1592,19 @@ init -10 python:
                         # read has its path reported by _ss_lint instead.
                         raise Exception("%r is not an animation or alias of %s"
                                         % (attr, self.ssab))
+            if picked:
+                target_anim = picked[0] if len(picked) == 1 else picked
+                if still:
+                    # `still` after animations: the last one plays once and
+                    # stays on its final frame.
+                    loop = 1
 
             # Return a copy configured for the chosen animation.
             rv = SSPlayer(
                 self.ssab,
                 animation=target_anim,
                 sprites_subdir=self.sprites_subdir,
-                # The template's ORIGINAL loop — self.loop is mutated to 1 while
-                # a sequence is queued, and copying that would make the copy's
-                # final animation play once and freeze instead of honouring the
-                # constructor's loop.
-                loop=self._initial_loop,
+                loop=loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
                 frame_skip=getattr(self, "_frame_skip", True),
@@ -1602,6 +1631,11 @@ init -10 python:
             # The template's box, not the chosen animation's: every attribute of
             # one image then lays out on the same canvas.
             rv._box_anim = getattr(self, "_box_anim", None)
+            if still and not picked:
+                rv._still = True
+                # Built from the same arguments as a plain `show <tag>`, so
+                # mark it apart for __eq__: a held player is not that one.
+                rv._spec = rv._spec + (_SS_STILL,)
             return rv
 
         # -- lazy native setup ---------------------------------------------
@@ -1752,6 +1786,10 @@ init -10 python:
                 core.play(start_frame=start_frame)
             else:
                 core.play()
+            if getattr(self, "_still", False):
+                # `show <tag> still`: held by pausing, which also stops the
+                # redraws — a speed of 0 would redraw the same frame every frame.
+                core.pause()
             self.animation = core.current_animation
 
         def _texture_path(self, thash):
