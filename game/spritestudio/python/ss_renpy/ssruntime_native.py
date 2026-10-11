@@ -483,7 +483,7 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_effect_slot_reset.restype = None
     f.ss_effect_slot_step.argtypes = [
         P, ss_effect_event_info, C.c_float, C.c_float, C.c_float,
-        C.c_bool, C.c_bool, C.c_uint8]
+        C.c_bool, C.c_bool, C.c_uint8, C.c_bool]
     f.ss_effect_slot_step.restype = ss_effect_step_result
     f.ss_effect_slot_get_seed.argtypes = [P]
     f.ss_effect_slot_get_seed.restype = C.c_uint32
@@ -1153,13 +1153,13 @@ class _NativeRuntime:
             self._lib.ss_effect_slot_reset(slot)
 
     def _effect_slot_step_raw(self, slot, ev, parent_frame, delta_seconds, fps,
-                              parent_looped, y_flip, vert_stride):
+                              parent_looped, y_flip, vert_stride, draw):
         return self._lib.ss_effect_slot_step(
             slot, ev, float(parent_frame), float(delta_seconds), float(fps),
-            bool(parent_looped), bool(y_flip), int(vert_stride))
+            bool(parent_looped), bool(y_flip), int(vert_stride), bool(draw))
 
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
-                         parent_looped, y_flip=True, vert_stride=2):
+                         parent_looped, y_flip=True, vert_stride=2, *, draw):
         """Advance one effect slot.
 
         Returns ``(visible, draw_plan_bytes)``: the ``EffectDrawPlan``
@@ -1167,16 +1167,23 @@ class _NativeRuntime:
         until the next call on this slot). ``ev`` is an
         :class:`ss_effect_event_info` from :meth:`active_effect_event`.
         ``y_flip=True`` / ``vert_stride=2`` suit a 2D Y-down host (Ren'Py).
+        ``draw`` is whether the part is in this frame's ``draw_order``: with
+        ``False`` the step moves only the effect's clock and transitions,
+        builds no plan and returns not visible, and the next step with ``True``
+        returns the plan an always-drawn slot would. It has no default, so no
+        caller drops it by accident.
         Prefer :meth:`effect_slot_step_view` on the hot path to skip the copy.
         """
         r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
-                                       fps, parent_looped, y_flip, vert_stride)
+                                       fps, parent_looped, y_flip, vert_stride,
+                                       draw)
         if not r.visible or not r.draw_plan_buf or r.draw_plan_len == 0:
             return (bool(r.visible), b"")
         return (True, C.string_at(r.draw_plan_buf, r.draw_plan_len))
 
     def effect_slot_step_view(self, slot, ev, parent_frame, delta_seconds, fps,
-                              parent_looped, y_flip=True, vert_stride=2):
+                              parent_looped, y_flip=True, vert_stride=2, *,
+                              draw):
         """Like :meth:`effect_slot_step` but returns a zero-copy view.
 
         ``(visible, draw_plan_view)`` where ``draw_plan_view`` is a read-only
@@ -1188,7 +1195,8 @@ class _NativeRuntime:
         effect ``Append``.
         """
         r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
-                                       fps, parent_looped, y_flip, vert_stride)
+                                       fps, parent_looped, y_flip, vert_stride,
+                                       draw)
         if not r.visible or not r.draw_plan_buf or r.draw_plan_len == 0:
             return (bool(r.visible), memoryview(b""))
         return (True, _readonly_view(r.draw_plan_buf, r.draw_plan_len))

@@ -97,7 +97,7 @@ def check_pack(lib, path: str) -> bool:
                 ev = rt.active_effect_event(p.index)
                 vis, buf = rt.effect_slot_step(
                     slot, ev, frame_no, dt, float(fps), looped,
-                    y_flip=True, vert_stride=2)
+                    y_flip=True, vert_stride=2, draw=True)
                 if not vis or not buf:
                     continue
                 m = _matrix_for(wm, wn, p.index)

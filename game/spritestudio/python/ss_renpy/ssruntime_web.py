@@ -664,12 +664,12 @@ class _WebRuntime:
             emscripten.run_script(f"window.ss_effects[{slot}].reset();")
 
     def _effect_slot_step_raw(self, slot, ev, parent_frame, delta_seconds, fps,
-                              parent_looped, y_flip, vert_stride):
+                              parent_looped, y_flip, vert_stride, draw):
 
         s = emscripten.run_script_string(f"""
             var js_ev = window.ss_active_effect_ev;
             var s = window.ss_effects[{slot}];
-            var visible = s.step(js_ev, {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {_jsnum(fps)}, {'true' if parent_looped else 'false'}, {'true' if y_flip else 'false'}, {vert_stride});
+            var visible = s.step(js_ev, {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {_jsnum(fps)}, {'true' if parent_looped else 'false'}, {'true' if y_flip else 'false'}, {vert_stride}, {'true' if draw else 'false'});
 
             if (visible) {{
                 var ptr = s.get_draw_plan_buf();
@@ -709,15 +709,16 @@ class _WebRuntime:
         return r
 
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
-                         parent_looped, y_flip=True, vert_stride=2):
-        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride)
+                         parent_looped, y_flip=True, vert_stride=2, *, draw):
+        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride, draw)
         if not r.visible or r.draw_plan_len == 0:
             return (False, b"")
         return (True, self._last_effect_data)
 
     def effect_slot_step_view(self, slot, ev, parent_frame, delta_seconds, fps,
-                              parent_looped, y_flip=True, vert_stride=2):
-        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride)
+                              parent_looped, y_flip=True, vert_stride=2, *,
+                              draw):
+        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride, draw)
         if not r.visible or r.draw_plan_len == 0:
             return (False, memoryview(b""))
         return (True, memoryview(self._last_effect_data))
