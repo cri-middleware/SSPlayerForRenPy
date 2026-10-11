@@ -51,9 +51,10 @@ class EffectRig:
     def collect(self, part_index, matrix, alpha, parent_frame, dt, parent_looped):
         """Step one Effect part's slot and return its world-space batches.
 
-        Always steps (so independent effects keep advancing even when the
-        consumer suppresses drawing); returns ``[]`` when not visible. ``matrix``
-        is the effect part's world matrix, ``alpha`` its hierarchical alpha.
+        For a part in this frame's ``draw_order``: the step moves the effect's
+        clock and builds its draw plan (``draw=True``), decoded here; returns
+        ``[]`` when not visible. ``matrix`` is the effect part's world matrix,
+        ``alpha`` its hierarchical alpha.
         """
         slot = self._slots.get(part_index)
         if not slot:
@@ -64,7 +65,7 @@ class EffectRig:
         # pass (no retention), so we skip the per-frame copy on this hot path.
         visible, buf = self._rt.effect_slot_step_view(
             slot, ev, parent_frame, dt, fps, parent_looped,
-            y_flip=True, vert_stride=2)
+            y_flip=True, vert_stride=2, draw=True)
         if not visible or not buf:
             return []
         return effectplan.build_effect_batches(
@@ -80,8 +81,10 @@ class EffectRig:
 
         For a part the Brain dropped from ``draw_order`` while hidden, which
         :meth:`collect` therefore never reaches. Independent effects must keep
-        simulating while off-screen; the
-        stepped plan view is discarded (no geometry built)."""
+        simulating while off-screen, so the slot still steps every frame, with
+        ``draw=False``: the Brain moves only the effect's clock and transitions
+        and builds no plan, and the next :meth:`collect` gets the plan the
+        effect would have had if it had drawn all along."""
         slot = self._slots.get(part_index)
         if not slot:
             return
@@ -89,7 +92,7 @@ class EffectRig:
         fps = float(self._rt.frame_rate or 30)
         self._rt.effect_slot_step_view(
             slot, ev, parent_frame, dt, fps, parent_looped,
-            y_flip=True, vert_stride=2)
+            y_flip=True, vert_stride=2, draw=False)
 
     def close(self):
         for slot in self._slots.values():
