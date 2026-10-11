@@ -4,6 +4,12 @@ This module provides `_WebRuntime`, a drop-in replacement for `_NativeRuntime`
 that operates on the Web platform (Ren'Py Web) by communicating with the JS API
 of the SDK's `ssruntime-ffi` wasm-bindgen build, via `renpy.emscripten`, and
 `load_library`, which loads that build out of the game's own files.
+
+What a frame hands back — the FrameData FlatBuffer, the SoA buffers, an
+effect's draw plan — crosses as one copy from the Brain's wasm memory straight
+into arrays this module owns, at the address ``array.buffer_info`` gives. A
+string crossing (base64, or a file on the emscripten FS) costs more than the
+Brain's own evaluation of the frame.
 """
 
 from __future__ import annotations
@@ -23,10 +29,10 @@ def _jsnum(x) -> str:
 
     A bare ``nan``/``inf`` produced by an f-string is an *identifier* in JS and
     raises ReferenceError when the script is eval'd — before any in-script guard
-    (e.g. ``ss_get_frame_data_b64``'s ``isFinite`` check) can run, and a JS throw
-    cannot be caught across the emscripten boundary. Emitting ``NaN``/``Infinity``
-    instead lets a non-finite frame/delta degrade gracefully (the Brain treats it
-    as out-of-range, matching the native path) rather than crash the frame.
+    can run, and a JS throw cannot be caught across the emscripten boundary.
+    Emitting ``NaN``/``Infinity`` instead lets a non-finite frame/delta degrade
+    gracefully (the Brain treats it as out-of-range, matching the native path)
+    rather than crash the frame.
     """
     x = float(x)
     if x != x:
@@ -36,6 +42,143 @@ def _jsnum(x) -> str:
     if x == -math.inf:
         return "-Infinity"
     return repr(x)
+
+
+# The SoA buffers a frame copies across, in the order of ``ss_bufs[id].soa``:
+# the JS getter stem (``<stem>_buf`` / ``<stem>_len``, both in elements of
+# 4 bytes) and the array typecode the Python side reads them with.
+_SOA = (
+    ("get_world_matrices", "f"),
+    ("get_local_vertices", "f"),
+    ("get_local_uvs", "f"),
+    ("get_cell_meta", "f"),
+    ("get_mesh_vertices_x", "f"),
+    ("get_mesh_vertices_y", "f"),
+    ("get_mesh_uvs", "f"),
+    ("get_mesh_indices", "i"),
+    ("get_mesh_vertex_offsets", "I"),
+    ("get_mesh_index_offsets", "I"),
+    ("get_shape_vertices", "f"),
+    ("get_shape_vertex_box_coords", "f"),
+    ("get_shape_vertex_counts", "i"),
+)
+
+# Per-frame calls take their numbers through ``args`` (a float64 array this
+# side owns) rather than spliced into the source: V8 caches an eval by its
+# source, so a source that stays the same frame after frame is not compiled
+# again. args[0..2] are a call's inputs, args[3] the result of an update.
+_JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
+               % ", ".join("'%s'" % stem for stem, _ in _SOA)) + """
+    if (!window.ss_bufs) window.ss_bufs = {};
+
+    // Copy the frame ss_bufs[id].lens describes into the registered buffers.
+    // A buffer too small for its part is skipped and reported (false); Python
+    // grows it and calls this again — the pointers are pure reads, so the
+    // frame is not evaluated a second time.
+    window.ss_copy_frame = function (id) {
+        var b = window.ss_bufs[id], c = window.ss_ctxs[id], n = b.lens;
+        var heap = Module.HEAPU8, mem = window.ssruntime_wasm.memory.buffer;
+        var fits = true;
+        if (n[0] > 0) {
+            if (n[0] <= b.frame[1]) heap.set(new Uint8Array(mem, c.get_frame_data_buf(), n[0]), b.frame[0]);
+            else fits = false;
+        }
+        var stems = window.ss_soa_stems;
+        for (var i = 0; i < stems.length; i++) {
+            var bytes = n[i + 1] * 4;
+            if (bytes > 0) {
+                if (bytes <= b.soa[i][1]) heap.set(new Uint8Array(mem, c[stems[i] + '_buf'](), bytes), b.soa[i][0]);
+                else fits = false;
+            }
+        }
+        return fits;
+    };
+
+    // Evaluate the frame at args[0] and copy it across. Returns the lengths,
+    // "frame,soa0,soa1,...", with a leading '!' when a buffer was too small.
+    window.ss_frame = function (id) {
+        var b = window.ss_bufs[id], c = window.ss_ctxs[id];
+        var frame_no = Module.HEAPF64[b.args >> 3], len = 0;
+        // Out-of-range / NaN frame_no: the wasm-bindgen API THROWS
+        // (SSRuntimeError::InvalidParameter) where the native C-API
+        // silently returns a null buffer. Mirror native:
+        // no frame data this tick (the frame's parts just don't draw).
+        // The sub-frame Instance walk momentarily seeks past the child's
+        // range edge, so without this the child throws every such tick.
+        if (isFinite(frame_no)) {
+            // `prepare_frame_data` is the one evaluation; the buffer
+            // pointers and lengths read after it are pure reads.
+            try { len = c.prepare_frame_data(frame_no); } catch (e) { len = 0; }
+        }
+        var n = [len], stems = window.ss_soa_stems;
+        for (var i = 0; i < stems.length; i++) n.push(c[stems[i] + '_len']());
+        b.lens = n;
+        return (window.ss_copy_frame(id) ? '' : '!') + n.join(',');
+    };
+
+    window.ss_update = function (id) {
+        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        a[o + 3] = window.ss_ctxs[id].update(a[o]);
+    };
+
+    // The step fetches the parent's active event itself and frees it once
+    // the step, which only borrows it, returns.
+    window.ss_instance_step = function (id, part, slot, child, looped) {
+        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        var ev = window.ss_ctxs[id].get_active_event_instance(part);
+        var s = window.ss_instances[slot];
+        var visible = s.step(ev, window.ss_ctxs[child], a[o], a[o + 1], looped === 1);
+        ev.free();
+        // The getter's name varies by wasm-bindgen version.
+        var independent = s.independent ? s.independent() : s.is_independent();
+        return (visible ? 1 : 0) + ',' + (s.transitioned() ? 1 : 0) + ',' +
+            (independent ? 1 : 0) + ',' + s.child_frame_no() + ',' + (s.child_looped() ? 1 : 0);
+    };
+
+    // The draw plan's length once copied, 0 for none, or -length when the
+    // registered buffer is too small for it.
+    window.ss_copy_plan = function (id, slot) {
+        var b = window.ss_bufs[id], s = window.ss_effects[slot];
+        var len = s.get_draw_plan_len();
+        if (len <= 0) return 0;
+        if (len > b.plan[1]) return -len;
+        Module.HEAPU8.set(new Uint8Array(window.ssruntime_wasm.memory.buffer, s.get_draw_plan_buf(), len), b.plan[0]);
+        return len;
+    };
+
+    window.ss_effect_step = function (id, part, slot, looped, y_flip, stride, draw) {
+        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        var ev = window.ss_ctxs[id].get_active_effect_event(part);
+        var s = window.ss_effects[slot];
+        var visible = s.step(ev, a[o], a[o + 1], a[o + 2], looped === 1, y_flip === 1, stride, draw === 1);
+        ev.free();
+        return visible ? window.ss_copy_plan(id, slot) : 0;
+    };
+"""
+
+_EMPTY_VIEW = memoryview(b"")
+
+
+def _room_for(typecode: str, count: int) -> array.array:
+    """A fresh array of ``count`` elements and half as many again, so a buffer
+    that creeps up frame by frame does not grow on every one of them."""
+    return array.array(typecode,
+                       bytes(array.array(typecode).itemsize * (count + count // 2)))
+
+
+class _InstanceStepResult:
+    """One Instance slot step: the fields of the native ``ss_instance_step_result``."""
+
+    __slots__ = ("visible", "transitioned", "independent", "child_frame_no",
+                 "child_looped")
+
+    def __init__(self, visible, transitioned, independent, child_frame_no,
+                 child_looped):
+        self.visible = visible
+        self.transitioned = transitioned
+        self.independent = independent
+        self.child_frame_no = child_frame_no
+        self.child_looped = child_looped
 
 
 def load_library(path=None, base_dir=None, *, timeout=10.0):
@@ -126,49 +269,39 @@ class _WebRuntime:
             // 0-based id would drop — and never free — the first slot created.
             if (!window.ss_instance_counter) window.ss_instance_counter = 1;
             if (!window.ss_effect_counter) window.ss_effect_counter = 1;
-            
-            // Helper functions to speed up eval boundaries
-            window.ss_base64_encode = function(buffer) {
-                var binary = '';
-                var bytes = new Uint8Array(buffer);
-                var len = bytes.byteLength;
-                for (var i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                return window.btoa(binary);
-            };
-            window.ss_get_frame_data_b64 = function(ctx_id, frame_no) {
-                var ctx = window.ss_ctxs[ctx_id];
-                // Out-of-range / NaN frame_no: the wasm-bindgen API THROWS
-                // (SSRuntimeError::InvalidParameter) where the native C-API
-                // silently returns a null buffer. Mirror native:
-                // no frame data this tick (the frame's parts just don't draw).
-                // The sub-frame Instance walk momentarily seeks past the child's
-                // range edge, so without this the child throws every such tick.
-                if (!isFinite(frame_no)) return "";
-                try {
-                    // One evaluation: `prepare_frame_data` builds the frame and
-                    // returns its length, and the buffer pointer is then a pure
-                    // read. The old buf/len pair each ran a full evaluation, so
-                    // this tick cost the Brain twice.
-                    var len = ctx.prepare_frame_data(frame_no);
-                    var ptr = ctx.get_frame_data_buf();
-                    if (len > 0) {
-                        var u8 = new Uint8Array(window.ssruntime_wasm.memory.buffer, ptr, len);
-                        return window.ss_base64_encode(u8);
-                    }
-                } catch (e) {
-                    return "";
-                }
-                return "";
-            };
-        """)
+        """ + _JS_HELPERS)
 
         emscripten.run_script(f"""
             window.ss_ctxs[{self._ctx_id}] = new window.ssruntime.SSRuntimeContext();
         """)
         self._res = None
         self._ssab_bytes = None
+        self._frame_rate = None
+
+        # Where every per-frame copy lands. Each buffer starts empty and is
+        # replaced, never resized, when a frame needs more: a view handed out
+        # earlier keeps the old array alive, and _register_buffers tells JS the
+        # new address before anything is copied into it.
+        self._args = array.array("d", bytes(8 * 4))
+        self._frame_buf = array.array("B")
+        self._soa = [array.array(typecode) for _, typecode in _SOA]
+        self._soa_len = [0] * len(_SOA)
+        self._plan_buf = array.array("B")
+        self._register_buffers()
+        self._js_update = "window.ss_update(%d)" % self._ctx_id
+        self._js_frame = "window.ss_frame(%d)" % self._ctx_id
+
+    def _register_buffers(self):
+        """Hand JS the address and size in bytes of each buffer it copies into."""
+        def at(a):
+            return "[%d, %d]" % (a.buffer_info()[0], len(a) * a.itemsize)
+        emscripten.run_script(
+            "var prev = window.ss_bufs[%d] || {};"
+            "window.ss_bufs[%d] = {args: %d, frame: %s, soa: [%s], plan: %s,"
+            " lens: prev.lens};"
+            % (self._ctx_id, self._ctx_id, self._args.buffer_info()[0],
+               at(self._frame_buf), ", ".join(at(a) for a in self._soa),
+               at(self._plan_buf)))
 
     def configure(self, *, render_mode=0, coordinate_system=1, origin=0, unit=0):
         emscripten.run_script(f"""
@@ -207,7 +340,8 @@ class _WebRuntime:
         success = emscripten.run_script_int("window.ss_success ? 1 : 0")
         if not success:
             raise RuntimeError("ss_runtime_bind_resource failed")
-            
+
+        self._frame_rate = None
         self._res = True
         return self
 
@@ -223,6 +357,7 @@ class _WebRuntime:
         # bool. json.dumps escapes the name into a valid JS string literal — a
         # raw name containing a quote / backslash / newline would otherwise break
         # or inject into the eval'd source.
+        self._frame_rate = None
         emscripten.run_script(f"""
             try {{
                 window.ss_ctxs[{self._ctx_id}].setup_animation({json.dumps(name)});
@@ -261,6 +396,7 @@ class _WebRuntime:
         return self
 
     def set_frame_rate(self, fps: int):
+        self._frame_rate = None
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_frame_rate({fps});")
 
     def set_animation_section(self, start: int, end: int):
@@ -278,10 +414,12 @@ class _WebRuntime:
             f"(window.ss_ctxs[{self._ctx_id}])")
 
     def update(self, dt_seconds: float) -> float:
-        return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].update({_jsnum(dt_seconds * 1000.0)}).toString()"))
+        return self.update_ms(dt_seconds * 1000.0)
 
     def update_ms(self, dt_ms: float) -> float:
-        return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].update({_jsnum(dt_ms)}).toString()"))
+        self._args[0] = dt_ms
+        emscripten.run_script(self._js_update)
+        return self._args[3]
 
     @property
     def frame_no(self) -> float:
@@ -361,7 +499,13 @@ class _WebRuntime:
 
     @property
     def frame_rate(self) -> int:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_frame_rate()")
+        """Kept between calls: every Effect part reads it every frame, and the
+        Brain changes it only through a new resource, setup_animation and
+        set_frame_rate, each of which drops it here."""
+        if self._frame_rate is None:
+            self._frame_rate = emscripten.run_script_int(
+                f"window.ss_ctxs[{self._ctx_id}].get_frame_rate()")
+        return self._frame_rate
 
     @property
     def start_frame(self) -> int:
@@ -386,86 +530,81 @@ class _WebRuntime:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_index({i})")
 
     def get_frame_data(self, frame_no: float) -> bytes:
-        s = emscripten.run_script_string(f"window.ss_get_frame_data_b64({self._ctx_id}, {_jsnum(frame_no)})")
-        if s:
-            import base64
-            return base64.b64decode(s)
-        return b""
+        return bytes(self.get_frame_data_view(frame_no))
 
     def get_frame_data_view(self, frame_no: float):
-        return memoryview(self.get_frame_data(frame_no))
+        """Read-only view of the FrameData FlatBuffer, valid until the next call.
 
-    def _soa_array(self, type_char, func_buf, func_len, mult=4):
-        emscripten.run_script(f"""
-            var ctx = window.ss_ctxs[{self._ctx_id}];
-            var ptr = ctx.{func_buf}();
-            var len = ctx.{func_len}();
-            if (len > 0) {{
-                var u8 = new Uint8Array(window.ssruntime_wasm.memory.buffer, ptr, len * {mult});
-                FS.writeFile('/temp_soa.bin', u8);
-            }} else {{
-                FS.writeFile('/temp_soa.bin', new Uint8Array(0));
-            }}
-            window.ss_tmp_len = len;
-        """)
-        length = emscripten.run_script_int("window.ss_tmp_len")
-        if length == 0:
-            return None, 0
-        try:
-            with open('/temp_soa.bin', 'rb') as f:
-                arr = array.array(type_char)
-                arr.fromfile(f, length)
-                return arr, length
-        except FileNotFoundError:
-            return None, 0
+        The same eval copies the frame's SoA buffers across, so the SoA
+        accessors below read this frame's copy and make no call of their own.
+        """
+        self._args[0] = frame_no
+        lens = emscripten.run_script_string(self._js_frame)
+        if lens[0] == "!":
+            lens = [int(n) for n in lens[1:].split(",")]
+            self._make_room(lens)
+            emscripten.run_script("window.ss_copy_frame(%d)" % self._ctx_id)
+        else:
+            lens = [int(n) for n in lens.split(",")]
+        self._soa_len = lens[1:]
+        if not lens[0]:
+            return _EMPTY_VIEW
+        return memoryview(self._frame_buf)[:lens[0]].toreadonly()
 
-    def _soa_float(self, func_buf, func_len):
-        return self._soa_array('f', func_buf, func_len)
+    def _make_room(self, lens):
+        """Replace each buffer the frame did not fit, and register the new ones."""
+        if lens[0] > len(self._frame_buf):
+            self._frame_buf = _room_for("B", lens[0])
+        for i, n in enumerate(lens[1:]):
+            if n > len(self._soa[i]):
+                self._soa[i] = _room_for(_SOA[i][1], n)
+        self._register_buffers()
 
-    def _soa_int32(self, func_buf, func_len):
-        return self._soa_array('i', func_buf, func_len)
-
-    def _soa_uint32(self, func_buf, func_len):
-        return self._soa_array('I', func_buf, func_len)
+    def _soa_at(self, i):
+        """``(array, count)`` for SoA buffer ``i`` of the last frame copied, or
+        ``(None, 0)``. The array may hold more than ``count`` elements; like
+        the native pointer, only the first ``count`` are this frame's."""
+        n = self._soa_len[i]
+        return (self._soa[i], n) if n else (None, 0)
 
     def world_matrices(self):
-        return self._soa_float("get_world_matrices_buf", "get_world_matrices_len")
+        return self._soa_at(0)
 
     def local_vertices(self):
-        return self._soa_float("get_local_vertices_buf", "get_local_vertices_len")
+        return self._soa_at(1)
 
     def local_uvs(self):
-        return self._soa_float("get_local_uvs_buf", "get_local_uvs_len")
+        return self._soa_at(2)
 
     def cell_meta(self):
-        return self._soa_float("get_cell_meta_buf", "get_cell_meta_len")
+        return self._soa_at(3)
 
     def mesh_vertices_x(self):
-        return self._soa_float("get_mesh_vertices_x_buf", "get_mesh_vertices_x_len")
+        return self._soa_at(4)
 
     def mesh_vertices_y(self):
-        return self._soa_float("get_mesh_vertices_y_buf", "get_mesh_vertices_y_len")
+        return self._soa_at(5)
 
     def mesh_uvs(self):
-        return self._soa_float("get_mesh_uvs_buf", "get_mesh_uvs_len")
+        return self._soa_at(6)
 
     def mesh_indices(self):
-        return self._soa_int32("get_mesh_indices_buf", "get_mesh_indices_len")
+        return self._soa_at(7)
 
     def mesh_vertex_offsets(self):
-        return self._soa_uint32("get_mesh_vertex_offsets_buf", "get_mesh_vertex_offsets_len")
+        return self._soa_at(8)
 
     def mesh_index_offsets(self):
-        return self._soa_uint32("get_mesh_index_offsets_buf", "get_mesh_index_offsets_len")
+        return self._soa_at(9)
 
     def shape_vertices(self):
-        return self._soa_float("get_shape_vertices_buf", "get_shape_vertices_len")
+        return self._soa_at(10)
 
     def shape_vertex_box_coords(self):
-        return self._soa_float("get_shape_vertex_box_coords_buf", "get_shape_vertex_box_coords_len")
+        return self._soa_at(11)
 
     def shape_vertex_counts(self):
-        return self._soa_int32("get_shape_vertex_counts_buf", "get_shape_vertex_counts_len")
+        return self._soa_at(12)
 
     @property
     def resource(self):
@@ -561,32 +700,18 @@ class _WebRuntime:
     def clear_all_part_overrides(self) -> bool:
         return self._override_call("clear_all_part_overrides()")
 
-    # Active-event fetch (state kept on the JS side; step() consumes it)
     def active_event_instance(self, slot_index: int):
-        # get_active_event_instance allocates a fresh WebEventInstanceInfo on the
-        # wasm heap each call, and the matching step() borrows (does not move/free)
-        # it — so free the PREVIOUS one before overwriting the global, else every
-        # frame leaks one object until the FinalizationRegistry runs. The prior
-        # value has already been consumed by its step by the time we get here.
-        # (__wbg_ptr guard avoids a double-free if it was already freed.)
-        s = emscripten.run_script_string(f"""
-            if (window.ss_active_ev && window.ss_active_ev.__wbg_ptr) window.ss_active_ev.free();
-            window.ss_active_ev = window.ss_ctxs[{self._ctx_id}].get_active_event_instance({slot_index});
-            if (!window.ss_active_ev) "null"; else "ok";
-        """)
-        if s == "null": return None
-        return "ok"
+        """The ``ev`` to hand :meth:`instance_slot_step`: here, the part index.
+
+        The step's own eval fetches the event and frees it once the step,
+        which only borrows it, returns — one eval per part fewer, and no wasm
+        object left on ``window`` between the two calls."""
+        return slot_index
 
     def active_effect_event(self, slot_index: int):
-        # See active_event_instance: free the previous per-frame WebEffectEventInfo
-        # before overwriting the global so playback doesn't leak one object/frame.
-        s = emscripten.run_script_string(f"""
-            if (window.ss_active_effect_ev && window.ss_active_effect_ev.__wbg_ptr) window.ss_active_effect_ev.free();
-            window.ss_active_effect_ev = window.ss_ctxs[{self._ctx_id}].get_active_effect_event({slot_index});
-            if (!window.ss_active_effect_ev) "null"; else "ok";
-        """)
-        if s == "null": return None
-        return "ok"
+        """The ``ev`` to hand an effect step: here, the part index (see
+        :meth:`active_event_instance`)."""
+        return slot_index
 
     def instance_slot_create(self):
         emscripten.run_script("""
@@ -607,30 +732,14 @@ class _WebRuntime:
     def instance_slot_step(self, slot, ev, child_ctx, parent_frame,
                            delta_seconds, parent_looped):
         c_ctx_id = child_ctx._ctx_id if hasattr(child_ctx, "_ctx_id") else child_ctx
-        
-        s = emscripten.run_script_string(f"""
-            var js_ev = window.ss_active_ev;
-            var slot = window.ss_instances[{slot}];
-            var visible = slot.step(js_ev, window.ss_ctxs[{c_ctx_id}], {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {'true' if parent_looped else 'false'});
-            
-            JSON.stringify({{
-                visible: visible,
-                transitioned: slot.transitioned(),
-                independent: slot.independent ? slot.independent() : slot.is_independent(),
-                child_frame_no: slot.child_frame_no(),
-                child_looped: slot.child_looped()
-            }});
-        """)
-        import json
-        res = json.loads(s)
-        class _InstanceStepResult: pass
-        r = _InstanceStepResult()
-        r.visible = res["visible"]
-        r.transitioned = res["transitioned"]
-        r.independent = res["independent"]
-        r.child_frame_no = res["child_frame_no"]
-        r.child_looped = res["child_looped"]
-        return r
+        self._args[0] = parent_frame
+        self._args[1] = delta_seconds
+        r = emscripten.run_script_string(
+            "window.ss_instance_step(%d, %d, %d, %d, %d)"
+            % (self._ctx_id, ev, slot, c_ctx_id, 1 if parent_looped else 0)
+        ).split(",")
+        return _InstanceStepResult(r[0] == "1", r[1] == "1", r[2] == "1",
+                                   float(r[3]), r[4] == "1")
 
     def instance_slot_is_independent(self, slot):
         # Guard the getter name (it varies by wasm-bindgen version, like step()
@@ -663,65 +772,34 @@ class _WebRuntime:
         if slot is not None:
             emscripten.run_script(f"window.ss_effects[{slot}].reset();")
 
-    def _effect_slot_step_raw(self, slot, ev, parent_frame, delta_seconds, fps,
-                              parent_looped, y_flip, vert_stride, draw):
-
-        s = emscripten.run_script_string(f"""
-            var js_ev = window.ss_active_effect_ev;
-            var s = window.ss_effects[{slot}];
-            var visible = s.step(js_ev, {_jsnum(parent_frame)}, {_jsnum(delta_seconds)}, {_jsnum(fps)}, {'true' if parent_looped else 'false'}, {'true' if y_flip else 'false'}, {vert_stride}, {'true' if draw else 'false'});
-
-            if (visible) {{
-                var ptr = s.get_draw_plan_buf();
-                var len = s.get_draw_plan_len();
-                if (len > 0) {{
-                    var u8 = new Uint8Array(window.ssruntime_wasm.memory.buffer, ptr, len);
-                    JSON.stringify({{visible: true, len: len, b64: window.ss_base64_encode(u8)}});
-                }} else {{
-                    JSON.stringify({{visible: true, len: len, b64: ""}});
-                }}
-            }} else {{
-                JSON.stringify({{visible: false}});
-            }}
-        """)
-
-        import json
-        res = json.loads(s)
-
-        class _EffectStepResult: pass
-        r = _EffectStepResult()
-        r.visible = res["visible"]
-        if r.visible:
-            if res["len"] > 0:
-                import base64
-                data = base64.b64decode(res["b64"])
-                r.draw_plan_buf = True
-                r.draw_plan_len = len(data)
-                self._last_effect_data = data
-            else:
-                r.draw_plan_buf = False
-                r.draw_plan_len = 0
-                self._last_effect_data = b""
-        else:
-            r.draw_plan_buf = False
-            r.draw_plan_len = 0
-            self._last_effect_data = b""
-        return r
-
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
                          parent_looped, y_flip=True, vert_stride=2, *, draw):
-        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride, draw)
-        if not r.visible or r.draw_plan_len == 0:
-            return (False, b"")
-        return (True, self._last_effect_data)
+        visible, plan = self.effect_slot_step_view(
+            slot, ev, parent_frame, delta_seconds, fps, parent_looped,
+            y_flip, vert_stride, draw=draw)
+        return (visible, bytes(plan))
 
     def effect_slot_step_view(self, slot, ev, parent_frame, delta_seconds, fps,
                               parent_looped, y_flip=True, vert_stride=2, *,
                               draw):
-        r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds, fps, parent_looped, y_flip, vert_stride, draw)
-        if not r.visible or r.draw_plan_len == 0:
-            return (False, memoryview(b""))
-        return (True, memoryview(self._last_effect_data))
+        """``(visible, plan)``: a read-only view of the EffectDrawPlan, valid
+        until the next effect step on this runtime — any slot of it, where the
+        native view lasts until the next step of the same slot."""
+        self._args[0] = parent_frame
+        self._args[1] = delta_seconds
+        self._args[2] = fps
+        n = emscripten.run_script_int(
+            "window.ss_effect_step(%d, %d, %d, %d, %d, %d, %d)"
+            % (self._ctx_id, ev, slot, 1 if parent_looped else 0,
+               1 if y_flip else 0, int(vert_stride), 1 if draw else 0))
+        if n < 0:
+            self._plan_buf = _room_for("B", -n)
+            self._register_buffers()
+            n = emscripten.run_script_int(
+                "window.ss_copy_plan(%d, %d)" % (self._ctx_id, slot))
+        if n <= 0:
+            return (False, _EMPTY_VIEW)
+        return (True, memoryview(self._plan_buf)[:n].toreadonly())
 
     def effect_slot_is_independent(self, slot):
         # Guard the getter name so a JS TypeError can't unwind the emscripten
@@ -740,6 +818,8 @@ class _WebRuntime:
                     window.ss_resources[{self._ctx_id}].free();
                     delete window.ss_resources[{self._ctx_id}];
                 }}
+                // The addresses point into this object's arrays, which go with it.
+                if (window.ss_bufs) delete window.ss_bufs[{self._ctx_id}];
             """)
         self._res = None
         self._ssab_bytes = None
