@@ -10,7 +10,8 @@ An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spri
 
 ## ✨ Why use SpriteStudio with Ren'Py?
 
-- **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio), and Ren'Py just plays it. With bone rigs, mesh deformation, and particles, there's no long, complex ATL to hand-write.
+- **Bring your sprites to life.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects — you build the motion visually in a dedicated editor (SpriteStudio), with bone rigs, mesh deformation, and particles, and Ren'Py just plays it.
+- **Animate by eye, not by numbers.** Moving a sprite part by part in ATL means typing every part's position, rotation, and timing as numbers, then reloading to see how it looks. In SpriteStudio you pose the parts on the canvas, set the timing on a timeline with easing curves, and watch the motion as you make it — so the person who draws the character can animate it, too.
 - **Lip flap that follows your dialogue.** One `SSCharacter` line defines the image and the speaker together: the sprite plays its talk animation while a line is on screen and returns to idle when it ends — no per-line code.
 - **Use it like any other image.** `show ringo wait1` works with no `image` statement, and switching to another animation is one more `show`, just like changing an expression. ATL and `Transform` still position, slide, zoom, or fade it, and the Interactive Director lists it.
 - **A lightweight alternative to video.** Openings, living backgrounds, effect cut-ins — wherever you'd play a `Movie` — run as animation instead: it scales freely, loops seamlessly, changes on your script's cue, and moves at your display's refresh rate rather than a frame rate baked into a video. The bundled Ringo, every animation plus its texture, is under 300 KB.
