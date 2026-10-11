@@ -9,6 +9,11 @@
 #   renpy-sdk\renpy.exe .
 
 $ErrorActionPreference = "Stop"
+
+if ($args.Count -gt 0) {
+    [Console]::Error.WriteLine("$(Split-Path -Leaf $PSCommandPath): takes no arguments - what it does is in its header comment")
+    exit 2
+}
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $Launcher = Join-Path $RootDir "renpy-sdk\renpy.exe"
 

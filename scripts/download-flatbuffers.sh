@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+if [ "$#" -gt 0 ]; then
+  echo "$(basename "$0"): takes no arguments — what it does is in its header comment" >&2
+  exit 2
+fi
+
 FB_VERSION="v25.12.19"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/game/spritestudio/python/flatbuffers"
