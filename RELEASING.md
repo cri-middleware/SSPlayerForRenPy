@@ -65,7 +65,7 @@ git commit -m "chore(release): v$(scripts/release-version.sh)"
 
 ### 3. Pull request, QA build and rendering sign-off
 
-Open the pull request into `main`:
+Open the pull request into `main`; its CI runs the headless suite and Ren'Py's lint on the runtime built from the SDK submodule, exports the project for Linux, macOS, Windows and the Web, and builds the documentation:
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
@@ -73,7 +73,7 @@ git push -u origin "${BRANCH:?}"
 gh pr create -B main -H "${BRANCH:?}" --title "Release v$(scripts/release-version.sh)" --body ""
 ```
 
-Then dispatch the release workflow from the branch. Nothing runs on a pull request here, so this run is the check suite: it runs the headless suite and Ren'Py's lint, then builds everything the release will — the plugin zip, the Web demo, `SHA256SUMS` — and keeps them on the run (`SSPlayerForRenPy-release-dist`) without creating a Release. Fix anything on the branch and run this block again until it is green.
+Then dispatch the release workflow from the branch. It runs the headless suite and Ren'Py's lint again, on the pinned SDK release this time, then builds everything the release will — the plugin zip, the Web demo, `SHA256SUMS` — and keeps them on the run (`SSPlayerForRenPy-release-dist`) without creating a Release. Fix anything on the branch and run this block again until it and the pull request's CI are green.
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
@@ -272,7 +272,7 @@ git commit -m "chore(release): v$(scripts/release-version.sh)"
 
 ### 3. プルリクエスト、QA ビルド、描画の確認
 
-`main` へのプルリクエストを作ります。
+`main` へのプルリクエストを作ります。その CI が、SDK の submodule からビルドしたランタイムでヘッドレステストと Ren'Py の lint を回し、Linux・macOS・Windows・Web 向けにプロジェクトを書き出し、ドキュメントをビルドします。
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
@@ -280,7 +280,7 @@ git push -u origin "${BRANCH:?}"
 gh pr create -B main -H "${BRANCH:?}" --title "Release v$(scripts/release-version.sh)" --body ""
 ```
 
-続けて、ブランチからリリースワークフローを実行します。このリポジトリではプルリクエストで何も走らないので、この run がチェック一式です。ヘッドレステストと Ren'Py の lint を回し、リリースと同じもの — プラグイン zip、Web デモ、`SHA256SUMS` — をビルドして run に残し（`SSPlayerForRenPy-release-dist`）、Release は作りません。問題があればブランチで直し、緑になるまでこのブロックを繰り返します。
+続けて、ブランチからリリースワークフローを実行します。こちらは固定した SDK リリースで、ヘッドレステストと Ren'Py の lint をもう一度回し、リリースと同じもの — プラグイン zip、Web デモ、`SHA256SUMS` — をビルドして run に残し（`SSPlayerForRenPy-release-dist`）、Release は作りません。問題があればブランチで直し、この run とプルリクエストの CI が緑になるまでこのブロックを繰り返します。
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')

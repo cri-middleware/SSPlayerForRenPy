@@ -1,0 +1,230 @@
+name: CI
+
+# Two tiers, as in SpriteStudio-SDK. Every pull request runs release.yml's
+# headless gate (the plain-CPython tests under tools/ and the Ren'Py lint), with
+# the runtime built from the SDK submodule rather than downloaded: the submodule
+# is the source a PR that bumps it changes. The weekly run, a dispatch and the
+# release PR (release/X.Y into main) also build the runtime for macOS, Windows
+# and Web, export the project for each desktop platform and for the Web, and
+# build the documentation site. Android and iOS are left out: their exports need
+# the launcher's interactive setup and Xcode.
+#
+# GL2 rendering cannot be verified here: sign it off locally (Shift+B /
+# scripts/run-demo.*) before releasing.
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE*'
+  # The weekly run also writes the develop caches that PRs restore from, since
+  # PRs do not save.
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 🐧 Tests and lint (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # deploy-examples.sh converts the SDK's bundled test projects, and the
+          # runtime is built from the SDK's source.
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          # Pinned by SHA, so the channel must be named explicitly here.
+          toolchain: stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: SpriteStudio-SDK
+          # Only develop writes caches. A PR's cache is visible to that PR alone,
+          # so saving one per PR would only fill the 10 GB quota and evict the
+          # develop caches every PR restores from.
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      - name: Build the runtime
+        run: bash scripts/build-runtime.sh
+
+      # game/ss_assets/ is gitignored; the tests play these converted packs.
+      - name: Generate example animation data
+        run: bash scripts/deploy-examples.sh
+
+      # Through the runner, never a bare loop: a tool that cannot find its pack
+      # prints SKIP and exits 0, and only the runner counts that as a failure.
+      - name: Run headless test suite
+        run: bash scripts/run-tests.sh verbose=yes
+
+      # The SDK is a 150 MB .tar.bz2 that fetch-renpy-sdk.sh downloads and
+      # unpacks on every call, so it is cached whole, keyed on the pinned version.
+      - name: Restore the Ren'Py SDK
+        id: renpy-sdk
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: renpy-sdk
+          key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
+
+      - name: Fetch Ren'Py SDK
+        if: steps.renpy-sdk.outputs.cache-hit != 'true'
+        run: bash scripts/fetch-renpy-sdk.sh
+
+      # Saved before the lint runs in it.
+      - name: Save the Ren'Py SDK
+        if: steps.renpy-sdk.outputs.cache-hit != 'true' && github.ref == 'refs/heads/develop'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: renpy-sdk
+          key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
+
+      - name: Lint (Ren'Py)
+        run: renpy-sdk/renpy.sh . lint
+
+  # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
+  # only release/X.Y is merged into main.
+  desktop:
+    name: ${{ matrix.name }}
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 🐧 Desktop export (Linux)
+            os: ubuntu-latest
+            platform: linux
+
+          - name: 🍎 Desktop export (macOS)
+            os: macos-latest
+            platform: macos
+
+          - name: 🏁 Desktop export (Windows)
+            os: windows-latest
+            platform: windows
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: SpriteStudio-SDK
+          # The key is the job id and the runner OS; the platform keeps it
+          # readable next to the web job's.
+          key: ${{ matrix.platform }}
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      # macOS always goes through the SDK's release-macos.sh, which builds the
+      # universal framework.
+      - name: Install the macOS targets
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Build the runtime, then the example data (Linux / macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          bash scripts/build-runtime.sh build=release
+          bash scripts/deploy-examples.sh
+
+      - name: Build the runtime, then the example data (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          ./scripts/build-runtime.ps1 build=release
+          ./scripts/deploy-examples.ps1
+
+      # Each fetches the Ren'Py SDK first when renpy-sdk/ is missing.
+      - name: Export (Linux / macOS)
+        if: matrix.platform != 'windows'
+        run: bash scripts/deploy-desktop.sh "$RUNNER_TEMP/dist"
+
+      - name: Export (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/deploy-desktop.ps1 "$env:RUNNER_TEMP/dist"
+
+  web:
+    name: 🌐 Web export
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      # The web runtime is the SDK's wasm-pack bundle.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: SpriteStudio-SDK
+          key: web
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: wasm-pack
+
+      - name: Build the runtime, then the example data
+        run: |
+          bash scripts/build-runtime.sh platform=web build=release
+          bash scripts/deploy-examples.sh
+
+      - name: Fetch Ren'Py SDK, with Web support
+        run: |
+          bash scripts/fetch-renpy-sdk.sh
+          bash scripts/fetch-renpy-web.sh
+
+      - name: Export
+        run: bash scripts/deploy-web.sh "$RUNNER_TEMP/web"
+
+  # Builds the documentation the way pages.yml publishes it, both locales
+  # --strict, so a broken link or nav entry surfaces here rather than when a
+  # release is published. The Web demo pages.yml adds is the web job's export.
+  docs:
+    name: 📚 Docs site
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.x
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install docs dependencies
+        run: ./scripts/prepare-docs.sh
+
+      - name: Build the documentation (both locales, strict validation)
+        run: ./scripts/build-pages.sh prepare=no docs=yes demo=skip
