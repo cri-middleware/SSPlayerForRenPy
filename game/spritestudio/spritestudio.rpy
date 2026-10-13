@@ -41,13 +41,17 @@ init -10 python:
     # Native libraries: ship ONLY the target platform's binary, mirroring Ren'Py's
     # own per-platform lib tagging (renpy/common/00build.rpy). Without this a mac
     # .app would also carry the Windows .dll / Linux .so / Web .wasm — dead weight.
-    # The two `None` excludes come first (first-match-wins) so they win over the
+    # The `None` excludes come first (first-match-wins) so they win over the
     # lib patterns below:
     #  * stale __pycache__ from headless CPython test runs — never ship it;
     #  * the converter (libssconverter.*) is an import- / dev-time tool used by
-    #    auto_importer (gated on config.developer); a shipped game never loads it.
+    #    auto_importer (gated on config.developer); a shipped game never loads it;
+    #  * the README and docs/ the release zip carries are for the creator reading
+    #    them in their project, not for the player of the game.
     build.classify('**/__pycache__/**', None)
     build.classify('**/*ssconverter.*', None)
+    build.classify('**/spritestudio/README.md', None)
+    build.classify('**/spritestudio/docs/**', None)
     build.classify('**/spritestudio/libs/macos/**', 'mac')
     build.classify('**/spritestudio/libs/windows/x86_64/**', 'windows')
     build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')

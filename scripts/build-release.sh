@@ -257,10 +257,26 @@ step "packaging game/spritestudio -> $ARTIFACT"
 # them behind would put two untracked files in game/spritestudio that only a
 # release run ever creates.
 cleanup_docs () {
-  rm -f "$PKG_DIR/LICENSE.md" "$PKG_DIR/LICENSE.ja.md" "$PKG_DIR/THIRD_PARTY_NOTICES.md"
+  rm -f "$PKG_DIR/LICENSE.md" "$PKG_DIR/LICENSE.ja.md" "$PKG_DIR/THIRD_PARTY_NOTICES.md" "$PKG_DIR/README.md"
+  rm -rf "$PKG_DIR/docs"
 }
 trap cleanup_docs EXIT
 cp "$ROOT_DIR/LICENSE.md" "$ROOT_DIR/LICENSE.ja.md" "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$PKG_DIR/"
+
+# The documentation rides along the same way, so what a creator's tooling reads
+# next to the library is the documentation of that library -- not the site's,
+# which is built from the latest release and can be ahead. README.md is the
+# folder's front door; docs/ is docs/en/ but its index.md (the site's home page),
+# as Markdown with the layout kept so the links between pages resolve. The
+# screenshots and videos stay online, which README.md says. spritestudio.rpy
+# leaves both out of a game's build; verify checks the Web demo for that.
+cp "$ROOT_DIR/scripts/release-docs/zip-README.md" "$PKG_DIR/README.md"
+rm -rf "$PKG_DIR/docs"
+( cd "$ROOT_DIR/docs/en" && find . -name '*.md' | sort ) | while IFS= read -r rel; do
+  [ "$rel" = "./index.md" ] && continue
+  mkdir -p "$PKG_DIR/docs/$(dirname "$rel")"
+  cp "$ROOT_DIR/docs/en/$rel" "$PKG_DIR/docs/$rel"
+done
 
 # `spritestudio` at the archive root, so a creator drops it straight into their
 # project's game/ directory. -y stores symlinks AS symlinks -- see the header;
@@ -325,9 +341,20 @@ if [ "$VERIFY" = "yes" ]; then
   # The drop-in folder has to work with no scripts/, no SDK and no build, so the
   # things a creator's project reaches for have to be inside it.
   for f in spritestudio/LICENSE.md spritestudio/LICENSE.ja.md spritestudio/THIRD_PARTY_NOTICES.md \
-           spritestudio/libs/VERSION spritestudio/python/ss_renpy/__init__.py; do
+           spritestudio/libs/VERSION spritestudio/python/ss_renpy/__init__.py spritestudio/README.md; do
     [ -e "$CHECK/$f" ] || fail "$ARTIFACT is missing $f"
   done
+
+  # README.md is the front door to docs/. Every page it links to is looked up in
+  # the unpacked archive, so renaming or dropping a page fails the release
+  # instead of shipping a link that goes nowhere.
+  if [ -f "$CHECK/spritestudio/README.md" ]; then
+    LINKS="$(grep -oE ']\(docs/[^):#]+' "$CHECK/spritestudio/README.md" | sed 's/^](//' || true)"
+    [ -n "$LINKS" ] || fail "no docs/ links parsed out of README.md -- the check proved nothing"
+    for link in $LINKS; do
+      [ -f "$CHECK/spritestudio/$link" ] || fail "README.md links to $link, which is not in $ARTIFACT"
+    done
+  fi
 
   # The version inside the folder is the one the archive is named after. This is
   # the same check as the tag one above, from the other end: it catches a zip
@@ -368,6 +395,11 @@ if [ "$VERIFY" = "yes" ]; then
         grep -qx "game/spritestudio/libs/web/$f" <<< "$ENTRIES" \
           || fail "$DEMO_ZIP: game.zip has no spritestudio/libs/web/$f"
       done
+      # The documentation is the creator's, not the player's: spritestudio.rpy
+      # classifies it out of every build, and this export is one.
+      if grep -qE '^game/spritestudio/(README\.md$|docs/)' <<< "$ENTRIES"; then
+        fail "$DEMO_ZIP: game.zip carries spritestudio/README.md or docs/ (the build.classify in spritestudio.rpy did not hold)"
+      fi
     fi
     rm -rf "$DEMO_CHECK"
     [ -n "$FAILED" ] || echo "   Web demo: index.html, and game.zip with the runtime"

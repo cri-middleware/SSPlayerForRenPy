@@ -232,6 +232,24 @@ try {
     Copy-Item -Force "$rootDirectory/LICENSE.ja.md" "$packageDirectory/"
     Copy-Item -Force "$rootDirectory/THIRD_PARTY_NOTICES.md" "$packageDirectory/"
 
+    # The documentation rides along the same way, so what a creator's tooling
+    # reads next to the library is the documentation of that library -- not the
+    # site's, which is built from the latest release and can be ahead. README.md
+    # is the folder's front door; docs/ is docs/en/ but its index.md (the site's
+    # home page), as Markdown with the layout kept so the links between pages
+    # resolve. The screenshots and videos stay online, which README.md says.
+    # spritestudio.rpy leaves both out of a game's build.
+    Copy-Item -Force "$rootDirectory/scripts/release-docs/zip-README.md" "$packageDirectory/README.md"
+    if (Test-Path "$packageDirectory/docs") { Remove-Item -Recurse -Force "$packageDirectory/docs" }
+    $docsSource = (Resolve-Path "$rootDirectory/docs/en").Path
+    foreach ($page in Get-ChildItem -Path $docsSource -Recurse -File -Filter *.md) {
+        $rel = $page.FullName.Substring($docsSource.Length + 1)
+        if ($rel -eq "index.md") { continue }
+        $to = Join-Path "$packageDirectory/docs" $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
+        Copy-Item -Force $page.FullName $to
+    }
+
     # `spritestudio` at the archive root, so a creator drops it straight into
     # their project's game/ directory. -X drops the extra file attributes,
     # keeping the archive reproducible.
@@ -240,7 +258,8 @@ try {
         & zip -qr -X -y "$out/$artifact" spritestudio -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
     } finally { Pop-Location }
 } finally {
-    Remove-Item -Force -ErrorAction SilentlyContinue "$packageDirectory/LICENSE.md", "$packageDirectory/LICENSE.ja.md", "$packageDirectory/THIRD_PARTY_NOTICES.md"
+    Remove-Item -Force -ErrorAction SilentlyContinue "$packageDirectory/LICENSE.md", "$packageDirectory/LICENSE.ja.md", "$packageDirectory/THIRD_PARTY_NOTICES.md", "$packageDirectory/README.md"
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$packageDirectory/docs"
 }
 
 Copy-Item -Force "$out/$artifact" "$out/$alias"
@@ -308,8 +327,19 @@ if ($verify -eq "yes") {
     # The drop-in folder has to work with no scripts/, no SDK and no build, so
     # the things a creator's project reaches for have to be inside it.
     foreach ($f in @("spritestudio/LICENSE.md", "spritestudio/LICENSE.ja.md", "spritestudio/THIRD_PARTY_NOTICES.md",
-                     "spritestudio/libs/VERSION", "spritestudio/python/ss_renpy/__init__.py")) {
+                     "spritestudio/libs/VERSION", "spritestudio/python/ss_renpy/__init__.py", "spritestudio/README.md")) {
         if (-not (Test-Path "$check/$f")) { $failed.Add("$artifact is missing $f") }
+    }
+
+    # README.md is the front door to docs/. Every page it links to is looked up
+    # in the unpacked archive, so renaming or dropping a page fails the release
+    # instead of shipping a link that goes nowhere.
+    if (Test-Path "$check/spritestudio/README.md") {
+        $links = @([regex]::Matches((Get-Content -Raw "$check/spritestudio/README.md"), '\]\((docs/[^):#]+)') | ForEach-Object { $_.Groups[1].Value })
+        if ($links.Count -eq 0) { $failed.Add("no docs/ links parsed out of README.md -- the check proved nothing") }
+        foreach ($link in $links) {
+            if (-not (Test-Path "$check/spritestudio/$link")) { $failed.Add("README.md links to $link, which is not in $artifact") }
+        }
     }
 
     # The version inside the folder is the one the archive is named after. This
@@ -351,6 +381,11 @@ if ($verify -eq "yes") {
                 if ($gameEntries -notcontains "game/spritestudio/libs/web/$f") {
                     $failed.Add("${demoZip}: game.zip has no spritestudio/libs/web/$f")
                 }
+            }
+            # The documentation is the creator's, not the player's: spritestudio.rpy
+            # classifies it out of every build, and this export is one.
+            if ($gameEntries | Where-Object { $_ -match '^game/spritestudio/(README\.md$|docs/)' }) {
+                $failed.Add("${demoZip}: game.zip carries spritestudio/README.md or docs/ (the build.classify in spritestudio.rpy did not hold)")
             }
         }
         if (Test-Path $demoCheck) { Remove-Item -Recurse -Force $demoCheck }
