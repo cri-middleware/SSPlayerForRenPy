@@ -134,8 +134,8 @@ class InitialPartAttributes(object):
     def Priority(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(32))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
-        return 0.0
+            return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
+        return 0
 
     # InitialPartAttributes
     def FlipH(self):
@@ -419,7 +419,7 @@ def AddLocalAlpha(builder, localAlpha):
     InitialPartAttributesAddLocalAlpha(builder, localAlpha)
 
 def InitialPartAttributesAddPriority(builder, priority):
-    builder.PrependFloat32Slot(14, priority, 0.0)
+    builder.PrependInt32Slot(14, priority, 0)
 
 def AddPriority(builder, priority):
     InitialPartAttributesAddPriority(builder, priority)
