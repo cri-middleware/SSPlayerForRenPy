@@ -229,12 +229,8 @@ class SSInternalPlayer:
         # tracks show, and cleared by set_animation, whose setup folds the stack
         # back to track 0 alone. While it is set the pose depends on more than
         # track 0: overlays and fades run on after track 0 has finished, which
-        # is_animating has to see. The clock that drives them is the Brain's,
-        # held by pause / stop and released by resume / play; these two mirror
-        # it, because is_playing / is_pausing describe track 0 only.
+        # is_animating has to see.
         self._mixing = False
-        self._paused = False
-        self._stopped = True
 
         # part-query snapshots (last rendered frame)
         self._last_world: list = []
@@ -465,10 +461,11 @@ class SSInternalPlayer:
         """Whether the clock runs and something on the track stack moves on it:
         a fade in flight, or an overlay that has loops left at a speed above 0.
         A finished overlay holds its last frame, so it no longer asks for
-        redraws."""
-        if self._stopped or self._paused or self._rt is None:
-            return False
+        redraws. The clock is the Brain's, not track 0's: is_playing /
+        is_pausing go false when track 0 finishes, and the stack runs on."""
         rt = self._rt
+        if rt is None or not rt.is_clock_playing or rt.is_clock_pausing:
+            return False
         try:
             for t in range(rt.track_count()):
                 if rt.track_fade_progress(t) is not None:
@@ -510,10 +507,8 @@ class SSInternalPlayer:
         if not self._rt.setup_animation(name):
             return False
         self._current_animation = name
-        # Setup folds the track stack back to track 0 alone, and stops.
+        # Setup folds the track stack back to track 0 alone.
         self._mixing = False
-        self._stopped = True
-        self._paused = False
         # The loop count is per-transition, so re-apply ours. Speed and frame
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
@@ -548,7 +543,6 @@ class SSInternalPlayer:
             self._rt.play_with_start_frame(start_frame)
         else:
             self._rt.play()
-        self._stopped = self._paused = False
         # Re-arm the finished edge: is_finished stays latched until this point,
         # so replaying must drop our copy of it to report the next completion.
         self._was_finished = False
@@ -668,14 +662,12 @@ class SSInternalPlayer:
         # made while nothing is playing, so this needs no guard of its own.
         if self._rt:
             self._rt.pause()
-            self._paused = True
 
     def resume(self) -> None:
         # Lifting the hold is `resume`, not a second `pause`: the Brain stopped
         # toggling. `play` would head out and lose the playhead.
         if self._rt:
             self._rt.resume()
-            self._paused = False
 
     def stop(self) -> None:
         # Nothing rewinds: the playhead stays where it stands, so the host keeps
@@ -685,7 +677,6 @@ class SSInternalPlayer:
         # never mistakes a commanded stop() for a completion.
         if self._rt:
             self._rt.stop()
-            self._stopped = True
 
     def set_loop_count(self, count: int) -> None:
         self._loop = count
