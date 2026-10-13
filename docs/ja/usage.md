@@ -164,6 +164,51 @@ $ player.ss_play("run")
 - **フレームスキップ**: 既定は**オン**で、処理が詰まった直後は先のフレームへ追いついて時間どおりに再生します（2秒のアニメは常に2秒）。`ss_set_frame_skip_enabled(False)` にすると1描画につき1フレームずつ進み、フレームを飛ばさない代わりに引き伸ばされます。1コマも飛ばしたくない短いエフェクトなどで使ってください。コンストラクタの `frame_skip=False` でも指定できます。
 - **パーツ照会**: `ss_part_transform("part名")` で直近フレームのパーツのローカル変換（x/y/回転/スケール）を取得できます。パーツ照会 API の全体と、表示物をパーツに追従させる方法は下の **パーツトラッキング**（§5）を参照。
 
+### アニメーションのブレンド（クロスフェードと重ね合わせ） { #mixing-animations }
+
+同じ `.ssab` のアニメーション同士を、パッと切り替える代わりにじわっと移り変わらせたり（クロスフェード）、あるアニメーションの上に別のアニメーションを重ねたり（歩きの上に手振り、何にでも瞬き、など）できます。プレイヤーは **トラック** を積み重ねて持っています。トラック 0 は `ss_set_animation()` で設定したアニメーションで、その上のトラックは、下までで決まったポーズにそれぞれのアニメーションを重ねます。
+
+```renpy
+# 今再生しているものから "walk" へ 0.3 秒でフェード
+$ ringo.ss_crossfade(0, "walk", 0.3)
+
+# "attack1" を上に重ねて 1 回だけ再生し……
+$ ringo.ss_set_track_animation(1, "attack1")
+$ ringo.ss_set_track_loop_count(1, 1)
+
+# ……終わったらフェードアウト
+if ringo.ss_is_track_finished(1):
+    $ ringo.ss_fade_track(1, 0.0, 0.2)
+```
+
+- **トラック 0 のクロスフェードは、呼んだ時点で切り替わります。** そこから `ss_get_current_animation()` は入ってくる側の名前を返し、`ss_is_finished()`、`on_animation_finished` / `on_animation_looped`、イベントも入ってくる側のものになります。出ていく側がフェード中に終わっても、プレイヤーは終了になりません。フェード前のアニメーションを `ss_set_animation()` すればそちらに戻れます。フェード先のアニメーションを `ss_set_animation()` しても何も起きず、フェードはそのまま続きます。
+- **引き継がれるもの。** 速度・再生方向・フレームスキップ・フレームレートの上書きはトラックの設定なので、入ってくる側も出ていく側と同じように再生されます。ループ回数も、`ss_set_loop_count()` で設定した回数（設定していなければコンストラクタの `loop`）が入ってくる側に掛かります。待っているシーケンスは `ss_set_animation()` と同じく破棄されます。パーツオーバーライドは残ります。`on_animation_started` は呼ばれません（切り替えであって、再生の開始ではないため）。
+- **重ね合わせ。** `ss_set_track_animation(track, name)` は、フェードせずにトラックへアニメーションを載せます。`ss_set_track_alpha(track, alpha)` でそのトラックの効き具合を決め、`ss_fade_track(track, alpha, seconds)` でそこまでフェードさせます。`ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` にすると、ポーズに混ぜる代わりに足し込みます。トラックが動かすのは、そのアニメーションにキーがあるアトリビュートだけです。
+- **再生設定はトラックごと** にあり（`ss_set_track_speed()`、`ss_set_track_loop_count()`、`ss_set_track_playback_direction()`、`ss_set_track_frame_skip_enabled()`、`ss_set_track_frame_rate()`）、あとからそのトラックに載せるアニメーションにも効きます。トラック 0 の設定はプレイヤー自身の設定（`ss_set_speed_scale()` など）です。ただしループ回数は例外で、トラックに載せたアニメーションは回数を設定するまで無限にループします。回数はアニメーションを載せた後に設定してください。
+- **終わったトラックは最後のフレームのまま** 混ざり続けます。フェードさせるか、`ss_clear_track(track)` で空にするまでそのままです。終わったかどうかは `ss_is_track_finished(track)`（トラック 0 の `ss_is_finished()` に当たるもの）、ループの瞬間は `ss_track_just_looped(track)` で分かります。プレイヤーの再生を終わらせるのは、トラック 0 の終了だけです。
+- **歩調を揃えて始める。** アニメーションを載せる前に `ss_set_track_sync(track, ssruntime.TRACK_SYNC_START)` にしておくと、トラック 0 と同じ周期の位置から始まります（歩き同士なら歩幅が揃います）。
+- **再生制御はスタック全体に効きます。** `ss_pause()` / `ss_resume()` / `ss_stop()` はすべてのトラックとフェードを止め、再開し、停止します。`ss_play()` が頭出しするのはトラック 0 だけです。トラック 0 が終わった後も、他のトラックは動き続けます。
+- **`ss_set_animation()` はスタックをトラック 0 だけに戻します。** 重ねていたものは、その後で載せ直してください。またスタックはセーブされません。セーブをロードすると、プレイヤーはトラック 0 のアニメーションのセーブ時のフレームから戻り、他のトラックはありません。
+- **1 つのトラックに複数のアニメーション。** `ss_add_track_source(track, name, weight)` はトラックに別のアニメーションを足し、そのハンドルを返します。`ss_set_source_weight(handle, weight)` で比率を決めます（歩きから走りへのブレンドなど）。`ss_track_main_source(track)` は、トラックに載せたアニメーションのハンドルです。ランタイムはソースを解放すると（クロスフェードを終えた出ていく側など）ハンドルを使い回すので、ハンドルは持ち続けずに、その都度問い合わせてください。
+
+| 呼び出し | 内容 |
+|---|---|
+| `ss_crossfade(track, name, seconds)` | トラックを別のアニメーションへフェードで切り替える |
+| `ss_set_track_animation(track, name)` | フェードせずにトラックへアニメーションを載せる |
+| `ss_clear_track(track)` / `ss_track_count()` | トラックを空にする / トラックの数 |
+| `ss_set_track_alpha(track, alpha)` | トラックの効き具合（`0.0`〜`1.0`） |
+| `ss_fade_track(track, alpha, seconds)` | トラックの alpha をフェードさせる |
+| `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | 進行中のフェードの進み具合（`0.0`〜`1.0`、フェード中でなければ `None`）/ その位置でフェードを止める |
+| `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX`（既定）か `TRACK_BLEND_ADDITIVE` |
+| `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE`（先頭から。既定）か `TRACK_SYNC_START`（トラック 0 に揃える） |
+| `ss_set_track_frame(track, frame)` | トラックの再生位置を動かす |
+| `ss_is_track_finished(track)` / `ss_track_just_looped(track)` | トラックのアニメーションがループを再生し終えた（状態）/ 直近の update でループした（パルス） |
+| `ss_set_track_outgoing_event_threshold(track, share)` | クロスフェードの出ていく側にもイベントを出させる（§8 を参照） |
+| `ss_add_track_source(track, name, weight)` | トラックに別のアニメーションを足す。ハンドルを返す |
+| `ss_set_source_weight(handle, weight)` / `ss_set_source_frame(handle, frame)` / `ss_set_source_event_threshold(handle, weight)` | ソースごとの weight、再生位置、イベントを出し始める weight |
+
+設定値は対応する `ss_get_*` で読み戻せます（フレームスキップは `ss_is_track_frame_skip_enabled()`）。セッターは断られると `False` を返し（存在しないアニメーション・トラック・ハンドルなど）、ゲッターは読むものが無いと `None` を返します。
+
 ---
 
 ## 5. パーツトラッキング（指定パーツへの追従）
@@ -421,6 +466,9 @@ image boss = SSPlayer(
 
 > [!NOTE]
 > コールバックは描画スレッドから、パーツ単位のイベントは `cb(player, frame_index, event)`、開始/終了/ループ系は `cb(player)` の形で呼ばれます。`frame_index` はキーが **置かれている** フレームであって、検出されたフレームとは限りません（1 回の更新で複数フレームをまたぐことがあり、その間のキーはすべてそこで発火します）。イベント自身は `part_index` と `part_name` を持ちます（パックにそのパーツの名前が無い場合は `None`）。ロールバック（rollback）時のピクル化のため、ラムダやローカル関数ではなくモジュールレベルの関数を渡してください。コールバックはそのフレームが描かれるときに呼ばれ、Ren'Py はゲームメニューの下でもシーンを描き続けるので、プレイヤーがセーブ画面を開いている間に呼ばれることもあります（SpriteStudio の音がそこでも鳴り続けるのと同じです）。コールバックでは、変数の設定や `renpy.notify()` のように、いつ起きても構わない処理にとどめ、ラベルへのジャンプや呼び出しはしないでください。
+
+> [!NOTE]
+> **[アニメーションのブレンド](#mixing-animations)中のイベント。** イベントはそれぞれ 1 つのアニメーションから出ていて、それを出したアニメーションのハンドルを `source` に持っています（`ss_track_main_source()` / `ss_add_track_source()` が返すものと同じハンドルです）。既定でイベントを出すのはトラック 0 のアニメーションだけです。トラック 0 のクロスフェードでは、それは入ってくる側で、フェードの最初のフレームから出します。出ていく側はフェードの開始と同時に出さなくなるので、フェード中に出ていく側が通過するイベントは報告されません（イベントを数えているゲームでは差が出ます）。`ss_set_track_outgoing_event_threshold(0, 0.5)` にすると、トラック 0 のフェードの前半は出ていく側も出します（設定は残ります）。重ねたアニメーションに出させるには `ss_set_source_event_threshold(handle, 0.0)` を使います。
 
 ※ ポーリングベース（`ss_poll_events()`）での受け取り方については、デモプロジェクトの `scene_viewer.rpy` 内 `ss_drain_events()` などの実装をご参照ください。
 

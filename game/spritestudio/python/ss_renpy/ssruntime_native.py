@@ -74,6 +74,14 @@ PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0
 PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1
 PRIORITY_PERMANENT = 2
 
+# Animation mixing: the track blend and sync values (kept in step with the
+# same names in ss_renpy.ssruntime), and the C-API's "no handle" sentinel.
+TRACK_BLEND_MIX = 0
+TRACK_BLEND_ADDITIVE = 1
+TRACK_SYNC_FREE = 0
+TRACK_SYNC_START = 1
+INVALID_HANDLE = 0xFFFFFFFF
+
 
 # --- by-value structs for the Instance / Effect slot API ------------------
 # These mirror the C structs in ``target/ssruntime.h`` *exactly* (field order
@@ -429,6 +437,60 @@ def _declare(lib: C.CDLL) -> None:
     f.ss_runtime_get_passed_event_count.restype = C.c_int32
     f.ss_runtime_get_passed_event_index.argtypes = [P, C.c_int32]
     f.ss_runtime_get_passed_event_index.restype = C.c_int32
+
+    # --- Animation mixing: the track stack and its sources ----------------
+    # Each symbol is bound on its own (the stale-lib tolerance above, made
+    # finer): a drop-in whose libs predate the stack, or predate the track
+    # playback settings that came after it, still loads, and the wrappers
+    # report a refusal or no value for whatever is missing. Binding them as one
+    # group would leave the ones after a missing symbol without argtypes.
+    u32, f32, i32, b = C.c_uint32, C.c_float, C.c_int32, C.c_bool
+    for name, args, res in (
+        ("ss_runtime_set_track_animation", [P, u32, C.c_char_p], b),
+        ("ss_runtime_get_track_count", [P], u32),
+        ("ss_runtime_clear_track", [P, u32], b),
+        ("ss_runtime_set_track_alpha", [P, u32, f32], b),
+        ("ss_runtime_get_track_alpha", [P, u32], f32),
+        ("ss_runtime_set_track_blend", [P, u32, u32], b),
+        ("ss_runtime_get_track_blend", [P, u32], u32),
+        ("ss_runtime_set_track_sync", [P, u32, u32], b),
+        ("ss_runtime_get_track_sync", [P, u32], u32),
+        ("ss_runtime_set_track_frame", [P, u32, f32], b),
+        ("ss_runtime_get_track_frame", [P, u32], f32),
+        ("ss_runtime_set_track_speed", [P, u32, f32], b),
+        ("ss_runtime_get_track_speed", [P, u32], f32),
+        ("ss_runtime_set_track_frame_rate", [P, u32, C.c_int], b),
+        ("ss_runtime_get_track_frame_rate", [P, u32], i32),
+        ("ss_runtime_set_track_skip_frames", [P, u32, b], b),
+        ("ss_runtime_get_track_skip_frames", [P, u32], b),
+        ("ss_runtime_set_track_playback_direction", [P, u32, C.c_int, C.c_int], b),
+        ("ss_runtime_get_track_playback_direction", [P, u32], i32),
+        ("ss_runtime_get_track_playback_style", [P, u32], i32),
+        ("ss_runtime_set_track_loop_count", [P, u32, C.c_int], b),
+        ("ss_runtime_get_track_loop_count", [P, u32], i32),
+        ("ss_runtime_is_track_finished", [P, u32], b),
+        ("ss_runtime_track_just_looped", [P, u32], b),
+        ("ss_runtime_set_track_outgoing_event_threshold", [P, u32, f32], b),
+        ("ss_runtime_get_track_outgoing_event_threshold", [P, u32], f32),
+        ("ss_runtime_crossfade", [P, u32, C.c_char_p, f32], b),
+        ("ss_runtime_fade_track", [P, u32, f32, f32], b),
+        ("ss_runtime_get_track_fade_progress", [P, u32], f32),
+        ("ss_runtime_cancel_track_fade", [P, u32], b),
+        ("ss_runtime_get_track_main_source", [P, u32], u32),
+        ("ss_runtime_add_track_source", [P, u32, C.c_char_p, f32], u32),
+        ("ss_runtime_set_source_weight", [P, u32, f32], b),
+        ("ss_runtime_get_source_weight", [P, u32], f32),
+        ("ss_runtime_set_source_frame", [P, u32, f32], b),
+        ("ss_runtime_get_source_frame", [P, u32], f32),
+        ("ss_runtime_set_source_event_threshold", [P, u32, f32], b),
+        ("ss_runtime_get_source_event_threshold", [P, u32], f32),
+        ("ss_runtime_get_source_animation_index", [P, u32], i32),
+        ("ss_runtime_get_passed_event_source_handle", [P, i32], u32),
+    ):
+        fn = getattr(f, name, None)
+        if fn is not None:
+            fn.argtypes = args
+            fn.restype = res
 
     # hashing helper (texture/animation name -> u32 fnv1a)
     f.ss_runtime_hash_string.argtypes = [C.c_char_p]
@@ -885,6 +947,166 @@ class _NativeRuntime:
         Resolve it with :class:`ss_renpy.events.EventResolver`.
         """
         return int(self._lib.ss_runtime_get_passed_event_index(self._ctx, i))
+
+    def passed_event_source_handle(self, i: int):
+        """Handle of the source whose animation fired the ``i``-th passed
+        event, or None (no such event, or a runtime without the export)."""
+        return self._mix_handle("ss_runtime_get_passed_event_source_handle", i)
+
+    # -- animation mixing (the track stack; see ss_renpy.player) ----------
+    # Thin passthroughs over the ss_runtime_*track* / *source* C-API. Its
+    # "no value" sentinels (NaN, -1, the invalid handle) come back as None and
+    # the setters as a bool. A symbol the loaded library does not export reads
+    # as a refusal / None, so a drop-in on older libs keeps playing.
+    def _mix(self, symbol, *args):
+        fn = getattr(self._lib, symbol, None)
+        return None if fn is None else fn(self._ctx, *args)
+
+    def _mix_ok(self, symbol, *args) -> bool:
+        return bool(self._mix(symbol, *args))
+
+    def _mix_float(self, symbol, *args):
+        v = self._mix(symbol, *args)
+        return None if v is None or v != v else float(v)
+
+    def _mix_int(self, symbol, *args, none=-1):
+        v = self._mix(symbol, *args)
+        return None if v is None or v == none else int(v)
+
+    def _mix_handle(self, symbol, *args):
+        return self._mix_int(symbol, *args, none=INVALID_HANDLE)
+
+    def set_track_animation(self, track: int, name: str) -> bool:
+        return self._mix_ok("ss_runtime_set_track_animation", track,
+                            name.encode("utf-8"))
+
+    def track_count(self) -> int:
+        return int(self._mix("ss_runtime_get_track_count") or 0)
+
+    def clear_track(self, track: int) -> bool:
+        return self._mix_ok("ss_runtime_clear_track", track)
+
+    def set_track_alpha(self, track: int, alpha: float) -> bool:
+        return self._mix_ok("ss_runtime_set_track_alpha", track, alpha)
+
+    def track_alpha(self, track: int):
+        return self._mix_float("ss_runtime_get_track_alpha", track)
+
+    def set_track_blend(self, track: int, blend: int) -> bool:
+        return self._mix_ok("ss_runtime_set_track_blend", track, blend)
+
+    def track_blend(self, track: int):
+        return self._mix_handle("ss_runtime_get_track_blend", track)
+
+    def set_track_sync(self, track: int, sync: int) -> bool:
+        return self._mix_ok("ss_runtime_set_track_sync", track, sync)
+
+    def track_sync(self, track: int):
+        return self._mix_handle("ss_runtime_get_track_sync", track)
+
+    def set_track_frame(self, track: int, frame: float) -> bool:
+        return self._mix_ok("ss_runtime_set_track_frame", track, frame)
+
+    def track_frame(self, track: int):
+        return self._mix_float("ss_runtime_get_track_frame", track)
+
+    def set_track_speed(self, track: int, speed: float) -> bool:
+        return self._mix_ok("ss_runtime_set_track_speed", track, speed)
+
+    def track_speed(self, track: int):
+        return self._mix_float("ss_runtime_get_track_speed", track)
+
+    def set_track_frame_rate(self, track: int, fps: int) -> bool:
+        return self._mix_ok("ss_runtime_set_track_frame_rate", track, fps)
+
+    def track_frame_rate(self, track: int):
+        return self._mix_int("ss_runtime_get_track_frame_rate", track)
+
+    def set_track_skip_frames(self, track: int, skip: bool) -> bool:
+        return self._mix_ok("ss_runtime_set_track_skip_frames", track, skip)
+
+    def track_skip_frames(self, track: int) -> bool:
+        # The C-API reads a track that does not exist as False; the caller
+        # asks track_count first.
+        return self._mix_ok("ss_runtime_get_track_skip_frames", track)
+
+    def set_track_playback_direction(self, track: int, direction: int,
+                                     style: int = STYLE_NORMAL) -> bool:
+        return self._mix_ok("ss_runtime_set_track_playback_direction", track,
+                            direction, style)
+
+    def track_playback_direction(self, track: int):
+        return self._mix_int("ss_runtime_get_track_playback_direction", track)
+
+    def track_playback_style(self, track: int):
+        return self._mix_int("ss_runtime_get_track_playback_style", track)
+
+    def set_track_loop_count(self, track: int, count: int) -> bool:
+        return self._mix_ok("ss_runtime_set_track_loop_count", track, count)
+
+    def track_loop_count(self, track: int):
+        # 0 is "no animation": a count reads back positive, or -1 forever.
+        return self._mix_int("ss_runtime_get_track_loop_count", track, none=0)
+
+    def is_track_finished(self, track: int) -> bool:
+        return self._mix_ok("ss_runtime_is_track_finished", track)
+
+    def track_just_looped(self, track: int) -> bool:
+        return self._mix_ok("ss_runtime_track_just_looped", track)
+
+    def set_track_outgoing_event_threshold(self, track: int,
+                                           threshold: float) -> bool:
+        return self._mix_ok("ss_runtime_set_track_outgoing_event_threshold",
+                            track, threshold)
+
+    def track_outgoing_event_threshold(self, track: int):
+        return self._mix_float("ss_runtime_get_track_outgoing_event_threshold",
+                               track)
+
+    def crossfade(self, track: int, name: str, duration_ms: float) -> bool:
+        return self._mix_ok("ss_runtime_crossfade", track,
+                            name.encode("utf-8"), duration_ms)
+
+    def fade_track(self, track: int, target_alpha: float,
+                   duration_ms: float) -> bool:
+        return self._mix_ok("ss_runtime_fade_track", track, target_alpha,
+                            duration_ms)
+
+    def track_fade_progress(self, track: int):
+        return self._mix_float("ss_runtime_get_track_fade_progress", track)
+
+    def cancel_track_fade(self, track: int) -> bool:
+        return self._mix_ok("ss_runtime_cancel_track_fade", track)
+
+    def track_main_source(self, track: int):
+        return self._mix_handle("ss_runtime_get_track_main_source", track)
+
+    def add_track_source(self, track: int, name: str, weight: float):
+        return self._mix_handle("ss_runtime_add_track_source", track,
+                                name.encode("utf-8"), weight)
+
+    def set_source_weight(self, handle: int, weight: float) -> bool:
+        return self._mix_ok("ss_runtime_set_source_weight", handle, weight)
+
+    def source_weight(self, handle: int):
+        return self._mix_float("ss_runtime_get_source_weight", handle)
+
+    def set_source_frame(self, handle: int, frame: float) -> bool:
+        return self._mix_ok("ss_runtime_set_source_frame", handle, frame)
+
+    def source_frame(self, handle: int):
+        return self._mix_float("ss_runtime_get_source_frame", handle)
+
+    def set_source_event_threshold(self, handle: int, threshold: float) -> bool:
+        return self._mix_ok("ss_runtime_set_source_event_threshold", handle,
+                            threshold)
+
+    def source_event_threshold(self, handle: int):
+        return self._mix_float("ss_runtime_get_source_event_threshold", handle)
+
+    def source_animation_index(self, handle: int):
+        """Index into the pack's animations of the one ``handle`` plays."""
+        return self._mix_int("ss_runtime_get_source_animation_index", handle)
 
     # -- frame data -------------------------------------------------------
     def _frame_data_ptr(self, frame_no):

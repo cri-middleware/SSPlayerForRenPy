@@ -204,11 +204,18 @@ class SSInternalPlayer:
         self._style = 0
         self._skip_frames = True
 
-        # rigs (built at the end of construction) / events (per-animation, built
-        # by set_animation)
+        # rigs (built at the end of construction) / events (built below: one
+        # resolver serves the whole pack, since an event is read from the table
+        # of the animation that fired it, which a crossfade or an overlay makes
+        # other than the one set up)
         self._instances: Optional[InstanceRig] = None
         self._effects: Optional[EffectRig] = None
         self._evt: Optional[EventResolver] = None
+        if self._enable_events:
+            try:
+                self._evt = EventResolver(ssab_data)
+            except Exception:
+                self._evt = None
         # Bounded: hosts that consume events via callbacks alone never call
         # poll_events(), so an unbounded queue would grow for the whole session
         # (a looping talking sprite emits UserData markers indefinitely). The
@@ -218,6 +225,16 @@ class SSInternalPlayer:
         self._event_queue: deque = deque(maxlen=EVENT_QUEUE_MAX)
         self._events_dropped = 0
         self._was_finished = False
+        # The track stack. `_mixing` is set by a call that changes what the
+        # tracks show, and cleared by set_animation, whose setup folds the stack
+        # back to track 0 alone. While it is set the pose depends on more than
+        # track 0: overlays and fades run on after track 0 has finished, which
+        # is_animating has to see. The clock that drives them is the Brain's,
+        # held by pause / stop and released by resume / play; these two mirror
+        # it, because is_playing / is_pausing describe track 0 only.
+        self._mixing = False
+        self._paused = False
+        self._stopped = True
 
         # part-query snapshots (last rendered frame)
         self._last_world: list = []
@@ -440,7 +457,29 @@ class SSInternalPlayer:
         redraws (and emitting particles) forever."""
         if self._rt and self._rt.is_playing and not self._rt.is_pausing:
             return True
+        if self._mixing and self._mixing_moves():
+            return True
         return self._has_independent_rigs()
+
+    def _mixing_moves(self) -> bool:
+        """Whether the clock runs and something on the track stack moves on it:
+        a fade in flight, or an overlay that has loops left at a speed above 0.
+        A finished overlay holds its last frame, so it no longer asks for
+        redraws."""
+        if self._stopped or self._paused or self._rt is None:
+            return False
+        rt = self._rt
+        try:
+            for t in range(rt.track_count()):
+                if rt.track_fade_progress(t) is not None:
+                    return True
+                if (t and rt.track_loop_count(t) is not None
+                        and not rt.is_track_finished(t)
+                        and (rt.track_speed(t) or 0.0) > 0.0):
+                    return True
+        except Exception:
+            pass
+        return False
 
     def _has_independent_rigs(self) -> bool:
         """Whether any Instance/Effect slot — at this level or nested inside a
@@ -471,6 +510,10 @@ class SSInternalPlayer:
         if not self._rt.setup_animation(name):
             return False
         self._current_animation = name
+        # Setup folds the track stack back to track 0 alone, and stops.
+        self._mixing = False
+        self._stopped = True
+        self._paused = False
         # The loop count is per-transition, so re-apply ours. Speed and frame
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
@@ -484,12 +527,10 @@ class SSInternalPlayer:
         # numbers and means nothing against a different clip. The playback
         # direction and ping-pong style are host policy and survive setup on
         # their own (SDK #375), so nothing here has to put them back.
-        # Timeline events are per-animation; rebuild the resolver.
-        if self._enable_events:
-            try:
-                self._evt = EventResolver(self._data, name)
-            except Exception:
-                self._evt = None
+        # The table an event is read from when the runtime cannot say which
+        # animation fired it (a library that predates the track stack).
+        if self._evt is not None:
+            self._evt.select(name)
         # The rigs themselves are pack-static (built at construction); a switch
         # only re-arms their slots so the new animation's Instance/Effect parts
         # fire from the top.
@@ -507,6 +548,7 @@ class SSInternalPlayer:
             self._rt.play_with_start_frame(start_frame)
         else:
             self._rt.play()
+        self._stopped = self._paused = False
         # Re-arm the finished edge: is_finished stays latched until this point,
         # so replaying must drop our copy of it to report the next completion.
         self._was_finished = False
@@ -626,12 +668,14 @@ class SSInternalPlayer:
         # made while nothing is playing, so this needs no guard of its own.
         if self._rt:
             self._rt.pause()
+            self._paused = True
 
     def resume(self) -> None:
         # Lifting the hold is `resume`, not a second `pause`: the Brain stopped
         # toggling. `play` would head out and lose the playhead.
         if self._rt:
             self._rt.resume()
+            self._paused = False
 
     def stop(self) -> None:
         # Nothing rewinds: the playhead stays where it stands, so the host keeps
@@ -641,6 +685,7 @@ class SSInternalPlayer:
         # never mistakes a commanded stop() for a completion.
         if self._rt:
             self._rt.stop()
+            self._stopped = True
 
     def set_loop_count(self, count: int) -> None:
         self._loop = count
@@ -696,6 +741,312 @@ class SSInternalPlayer:
     def set_sub_frame_enabled(self, enabled: bool) -> None:
         self._sub_frame = bool(enabled)
 
+    # -- animation mixing: the Brain's track stack ---------------------
+    # Layer and cross-fade animations of this pack on one character. Track 0
+    # is the one set_animation sets up; tracks above it layer onto the pose
+    # below, each with an alpha and a blend, and a track can carry several
+    # weighted sources. Thin wrappers over the runtime: an animation is named
+    # as set_animation names it, a track is an int >= 0, a source is the handle
+    # track_main_source / add_track_source hand out. A setter returns False
+    # when the runtime refuses the call; a read returns None where there is
+    # nothing to read (no such track or source, no fade in flight, no
+    # animation on the track). Fades take milliseconds, as update() does.
+    #
+    # set_animation folds the stack back to track 0 alone and resets what it
+    # resets for track 0 (trackSync, alpha and blend of the other tracks
+    # included), so a host lays its overlays again after it.
+    @staticmethod
+    def _track(track) -> int:
+        """``track`` as a track number, or -1 for one the runtime cannot take
+        (a negative int would wrap around to a huge u32 in ctypes)."""
+        try:
+            t = int(track)
+        except (TypeError, ValueError):
+            return -1
+        return t if t >= 0 else -1
+
+    def _mixed(self, ok) -> bool:
+        """Note a call that changed what the tracks show (see `_mixing`)."""
+        if ok:
+            self._mixing = True
+        return bool(ok)
+
+    def _track_zero_switched(self, name: str) -> None:
+        """Track 0 plays ``name`` from this call on, as after set_animation.
+
+        A crossfade (or a track animation) on track 0 hands the character to
+        the incoming animation when it begins, not when it completes: from
+        here is_playing / is_finished / just_looped, the frame and the events
+        fired by default are the incoming animation's. Recording the switch
+        now is what keeps set_animation from taking the animation a crossfade
+        left for the one still selected, and current_animation from naming the
+        outgoing one. Nothing is started -- the incoming animation carries on
+        whatever play state track 0 had -- and the Instance/Effect slots are
+        left running: they come from the pack's parts, which every animation
+        of it shares."""
+        self._current_animation = name
+        if self._evt is not None:
+            self._evt.select(name)
+        # The loop count belongs to the animation, so the incoming one starts
+        # looping forever; put this Player's count back on it, as set_animation
+        # does. Speed, direction, frame-rate override and frame skip belong to
+        # the track and carry over in the Brain.
+        if self._rt:
+            self._rt.set_loop_count(self._loop)
+        # A finish of the outgoing animation is not this one's.
+        self._was_finished = False
+
+    def set_track_animation(self, track, name: str) -> bool:
+        """Lay ``name`` on ``track``, replacing what it plays, without a fade.
+        On track 0 it is what set_animation sets up from here on, but the stack
+        and the play state stay as they are."""
+        t = self._track(track)
+        if t < 0 or not name or self._rt is None:
+            return False
+        if not self._mixed(self._rt.set_track_animation(t, name)):
+            return False
+        if t == 0:
+            self._track_zero_switched(name)
+        return True
+
+    def crossfade(self, track, name: str, duration_ms: float) -> bool:
+        """Fade ``track`` over to ``name`` in ``duration_ms``. Everything the
+        track carries fades out together; a crossfade started while one is in
+        flight takes the pose as it stands. On track 0 the incoming animation
+        is the current one from this call on (see `_track_zero_switched`)."""
+        t = self._track(track)
+        if t < 0 or not name or self._rt is None:
+            return False
+        if not self._mixed(self._rt.crossfade(t, name, float(duration_ms))):
+            return False
+        if t == 0:
+            self._track_zero_switched(name)
+        return True
+
+    def track_count(self) -> int:
+        return self._rt.track_count() if self._rt else 0
+
+    def clear_track(self, track) -> bool:
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.clear_track(t))
+
+    def set_track_alpha(self, track, alpha: float) -> bool:
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.set_track_alpha(t, float(alpha)))
+
+    def track_alpha(self, track) -> Optional[float]:
+        t = self._track(track)
+        return self._rt.track_alpha(t) if t >= 0 and self._rt else None
+
+    def set_track_blend(self, track, blend: int) -> bool:
+        """``blend`` is ``ssruntime.TRACK_BLEND_MIX`` or ``_ADDITIVE``."""
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.set_track_blend(t, int(blend)))
+
+    def track_blend(self, track) -> Optional[int]:
+        t = self._track(track)
+        return self._rt.track_blend(t) if t >= 0 and self._rt else None
+
+    def set_track_sync(self, track, sync: int) -> bool:
+        """``sync`` is ``ssruntime.TRACK_SYNC_FREE`` or ``_START``. It decides
+        where the next animation laid on the track starts, so set it first."""
+        t = self._track(track)
+        # Not a change to the pose, so it does not mark the stack in use.
+        return t >= 0 and self._rt is not None and self._rt.set_track_sync(
+            t, int(sync))
+
+    def track_sync(self, track) -> Optional[int]:
+        t = self._track(track)
+        return self._rt.track_sync(t) if t >= 0 and self._rt else None
+
+    def set_track_frame(self, track, frame: float) -> bool:
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.set_track_frame(t, float(frame)))
+
+    def track_frame(self, track) -> Optional[float]:
+        t = self._track(track)
+        return self._rt.track_frame(t) if t >= 0 and self._rt else None
+
+    # A track's playback settings reach every animation on it, both sides of a
+    # crossfade included, and outlast the animation. Track 0's are the ones the
+    # older setters reach (set_speed_scale, set_frame_rate, ...); on track 0
+    # these go through the copies this Player keeps for set_animation, so the
+    # next switch does not put an older value back.
+    def set_track_speed(self, track, speed: float) -> bool:
+        t = self._track(track)
+        if t < 0 or self._rt is None:
+            return False
+        if t == 0:
+            self._speed = float(speed)
+        return self._rt.set_track_speed(t, float(speed))
+
+    def track_speed(self, track) -> Optional[float]:
+        t = self._track(track)
+        return self._rt.track_speed(t) if t >= 0 and self._rt else None
+
+    def set_track_frame_rate(self, track, fps: int) -> bool:
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._rt.set_track_frame_rate(
+            t, int(fps))
+
+    def track_frame_rate(self, track) -> Optional[int]:
+        """The rate the track's animation plays at; 0 for a track with neither
+        an animation nor an override."""
+        t = self._track(track)
+        return self._rt.track_frame_rate(t) if t >= 0 and self._rt else None
+
+    def set_track_frame_skip_enabled(self, track, enabled: bool) -> bool:
+        t = self._track(track)
+        if t < 0 or self._rt is None:
+            return False
+        if t == 0:
+            self._skip_frames = bool(enabled)
+        return self._rt.set_track_skip_frames(t, bool(enabled))
+
+    def track_frame_skip_enabled(self, track) -> Optional[bool]:
+        t = self._track(track)
+        if t < 0 or self._rt is None or t >= self._rt.track_count():
+            return None
+        return self._rt.track_skip_frames(t)
+
+    def set_track_playback_direction(self, track, direction: int,
+                                     style: int = 0) -> bool:
+        t = self._track(track)
+        if t < 0 or self._rt is None:
+            return False
+        if t == 0:
+            self._direction, self._style = direction, style
+        return self._rt.set_track_playback_direction(t, int(direction),
+                                                     int(style))
+
+    def track_playback_direction(self, track) -> Optional[int]:
+        t = self._track(track)
+        return (self._rt.track_playback_direction(t)
+                if t >= 0 and self._rt else None)
+
+    def track_playback_style(self, track) -> Optional[int]:
+        t = self._track(track)
+        return self._rt.track_playback_style(t) if t >= 0 and self._rt else None
+
+    def set_track_loop_count(self, track, count: int) -> bool:
+        """The loop count belongs to the animation on the track, so laying
+        another one there starts it looping forever again; set it after. Track
+        0's is :meth:`set_loop_count`, which this Player puts back on every
+        animation track 0 is switched to."""
+        t = self._track(track)
+        if t < 0 or self._rt is None:
+            return False
+        if t == 0:
+            self._loop = int(count)
+        return self._rt.set_track_loop_count(t, int(count))
+
+    def track_loop_count(self, track) -> Optional[int]:
+        """``-1`` loops forever; None for a track with no animation."""
+        t = self._track(track)
+        return self._rt.track_loop_count(t) if t >= 0 and self._rt else None
+
+    def is_track_finished(self, track) -> bool:
+        """Whether the track's animation has played its loops: a state, as
+        :meth:`is_finished` is for track 0. A finished track holds its last
+        frame and is still mixed in -- fading or clearing it is the host's
+        call -- and only track 0 finishing ends the character's playback."""
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._rt.is_track_finished(t)
+
+    def track_just_looped(self, track) -> bool:
+        """Whether the last update wrapped the track's animation: a pulse, as
+        :meth:`just_looped` is for track 0."""
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._rt.track_just_looped(t)
+
+    def set_track_outgoing_event_threshold(self, track,
+                                           threshold: float) -> bool:
+        """How long the outgoing side of a crossfade on ``track`` keeps firing
+        events: while its share of the track, ``1 - t``, is at least
+        ``threshold``. The default, ``inf``, silences it as the fade begins;
+        ``0.5`` keeps it firing through the first half."""
+        t = self._track(track)
+        return (t >= 0 and self._rt is not None
+                and self._rt.set_track_outgoing_event_threshold(
+                    t, float(threshold)))
+
+    def track_outgoing_event_threshold(self, track) -> Optional[float]:
+        t = self._track(track)
+        return (self._rt.track_outgoing_event_threshold(t)
+                if t >= 0 and self._rt else None)
+
+    def fade_track(self, track, target_alpha: float,
+                   duration_ms: float) -> bool:
+        """Fade the track's alpha to ``target_alpha`` -- how much the track
+        takes effect, not what it plays (that is :meth:`crossfade`)."""
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.fade_track(t, float(target_alpha), float(duration_ms)))
+
+    def track_fade_progress(self, track) -> Optional[float]:
+        """``0..1`` through the fade in flight on ``track``; None when it is
+        not fading."""
+        t = self._track(track)
+        return self._rt.track_fade_progress(t) if t >= 0 and self._rt else None
+
+    def cancel_track_fade(self, track) -> bool:
+        t = self._track(track)
+        return t >= 0 and self._rt is not None and self._mixed(
+            self._rt.cancel_track_fade(t))
+
+    def track_main_source(self, track) -> Optional[int]:
+        """Handle of the source carrying the track's animation. A source the
+        Brain releases -- the outgoing side once a crossfade completes, say --
+        may hand its number to a later one, so do not keep it across that."""
+        t = self._track(track)
+        return self._rt.track_main_source(t) if t >= 0 and self._rt else None
+
+    def add_track_source(self, track, name: str,
+                         weight: float = 1.0) -> Optional[int]:
+        """Add ``name`` to ``track`` as another weighted source; its handle, or
+        None when refused."""
+        t = self._track(track)
+        if t < 0 or not name or self._rt is None:
+            return None
+        handle = self._rt.add_track_source(t, name, float(weight))
+        self._mixed(handle is not None)
+        return handle
+
+    def set_source_weight(self, source, weight: float) -> bool:
+        s = self._track(source)
+        return s >= 0 and self._rt is not None and self._mixed(
+            self._rt.set_source_weight(s, float(weight)))
+
+    def source_weight(self, source) -> Optional[float]:
+        s = self._track(source)
+        return self._rt.source_weight(s) if s >= 0 and self._rt else None
+
+    def set_source_frame(self, source, frame: float) -> bool:
+        s = self._track(source)
+        return s >= 0 and self._rt is not None and self._mixed(
+            self._rt.set_source_frame(s, float(frame)))
+
+    def source_frame(self, source) -> Optional[float]:
+        s = self._track(source)
+        return self._rt.source_frame(s) if s >= 0 and self._rt else None
+
+    def set_source_event_threshold(self, source, threshold: float) -> bool:
+        """The weight at which the source starts firing events. Only track 0's
+        main source fires by default (``inf`` elsewhere)."""
+        s = self._track(source)
+        # Decides which events are reported, not what is drawn.
+        return s >= 0 and self._rt is not None and \
+            self._rt.set_source_event_threshold(s, float(threshold))
+
+    def source_event_threshold(self, source) -> Optional[float]:
+        s = self._track(source)
+        return (self._rt.source_event_threshold(s)
+                if s >= 0 and self._rt else None)
+
     # -- per-frame advance ---------------------------------------------
     def update(self, dt_ms: float) -> FramePlan:
         """Advance by ``dt_ms`` milliseconds and return this frame's plan.
@@ -728,7 +1079,7 @@ class SSInternalPlayer:
         looped = rt.just_looped
 
         events_out: list = []
-        if self._enable_events and self._evt is not None and self._evt.available:
+        if self._enable_events and self._evt is not None:
             try:
                 for fe in self._evt.collect(rt):
                     if len(self._event_queue) == EVENT_QUEUE_MAX:
