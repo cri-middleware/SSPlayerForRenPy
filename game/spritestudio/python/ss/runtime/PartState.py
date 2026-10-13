@@ -44,7 +44,7 @@ class PartState(object):
     # PartState
     def LocalAlpha(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(52))
     # PartState
-    def Priority(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(56))
+    def Priority(self): return self._tab.Get(flatbuffers.number_types.Int32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(56))
     # PartState
     def PivotX(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(60))
     # PartState
@@ -130,7 +130,7 @@ def CreatePartState(builder, updateFlag, positionX, positionY, positionZ, rotati
     builder.PrependFloat32(anchorX)
     builder.PrependFloat32(pivotY)
     builder.PrependFloat32(pivotX)
-    builder.PrependFloat32(priority)
+    builder.PrependInt32(priority)
     builder.PrependFloat32(localAlpha)
     builder.PrependFloat32(alpha)
     builder.PrependFloat32(localScaleY)

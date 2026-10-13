@@ -111,14 +111,14 @@ def parse(fb) -> FrameData:
 # the intra-struct layout is duplicated, and a one-time self-check vs the accessor
 # disables the fast path automatically if it ever drifts.
 _PS_SIZE = 144
-# UpdateFlag u64@0, Alpha f32@48, Priority f32@56, Mask f32@108,
+# UpdateFlag u64@0, Alpha f32@48, Priority i32@56, Mask f32@108,
 # PartColor i16@128, Shader i16@130, Hide bool@138 (little-endian). Priority/Mask
 # are the per-frame mask attributes:
 # Priority feeds draw order (the runtime already sorts draw_order, but we keep
 # it for diagnostics) and Mask is the cutout value (0..255, a float despite the
 # range). Shader indexes FrameData.shaders (the per-part user-shader effect;
 # -1 = none).
-_PS_REC = struct.Struct('<Q40xf4xf48xf16xhh6x?5x')
+_PS_REC = struct.Struct('<Q40xf4xi48xf16xhh6x?5x')
 _ps_fastpath = None   # None = unvalidated, True = validated OK, False = disabled
 
 
@@ -172,8 +172,8 @@ def bulk_part_states(fd: FrameData):
         l0 = lite[0]
         if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
                 or l0._pc != p0.PartColor() or l0._shader != p0.Shader()
+                or l0._prio != p0.Priority()
                 or abs(l0._a - p0.Alpha()) > 1e-6
-                or abs(l0._prio - p0.Priority()) > 1e-6
                 or abs(l0._mask - p0.Mask()) > 1e-6):
             _ps_fastpath = False
             return None
