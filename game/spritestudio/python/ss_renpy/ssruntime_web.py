@@ -439,6 +439,17 @@ class _WebRuntime:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].is_pausing() ? 1 : 0") == 1
 
     @property
+    def is_clock_playing(self) -> bool:
+        """See the native wrapper. Feature-detected -> False on a build
+        without the query, as the native wrapper reads it."""
+        return self._mode_getter("is_clock_playing", 0) == 1
+
+    @property
+    def is_clock_pausing(self) -> bool:
+        """See the native wrapper. Feature-detected -> False when absent."""
+        return self._mode_getter("is_clock_pausing", 0) == 1
+
+    @property
     def is_finished(self) -> bool:
         """True once every configured loop has played.
 

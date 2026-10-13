@@ -399,6 +399,16 @@ def _declare(lib: C.CDLL) -> None:
         f.ss_runtime_is_finished.restype = C.c_bool
     except AttributeError:
         pass
+    # The character's clock, which drives every track and fade (is_playing /
+    # is_pausing describe track 0 only). Optional, symbol by symbol: they came
+    # after the track stack, and a drop-in whose libs predate them reads a
+    # stopped clock, which leaves the track stack still, as on libs that have
+    # no track stack at all.
+    for name in ("ss_runtime_is_clock_playing", "ss_runtime_is_clock_pausing"):
+        fn = getattr(f, name, None)
+        if fn is not None:
+            fn.argtypes = [P]
+            fn.restype = C.c_bool
     for name in ("ss_runtime_get_start_frame", "ss_runtime_get_end_frame",
                  "ss_runtime_get_frame_rate", "ss_runtime_get_loop_count",
                  "ss_runtime_get_remaining_loops"):
@@ -836,6 +846,21 @@ class _NativeRuntime:
     @property
     def is_pausing(self) -> bool:
         return bool(self._lib.ss_runtime_is_pausing(self._ctx))
+
+    @property
+    def is_clock_playing(self) -> bool:
+        """Whether the character's clock runs (or is held by pause).
+
+        Set by play, cleared by stop and a successful setup_animation; unlike
+        :attr:`is_playing` it outlives track 0 finishing. False when the
+        loaded runtime does not export it."""
+        return bool(self._mix("ss_runtime_is_clock_playing"))
+
+    @property
+    def is_clock_pausing(self) -> bool:
+        """Whether pause holds the character's clock; implies
+        :attr:`is_clock_playing`. False when the export is absent."""
+        return bool(self._mix("ss_runtime_is_clock_pausing"))
 
     @property
     def is_finished(self) -> bool:
