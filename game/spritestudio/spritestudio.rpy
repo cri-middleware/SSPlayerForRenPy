@@ -3087,20 +3087,30 @@ init -10 python:
                 self._warn_once(("anim", name),
                                 "setup_animation(%r) failed" % name)
                 return False
-            # An explicit switch overrides any pending sequence: drop the queue
-            # and restore the constructor loop, or a leftover chain (e.g. from a
-            # sequence constructor whose first clip _ensure just armed) would
-            # resume after `name` finishes, and its intermediate loop=1 would
-            # cap `name` at a single play.
-            self._anim_queue = []
-            self.loop = self._initial_loop
-            self._core.set_loop_count(self._initial_loop)
+            self._loop_after_switch()
             # setup_animation dropped the Brain's visibility + non-Permanent
             # overrides; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
             self.animation = self._core.current_animation
             renpy.redraw(self, 0)
             return True
+
+        def _loop_after_switch(self):
+            """Put the game's loop count on the animation track 0 was just
+            switched to, which the Brain starts looping forever.
+
+            The count is the game's setting (ss_set_loop_count, or the
+            constructor's `loop`), so it outlasts the switch, as the speed and
+            the direction do. An explicit switch also overrides a pending
+            sequence: the queue is dropped, or a leftover chain (e.g. from a
+            sequence constructor whose first clip _ensure just armed) would
+            resume after the new animation finishes -- and the 1 the sequence
+            ran its clips at is not the game's count, so that goes back to the
+            constructor's."""
+            if self._anim_queue:
+                self._anim_queue = []
+                self.loop = self._initial_loop
+            self._core.set_loop_count(self.loop)
 
         def ss_get_current_animation(self):
             return self._core.current_animation if self._core else self.animation
@@ -3329,17 +3339,11 @@ init -10 python:
 
         def _track_zero_switched(self):
             """Track 0 now plays the animation a crossfade or a track animation
-            laid there. The Brain starts it looping forever, so put the game's
-            loop count back on it, as the speed and the direction carry over.
-            A pending sequence is dropped, as by ss_set_animation; the 1 it ran
-            its clips at is not the game's count, so that goes back to the
-            constructor's. No on_animation_started -- the incoming animation
-            carries on playing, it is not started -- and the overrides stay,
-            since only setup drops them."""
-            if self._anim_queue:
-                self._anim_queue = []
-                self.loop = self._initial_loop
-            self._core.set_loop_count(self.loop)
+            laid there, as after ss_set_animation (see _loop_after_switch). No
+            on_animation_started -- the incoming animation carries on playing,
+            it is not started -- and the overrides stay, since only setup drops
+            them."""
+            self._loop_after_switch()
             self.animation = self._core.current_animation
 
         def _mix_drawn(self, ok):
