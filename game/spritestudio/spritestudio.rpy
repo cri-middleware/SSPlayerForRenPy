@@ -1436,6 +1436,7 @@ init -10 python:
             self._rm = None         # RenPyResourceManager (Ren'Py texture cache)
             self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
             self._last_st = None
+            self._idle = False       # the last render asked for no redraw
             self._warned = set()
             self._mask_white = None  # cached white tex0 for textureless writers
             # Atlases still to force onto the GPU (see _prewarm_textures): None
@@ -2164,7 +2165,13 @@ init -10 python:
                 self._prewarm_textures(width, height, st, at)
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
-            dt = 0.0 if (again or self._last_st is None) else max(0.0, st - self._last_st)
+            # A player that went idle stopped asking for redraws while st ran
+            # on, so the render that wakes it (ss_play, ss_resume, a crossfade
+            # from a finished animation) must not hand the runtime that gap:
+            # the playhead would jump, and a fade would be over in one frame.
+            idle = getattr(self, "_idle", False)
+            dt = 0.0 if (again or idle or self._last_st is None) \
+                else max(0.0, st - self._last_st)
             if not again:
                 self._last_st = st
             # Advance the engine-independent core (it takes milliseconds) and get
@@ -2323,7 +2330,8 @@ init -10 python:
             # renders an identical frame, so we let it go quiescent until a
             # control method (ss_play/ss_resume/ss_set_frame_no/ss_stop/...) re-arms
             # it. is_animating() stays True while effects / instances run.
-            if core.is_animating():
+            self._idle = not core.is_animating()
+            if not self._idle:
                 renpy.redraw(self, 0)
             elif self._audio_channels_used:
                 # Animation is idle but a sound is still playing: keep the
