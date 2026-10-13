@@ -45,6 +45,16 @@ PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0   # SS6 NON: one-shot, hands back to the
 PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1    # SS6 NOW_ANIMATION: wins for this animation
 PRIORITY_PERMANENT = 2                    # SS6 PERMANENT: survives animation changes
 
+# --- Animation mixing (the track stack) -----------------------------------
+# How a track folds onto the tracks below it.
+TRACK_BLEND_MIX = 0
+TRACK_BLEND_ADDITIVE = 1
+
+# Where an animation laid on a track starts: from its top, or at track 0's
+# phase (the same fraction of its section).
+TRACK_SYNC_FREE = 0
+TRACK_SYNC_START = 1
+
 _IS_WEB = sys.platform == "emscripten"
 
 

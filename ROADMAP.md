@@ -14,18 +14,15 @@ These need no new SDK API — the runtime already provides everything required. 
   its own logic off the animation clock. The attachment layer already consumes that point
   inside `render()`, so the dispatch site exists. Reference: `SSPlayerForGodot`'s
   `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
-- [ ] **Animation blending / crossfade** — Layer and cross-fade animations on one player
-  through the runtime's track stack (`ss_runtime_set_track_animation`, `ss_runtime_crossfade`,
-  `ss_runtime_add_track_source`, `ss_runtime_fade_track` and the rest of the track and source
-  calls); nothing on `SSPlayer` exposes it. On image attributes it follows Ren'Py's Live2D:
-  `fade=` and `default_fade` on `SSPlayer`, so that `show ringo walk` crossfades from the
-  animation shown instead of cutting to it. A selling point. Reference: `SSPlayerForWgpu`, the one
-  official player that surfaces it (`set_track_animation` / `crossfade` / `fade_track` / …, with regression
-  tests in `tests/tracks.rs`); the stems are fixed in the SDK's
-  [Player API Conventions](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/20_design/30_api_conventions.md)
-  §3-2, and the design is its
-  [Animation mixing](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/50_features/10_animation_mixing.md)
-  page.
+- [ ] **Crossfade on image attributes** — `SSPlayer` exposes the runtime's track stack
+  (`ss_crossfade`, `ss_set_track_animation`, …), but an image attribute still cuts: `show ringo
+  walk` builds a new player through `_duplicate`, which knows nothing of the animation shown. Follow
+  Ren'Py's Live2D: `fade=` and `default_fade` on `SSPlayer`, so that `show ringo walk` crossfades
+  from the animation shown instead of cutting to it. The incoming player has to reach the outgoing
+  one's runtime (Live2D keeps its motion state per image tag), and that path has to be the only
+  one switching track 0 on that tag, or an `ss_crossfade` and an attribute fight over it. A
+  selling point. Reference: `SSPlayerForWgpu`'s Bevy integration, where `transition_ms` on the
+  component decides between a crossfade and a cut, and track-0 commands are refused.
 
 ## UI integration
 

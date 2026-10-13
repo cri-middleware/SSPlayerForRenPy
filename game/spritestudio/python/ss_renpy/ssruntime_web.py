@@ -529,6 +529,181 @@ class _WebRuntime:
     def passed_event_index(self, i: int) -> int:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_index({i})")
 
+    def passed_event_source_handle(self, i: int):
+        """See the native wrapper. None on a build without the export."""
+        return self._mix_handle("get_passed_event_source_handle(%d)" % int(i))
+
+    # -- animation mixing (the track stack) -------------------------------
+    # Mirrors _NativeRuntime's wrappers. The wasm-bindgen setters THROW where
+    # the C-API returns false, its getters return undefined where the C-API
+    # returns a sentinel, and an older build may not export them at all; a JS
+    # throw cannot be caught across the emscripten boundary, so every call runs
+    # inside a try in JS and comes back as a bool, or a value / None.
+    def _mix_set(self, js_call: str) -> bool:
+        return emscripten.run_script_int(
+            f"(function(c){{try{{c.{js_call};return 1;}}catch(e){{return 0;}}}})"
+            f"(window.ss_ctxs[{self._ctx_id}])") == 1
+
+    def _mix_get(self, js_call: str):
+        """The call's value as a float (a bool for a bool), or None.
+
+        Numbers cross as String(v) rather than JSON: JSON writes Infinity --
+        the outgoing event threshold's default -- as null."""
+        s = emscripten.run_script_string(
+            f"(function(c){{try{{var v=c.{js_call};"
+            f"return (v===undefined||v===null)?'':String(v);}}"
+            f"catch(e){{return '';}}}})(window.ss_ctxs[{self._ctx_id}])")
+        if s in ("", "NaN"):
+            return None
+        if s in ("true", "false"):
+            return s == "true"
+        return float(s)
+
+    def _mix_int(self, js_call: str):
+        v = self._mix_get(js_call)
+        return None if v is None else int(v)
+
+    def _mix_handle(self, js_call: str):
+        v = self._mix_int(js_call)
+        return None if v is None or v == 0xFFFFFFFF else v
+
+    def set_track_animation(self, track: int, name: str) -> bool:
+        import json
+        self._frame_rate = None     # track 0's animation may change
+        return self._mix_set("set_track_animation(%d, %s)"
+                             % (int(track), json.dumps(name)))
+
+    def track_count(self) -> int:
+        return self._mix_int("get_track_count()") or 0
+
+    def clear_track(self, track: int) -> bool:
+        return self._mix_set("clear_track(%d)" % int(track))
+
+    def set_track_alpha(self, track: int, alpha: float) -> bool:
+        return self._mix_set("set_track_alpha(%d, %s)" % (int(track), _jsnum(alpha)))
+
+    def track_alpha(self, track: int):
+        return self._mix_get("get_track_alpha(%d)" % int(track))
+
+    def set_track_blend(self, track: int, blend: int) -> bool:
+        return self._mix_set("set_track_blend(%d, %d)" % (int(track), int(blend)))
+
+    def track_blend(self, track: int):
+        return self._mix_int("get_track_blend(%d)" % int(track))
+
+    def set_track_sync(self, track: int, sync: int) -> bool:
+        return self._mix_set("set_track_sync(%d, %d)" % (int(track), int(sync)))
+
+    def track_sync(self, track: int):
+        return self._mix_int("get_track_sync(%d)" % int(track))
+
+    def set_track_frame(self, track: int, frame: float) -> bool:
+        return self._mix_set("set_track_frame(%d, %s)" % (int(track), _jsnum(frame)))
+
+    def track_frame(self, track: int):
+        return self._mix_get("get_track_frame(%d)" % int(track))
+
+    def set_track_speed(self, track: int, speed: float) -> bool:
+        return self._mix_set("set_track_speed(%d, %s)" % (int(track), _jsnum(speed)))
+
+    def track_speed(self, track: int):
+        return self._mix_get("get_track_speed(%d)" % int(track))
+
+    def set_track_frame_rate(self, track: int, fps: int) -> bool:
+        self._frame_rate = None
+        return self._mix_set("set_track_frame_rate(%d, %d)" % (int(track), int(fps)))
+
+    def track_frame_rate(self, track: int):
+        return self._mix_int("get_track_frame_rate(%d)" % int(track))
+
+    def set_track_skip_frames(self, track: int, skip: bool) -> bool:
+        return self._mix_set("set_track_skip_frames(%d, %s)"
+                             % (int(track), "true" if skip else "false"))
+
+    def track_skip_frames(self, track: int) -> bool:
+        return bool(self._mix_get("get_track_skip_frames(%d)" % int(track)))
+
+    def set_track_playback_direction(self, track: int, direction: int,
+                                     style: int = 0) -> bool:
+        # WebPlaybackDirection / WebPlaybackStyle are 0 / 1 in JS; the C-API
+        # reads any non-zero as backward / ping-pong, so fold to match.
+        return self._mix_set("set_track_playback_direction(%d, %d, %d)"
+                             % (int(track), 1 if direction else 0,
+                                1 if style else 0))
+
+    def track_playback_direction(self, track: int):
+        return self._mix_int("get_track_playback_direction(%d)" % int(track))
+
+    def track_playback_style(self, track: int):
+        return self._mix_int("get_track_playback_style(%d)" % int(track))
+
+    def set_track_loop_count(self, track: int, count: int) -> bool:
+        return self._mix_set("set_track_loop_count(%d, %d)" % (int(track), int(count)))
+
+    def track_loop_count(self, track: int):
+        return self._mix_int("get_track_loop_count(%d)" % int(track))
+
+    def is_track_finished(self, track: int) -> bool:
+        return bool(self._mix_get("is_track_finished(%d)" % int(track)))
+
+    def track_just_looped(self, track: int) -> bool:
+        return bool(self._mix_get("track_just_looped(%d)" % int(track)))
+
+    def set_track_outgoing_event_threshold(self, track: int,
+                                           threshold: float) -> bool:
+        return self._mix_set("set_track_outgoing_event_threshold(%d, %s)"
+                             % (int(track), _jsnum(threshold)))
+
+    def track_outgoing_event_threshold(self, track: int):
+        return self._mix_get("get_track_outgoing_event_threshold(%d)" % int(track))
+
+    def crossfade(self, track: int, name: str, duration_ms: float) -> bool:
+        import json
+        self._frame_rate = None     # track 0's animation may change
+        return self._mix_set("crossfade(%d, %s, %s)"
+                             % (int(track), json.dumps(name), _jsnum(duration_ms)))
+
+    def fade_track(self, track: int, target_alpha: float,
+                   duration_ms: float) -> bool:
+        return self._mix_set("fade_track(%d, %s, %s)"
+                             % (int(track), _jsnum(target_alpha), _jsnum(duration_ms)))
+
+    def track_fade_progress(self, track: int):
+        return self._mix_get("get_track_fade_progress(%d)" % int(track))
+
+    def cancel_track_fade(self, track: int) -> bool:
+        return self._mix_set("cancel_track_fade(%d)" % int(track))
+
+    def track_main_source(self, track: int):
+        return self._mix_handle("get_track_main_source(%d)" % int(track))
+
+    def add_track_source(self, track: int, name: str, weight: float):
+        import json
+        return self._mix_handle("add_track_source(%d, %s, %s)"
+                                % (int(track), json.dumps(name), _jsnum(weight)))
+
+    def set_source_weight(self, handle: int, weight: float) -> bool:
+        return self._mix_set("set_source_weight(%d, %s)" % (int(handle), _jsnum(weight)))
+
+    def source_weight(self, handle: int):
+        return self._mix_get("get_source_weight(%d)" % int(handle))
+
+    def set_source_frame(self, handle: int, frame: float) -> bool:
+        return self._mix_set("set_source_frame(%d, %s)" % (int(handle), _jsnum(frame)))
+
+    def source_frame(self, handle: int):
+        return self._mix_get("get_source_frame(%d)" % int(handle))
+
+    def set_source_event_threshold(self, handle: int, threshold: float) -> bool:
+        return self._mix_set("set_source_event_threshold(%d, %s)"
+                             % (int(handle), _jsnum(threshold)))
+
+    def source_event_threshold(self, handle: int):
+        return self._mix_get("get_source_event_threshold(%d)" % int(handle))
+
+    def source_animation_index(self, handle: int):
+        return self._mix_int("get_source_animation_index(%d)" % int(handle))
+
     def get_frame_data(self, frame_no: float) -> bytes:
         return bytes(self.get_frame_data_view(frame_no))
 

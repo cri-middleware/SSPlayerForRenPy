@@ -158,12 +158,57 @@ $ player.ss_play("run")
 
 - **Separation of Switching and Playback**: `ss_set_animation("run")` only switches to the animation and cues it; it does not start playing. `ss_play()` starts the playback.
 - **Switching is cheap**: everything the `.ssab` needs — textures included — is loaded in one go when the sprite is first shown, so `ss_set_animation()` is light enough to call every frame (there is no per-animation loading).
-- **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()` (the playhead **stays where it stands** — `ss_stop()` does not rewind; `ss_play()` is what returns to the head), frame control `ss_set_frame_no()` / `ss_get_frame_no()`, speed `ss_set_speed_scale()`, and looping `ss_set_loop_count()` are available.
+- **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()` (the playhead **stays where it stands** — `ss_stop()` does not rewind; `ss_play()` is what returns to the head), frame control `ss_set_frame_no()` / `ss_get_frame_no()`, speed `ss_set_speed_scale()`, and looping `ss_set_loop_count()` are available. The loop count is the player's setting, like the speed: it stays across `ss_set_animation()`, so the animation you switch to plays that many times too (until then it is the constructor's `loop`). Only a pending sequence is the exception — switching drops it, and the count goes back to the constructor's `loop`.
 - **Playback finished**: `ss_is_finished()` reports whether every configured loop has played. A **state**, not a pulse — it latches on completion and stays true until the next `ss_play()` / `ss_set_animation()`, so a screen can ask about a completion it did not witness. It is not `not ss_is_playing()`: `ss_stop()` also stops playing but is not a completion, and this is what tells the two apart. Never true under an infinite loop count. The rising edge is the `on_animation_finished` callback; with a sequence, both describe the sequence being spent rather than each clip in it.
 - **Playback Direction**: `ss_set_playback_direction(direction, style)` takes the two enumerators `ssruntime` exports — `DIRECTION_FORWARD` / `DIRECTION_BACKWARD` and `STYLE_NORMAL` / `STYLE_PINGPONG` — so reverse is `ss_set_playback_direction(ssruntime.DIRECTION_BACKWARD, ssruntime.STYLE_NORMAL)` and ping-pong is `STYLE_PINGPONG`. They are the Brain's own names, shared with every sibling Player; prefer them to the bare `0` / `1`. Read the current setting back with `ss_get_playback_direction()` / `ss_get_playback_style()` — these report the *setting*, not the instantaneous heading, so a ping-pong return leg still reads forward. `ss_is_playing_forward()` is the actual heading — **gate audio on it**: SpriteStudio has no reverse audio, so a sound key crossed on a backward leg is not meant to sound, and it is the test this player applies itself.
 - **Loop boundary**: `ss_just_looped()` reports whether the last update crossed one. A **pulse**, not a state — true only inside the tick that crossed, which is why it is not `ss_is_looped`, and why reading it a tick late reads false.
 - **Frame Skip**: on by default, so playback follows the clock — after a stall it catches up by skipping ahead, and a 2-second animation always takes 2 seconds. `ss_set_frame_skip_enabled(False)` advances exactly one frame per rendered frame instead: nothing is skipped, and a stall stretches the animation. Use it when every frame must be seen (a short effect, a frame-counted cutscene). Also available as the constructor argument `frame_skip=False`.
 - **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame. For the whole part-query set, and for making a displayable follow a part, see the **Part Tracking** section (§5) below.
+
+### Mixing Animations (Crossfade and Layering) { #mixing-animations }
+
+A player can blend from one animation of its `.ssab` into another instead of cutting, and layer one animation over another — a wave over a walk, a blink over anything. It keeps a stack of **tracks**: track 0 is the animation `ss_set_animation()` sets up, and each track above it layers its own animation over the pose below.
+
+```renpy
+# Fade from whatever is playing into "walk" over 0.3 seconds
+$ ringo.ss_crossfade(0, "walk", 0.3)
+
+# Play "attack1" once over the top...
+$ ringo.ss_set_track_animation(1, "attack1")
+$ ringo.ss_set_track_loop_count(1, 1)
+
+# ...and fade it out once it has finished
+if ringo.ss_is_track_finished(1):
+    $ ringo.ss_fade_track(1, 0.0, 0.2)
+```
+
+- **A crossfade on track 0 switches at the call.** From then on `ss_get_current_animation()` names the incoming animation, and `ss_is_finished()`, `on_animation_finished` / `on_animation_looped` and the events describe it — the outgoing animation running out during the fade does not finish the player. `ss_set_animation()` of the animation you faded away from switches back to it; `ss_set_animation()` of the one you faded to does nothing, and the fade carries on.
+- **What carries over.** Speed, playback direction, frame skip and a frame-rate override belong to the track, so the incoming animation plays the way the outgoing one did, and it gets the loop count you set with `ss_set_loop_count()` (the constructor's `loop` otherwise). A pending sequence is dropped, as with `ss_set_animation()`; part overrides stay. `on_animation_started` is not called: the animation was switched, not started.
+- **Layering.** `ss_set_track_animation(track, name)` lays an animation on a track without a fade. `ss_set_track_alpha(track, alpha)` sets how strongly the track applies, and `ss_fade_track(track, alpha, seconds)` fades it there. `ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` adds the track onto the pose instead of mixing it in. A track moves only the attributes its animation has keys for.
+- **Each track has its own playback settings** — `ss_set_track_speed()`, `ss_set_track_loop_count()`, `ss_set_track_playback_direction()`, `ss_set_track_frame_skip_enabled()`, `ss_set_track_frame_rate()` — and they reach every animation laid on the track later. Track 0's are the player's own (`ss_set_speed_scale()` and the rest). The loop count is the exception: an animation laid on a track loops forever until you set its count, so set it after laying the animation.
+- **A finished track holds its last frame** and stays mixed in until you fade it or empty it with `ss_clear_track(track)`. `ss_is_track_finished(track)` reports it, as `ss_is_finished()` does for track 0, and `ss_track_just_looped(track)` is its loop pulse. Only track 0 finishing ends the player's playback.
+- **Starting in step.** `ss_set_track_sync(track, ssruntime.TRACK_SYNC_START)` before laying an animation starts it at the same point of its cycle as track 0 — two walk cycles keep their stride.
+- **Playback control acts on the whole stack.** `ss_pause()` / `ss_resume()` / `ss_stop()` hold, release and stop every track and fade; `ss_play()` restarts track 0 only. The other tracks carry on after track 0 has finished.
+- **`ss_set_animation()` resets the stack** to track 0 alone, so lay your layers again after it. The stack is not saved either: a loaded save brings the player back on track 0's animation at its saved frame, without the other tracks.
+- **Several animations on one track.** `ss_add_track_source(track, name, weight)` adds another animation to a track and returns its handle; `ss_set_source_weight(handle, weight)` sets the proportions, as in a walk-to-run blend. `ss_track_main_source(track)` is the handle of the animation the track was given. The runtime reuses a handle once it releases that source (the outgoing side of a finished crossfade, for one), so ask for it again rather than keeping it.
+
+| Call | What it does |
+|---|---|
+| `ss_crossfade(track, name, seconds)` | Fade the track over to another animation |
+| `ss_set_track_animation(track, name)` | Lay an animation on the track, without a fade |
+| `ss_clear_track(track)` / `ss_track_count()` | Empty a track / how many tracks there are |
+| `ss_set_track_alpha(track, alpha)` | How strongly the track applies, `0.0`–`1.0` |
+| `ss_fade_track(track, alpha, seconds)` | Fade the track's alpha |
+| `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | How far the fade in flight has got (`0.0`–`1.0`, `None` when not fading) / stop it there |
+| `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX` (default) or `TRACK_BLEND_ADDITIVE` |
+| `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE` (from the top, default) or `TRACK_SYNC_START` (in step with track 0) |
+| `ss_set_track_frame(track, frame)` | Move the track's playhead |
+| `ss_is_track_finished(track)` / `ss_track_just_looped(track)` | The track's animation has played its loops (state) / wrapped this update (pulse) |
+| `ss_set_track_outgoing_event_threshold(track, share)` | Let the outgoing side of a crossfade fire events (see §8) |
+| `ss_add_track_source(track, name, weight)` | Add another animation to a track; returns its handle |
+| `ss_set_source_weight(handle, weight)` / `ss_set_source_frame(handle, frame)` / `ss_set_source_event_threshold(handle, weight)` | One source's weight, playhead, and the weight from which it fires events |
+
+The settings read back through the matching `ss_get_*` (`ss_is_track_frame_skip_enabled()` for frame skip). A setter returns `False` when it is refused — an unknown animation, a track or handle that does not exist — and a getter returns `None` where there is nothing to read.
 
 ---
 
@@ -422,6 +467,9 @@ image boss = SSPlayer(
 
 > [!NOTE]
 > Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions. A callback runs as its frame is drawn, and Ren'Py keeps drawing the scene under the game menu, so one can run while the player is on the save screen — just as SpriteStudio sounds keep playing there. Keep a callback to what may happen at any moment, such as setting a variable or `renpy.notify()`, rather than jumping to or calling a label.
+
+> [!NOTE]
+> **Events under [animation mixing](#mixing-animations).** Each event comes from one animation, and carries `source`: the handle of the animation that fired it (`ss_track_main_source()` / `ss_add_track_source()` hand out the same handles). By default only track 0's animation fires. In a crossfade on track 0 that is the incoming side, from the first frame of the fade, while the outgoing side falls silent as the fade begins — so the events the outgoing animation reaches during the fade are not reported, which a game that counts them will notice. `ss_set_track_outgoing_event_threshold(0, 0.5)` lets the outgoing side fire through the first half of each fade on track 0 (the setting stays), and `ss_set_source_event_threshold(handle, 0.0)` lets a layered animation fire.
 
 *Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `scene_viewer.rpy` of the demo project.*
 

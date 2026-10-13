@@ -1229,6 +1229,13 @@ init -10 python:
         return {r.stem: list(r.anim_names)
                 for r in idx.records() if r.is_primary}
 
+    def _ss_is_track_zero(track):
+        """Whether ``track`` names track 0, the one ss_set_animation sets up."""
+        try:
+            return int(track) == 0
+        except (TypeError, ValueError):
+            return False
+
     class RenPyResourceManager(ResourceManager):
         """Ren'Py-backed texture cache injected into ``SSInternalPlayer``.
 
@@ -1429,6 +1436,7 @@ init -10 python:
             self._rm = None         # RenPyResourceManager (Ren'Py texture cache)
             self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
             self._last_st = None
+            self._idle = False       # the last render asked for no redraw
             self._warned = set()
             self._mask_white = None  # cached white tex0 for textureless writers
             # Atlases still to force onto the GPU (see _prewarm_textures): None
@@ -2157,7 +2165,13 @@ init -10 python:
                 self._prewarm_textures(width, height, st, at)
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
-            dt = 0.0 if (again or self._last_st is None) else max(0.0, st - self._last_st)
+            # A player that went idle stopped asking for redraws while st ran
+            # on, so the render that wakes it (ss_play, ss_resume, a crossfade
+            # from a finished animation) must not hand the runtime that gap:
+            # the playhead would jump, and a fade would be over in one frame.
+            idle = getattr(self, "_idle", False)
+            dt = 0.0 if (again or idle or self._last_st is None) \
+                else max(0.0, st - self._last_st)
             if not again:
                 self._last_st = st
             # Advance the engine-independent core (it takes milliseconds) and get
@@ -2316,7 +2330,8 @@ init -10 python:
             # renders an identical frame, so we let it go quiescent until a
             # control method (ss_play/ss_resume/ss_set_frame_no/ss_stop/...) re-arms
             # it. is_animating() stays True while effects / instances run.
-            if core.is_animating():
+            self._idle = not core.is_animating()
+            if not self._idle:
                 renpy.redraw(self, 0)
             elif self._audio_channels_used:
                 # Animation is idle but a sound is still playing: keep the
@@ -3072,20 +3087,30 @@ init -10 python:
                 self._warn_once(("anim", name),
                                 "setup_animation(%r) failed" % name)
                 return False
-            # An explicit switch overrides any pending sequence: drop the queue
-            # and restore the constructor loop, or a leftover chain (e.g. from a
-            # sequence constructor whose first clip _ensure just armed) would
-            # resume after `name` finishes, and its intermediate loop=1 would
-            # cap `name` at a single play.
-            self._anim_queue = []
-            self.loop = self._initial_loop
-            self._core.set_loop_count(self._initial_loop)
+            self._loop_after_switch()
             # setup_animation dropped the Brain's visibility + non-Permanent
             # overrides; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
             self.animation = self._core.current_animation
             renpy.redraw(self, 0)
             return True
+
+        def _loop_after_switch(self):
+            """Put the game's loop count on the animation track 0 was just
+            switched to, which the Brain starts looping forever.
+
+            The count is the game's setting (ss_set_loop_count, or the
+            constructor's `loop`), so it outlasts the switch, as the speed and
+            the direction do. An explicit switch also overrides a pending
+            sequence: the queue is dropped, or a leftover chain (e.g. from a
+            sequence constructor whose first clip _ensure just armed) would
+            resume after the new animation finishes -- and the 1 the sequence
+            ran its clips at is not the game's count, so that goes back to the
+            constructor's."""
+            if self._anim_queue:
+                self._anim_queue = []
+                self.loop = self._initial_loop
+            self._core.set_loop_count(self.loop)
 
         def ss_get_current_animation(self):
             return self._core.current_animation if self._core else self.animation
@@ -3296,6 +3321,220 @@ init -10 python:
 
         def ss_is_sub_frame_enabled(self):
             return self._sub_frame
+
+        # -- animation mixing (the track stack) ----------------------------
+        # Layer and cross-fade the animations of this pack on one player.
+        # Track 0 is the animation ss_set_animation sets up; a track above it
+        # layers onto the pose below, with an alpha and a blend. Durations are
+        # in seconds, like the rest of Ren'Py. A setter returns False when the
+        # runtime refuses it; a read returns None where there is nothing to
+        # read. See ss_renpy.player.SSInternalPlayer for each call.
+        #
+        # ss_set_animation folds the stack back to track 0 alone. Neither is
+        # the stack saved: a load or a rebuilt player comes back with track 0's
+        # animation and frame only.
+        def _mixer(self):
+            self._ensure()
+            return self._core
+
+        def _track_zero_switched(self):
+            """Track 0 now plays the animation a crossfade or a track animation
+            laid there, as after ss_set_animation (see _loop_after_switch). No
+            on_animation_started -- the incoming animation carries on playing,
+            it is not started -- and the overrides stay, since only setup drops
+            them."""
+            self._loop_after_switch()
+            self.animation = self._core.current_animation
+
+        def _mix_drawn(self, ok):
+            if ok:
+                renpy.redraw(self, 0)
+            return ok
+
+        def ss_set_track_animation(self, track, name):
+            """Lay ``name`` on ``track`` without a fade. On track 0 it becomes
+            the current animation, as with ss_set_animation, but the other
+            tracks and the play state stay as they are."""
+            core = self._mixer()
+            if not core.set_track_animation(track, name):
+                self._warn_once(("track-anim", track, name),
+                                "set_track_animation(%r, %r) failed" % (track, name))
+                return False
+            if _ss_is_track_zero(track):
+                self._track_zero_switched()
+            return self._mix_drawn(True)
+
+        def ss_crossfade(self, track, name, duration):
+            """Fade ``track`` over to ``name`` in ``duration`` seconds.
+
+            On track 0 the incoming animation is the current one from this call
+            on: ss_get_current_animation names it, ss_is_finished and the
+            callbacks describe it, and ss_set_animation of the outgoing one
+            switches back. Its events fire from the first frame of the fade,
+            and the outgoing side's fall silent then, unless
+            ss_set_track_outgoing_event_threshold lets them run on."""
+            core = self._mixer()
+            if not core.crossfade(track, name, float(duration) * 1000.0):
+                self._warn_once(("crossfade", track, name),
+                                "crossfade(%r, %r) failed" % (track, name))
+                return False
+            if _ss_is_track_zero(track):
+                self._track_zero_switched()
+            return self._mix_drawn(True)
+
+        def ss_track_count(self):
+            return self._core.track_count() if self._core else 0
+
+        def ss_clear_track(self, track):
+            return self._mix_drawn(self._mixer().clear_track(track))
+
+        def ss_set_track_alpha(self, track, alpha):
+            return self._mix_drawn(self._mixer().set_track_alpha(track, alpha))
+
+        def ss_get_track_alpha(self, track):
+            return self._core.track_alpha(track) if self._core else None
+
+        def ss_set_track_blend(self, track, blend):
+            """``blend``: 0 = mix, 1 = additive (``ssruntime.TRACK_BLEND_*``)."""
+            return self._mix_drawn(self._mixer().set_track_blend(track, blend))
+
+        def ss_get_track_blend(self, track):
+            return self._core.track_blend(track) if self._core else None
+
+        def ss_set_track_sync(self, track, sync):
+            """``sync``: 0 = from the top, 1 = at track 0's phase
+            (``ssruntime.TRACK_SYNC_*``). Set it before laying the animation."""
+            return self._mixer().set_track_sync(track, sync)
+
+        def ss_get_track_sync(self, track):
+            return self._core.track_sync(track) if self._core else None
+
+        def ss_set_track_frame(self, track, frame):
+            return self._mix_drawn(self._mixer().set_track_frame(track, frame))
+
+        def ss_get_track_frame(self, track):
+            return self._core.track_frame(track) if self._core else None
+
+        # A track's playback settings reach every animation on it, and outlast
+        # it. Track 0's are the player's own (ss_set_speed_scale, ...), so they
+        # go through those setters, which keep the copy a rebuilt core is
+        # given back.
+        def ss_set_track_speed(self, track, speed):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_speed_scale(speed)
+                return True
+            return self._mix_drawn(core.set_track_speed(track, speed))
+
+        def ss_get_track_speed(self, track):
+            return self._core.track_speed(track) if self._core else None
+
+        def ss_set_track_frame_rate(self, track, fps):
+            return self._mixer().set_track_frame_rate(track, fps)
+
+        def ss_get_track_frame_rate(self, track):
+            return self._core.track_frame_rate(track) if self._core else None
+
+        def ss_set_track_frame_skip_enabled(self, track, enabled):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_frame_skip_enabled(enabled)
+                return True
+            return core.set_track_frame_skip_enabled(track, enabled)
+
+        def ss_is_track_frame_skip_enabled(self, track):
+            return (self._core.track_frame_skip_enabled(track)
+                    if self._core else None)
+
+        def ss_set_track_playback_direction(self, track, direction, style=0):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_playback_direction(direction, style)
+                return True
+            return core.set_track_playback_direction(track, direction, style)
+
+        def ss_get_track_playback_direction(self, track):
+            return (self._core.track_playback_direction(track)
+                    if self._core else None)
+
+        def ss_get_track_playback_style(self, track):
+            return (self._core.track_playback_style(track)
+                    if self._core else None)
+
+        def ss_set_track_loop_count(self, track, count):
+            """The loop count of the animation on ``track``. Laying another
+            animation there starts it looping forever again, so set it after.
+            Track 0's is ss_set_loop_count."""
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_loop_count(count)
+                return True
+            return self._mix_drawn(core.set_track_loop_count(track, count))
+
+        def ss_get_track_loop_count(self, track):
+            return self._core.track_loop_count(track) if self._core else None
+
+        def ss_is_track_finished(self, track):
+            """Whether the track's animation has played its loops (a state).
+            A finished track holds its last frame and stays mixed in until it
+            is faded or cleared."""
+            return bool(self._core and self._core.is_track_finished(track))
+
+        def ss_track_just_looped(self, track):
+            """Whether the last update wrapped the track's animation (a pulse,
+            as ss_just_looped is for track 0)."""
+            return bool(self._core and self._core.track_just_looped(track))
+
+        def ss_set_track_outgoing_event_threshold(self, track, threshold):
+            """Let the outgoing side of a crossfade on ``track`` fire events
+            while its share, ``1 - t``, is at least ``threshold``. By default it
+            falls silent as the fade begins; ``0.5`` keeps the first half."""
+            return self._mixer().set_track_outgoing_event_threshold(
+                track, threshold)
+
+        def ss_get_track_outgoing_event_threshold(self, track):
+            return (self._core.track_outgoing_event_threshold(track)
+                    if self._core else None)
+
+        def ss_fade_track(self, track, alpha, duration):
+            """Fade the track's alpha to ``alpha`` in ``duration`` seconds."""
+            return self._mix_drawn(self._mixer().fade_track(
+                track, alpha, float(duration) * 1000.0))
+
+        def ss_track_fade_progress(self, track):
+            return self._core.track_fade_progress(track) if self._core else None
+
+        def ss_cancel_track_fade(self, track):
+            return self._mix_drawn(self._mixer().cancel_track_fade(track))
+
+        def ss_track_main_source(self, track):
+            return self._core.track_main_source(track) if self._core else None
+
+        def ss_add_track_source(self, track, name, weight=1.0):
+            """Add ``name`` to ``track`` as another weighted source; returns
+            its handle, or None."""
+            handle = self._mixer().add_track_source(track, name, weight)
+            self._mix_drawn(handle is not None)
+            return handle
+
+        def ss_set_source_weight(self, source, weight):
+            return self._mix_drawn(self._mixer().set_source_weight(source, weight))
+
+        def ss_get_source_weight(self, source):
+            return self._core.source_weight(source) if self._core else None
+
+        def ss_set_source_frame(self, source, frame):
+            return self._mix_drawn(self._mixer().set_source_frame(source, frame))
+
+        def ss_get_source_frame(self, source):
+            return self._core.source_frame(source) if self._core else None
+
+        def ss_set_source_event_threshold(self, source, threshold):
+            return self._mixer().set_source_event_threshold(source, threshold)
+
+        def ss_get_source_event_threshold(self, source):
+            return (self._core.source_event_threshold(source)
+                    if self._core else None)
 
         # -- part query ----------------------------------------------------
         def ss_just_looped(self):
