@@ -278,8 +278,8 @@ try {
     }
 
     # `spritestudio` at the archive root, so a creator drops it straight into
-    # their project's game/ directory. -X drops the extra file attributes,
-    # keeping the archive reproducible.
+    # their project's game/ directory. -X drops the extra file attributes;
+    # each entry's modification time stays.
     Push-Location "$rootDirectory/game"
     try {
         & zip -qr -X -y "$out/$artifact" spritestudio -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
