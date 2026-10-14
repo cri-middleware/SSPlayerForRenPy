@@ -282,7 +282,7 @@ done
 # `spritestudio` at the archive root, so a creator drops it straight into their
 # project's game/ directory. -y stores symlinks AS symlinks -- see the header;
 # without it the macOS framework is flattened and can never be signed again.
-# -X drops the extra file attributes, keeping the archive reproducible.
+# -X drops the extra file attributes; each entry's modification time stays.
 ( cd "$ROOT_DIR/game" && zip -qr -X -y "$OUT/$ARTIFACT" spritestudio \
     -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store' )
 cp "$OUT/$ARTIFACT" "$OUT/$ALIAS"
