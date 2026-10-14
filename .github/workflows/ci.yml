@@ -6,8 +6,9 @@ name: CI
 # is the source a PR that bumps it changes. The weekly run, a dispatch and the
 # release PR (release/X.Y into main) also build the runtime for macOS, Windows
 # and Web, export the project for each desktop platform and for the Web, and
-# build the documentation site. Android and iOS are left out: their exports need
-# the launcher's interactive setup and Xcode.
+# build the documentation site through docs.yml, which a pull request that
+# touches the docs runs on its own. Android and iOS are left out: their exports
+# need the launcher's interactive setup and Xcode.
 #
 # GL2 rendering cannot be verified here: sign it off locally (Shift+B /
 # scripts/run-demo.*) before releasing.
@@ -224,25 +225,9 @@ jobs:
       - name: Export
         run: bash scripts/deploy-web.sh "$RUNNER_TEMP/web"
 
-  # Builds the documentation the way pages.yml publishes it, both locales
-  # --strict, so a broken link or nav entry surfaces here rather than when a
-  # release is published. The Web demo pages.yml adds is the web job's export.
+  # docs.yml, the build pages.yml publishes, both locales --strict. A pull
+  # request into anything but main that touches the docs runs it on its own.
   docs:
     name: 📚 Docs site
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: 3.x
-          cache: pip
-          cache-dependency-path: docs/requirements.txt
-
-      - name: Install docs dependencies
-        run: ./scripts/prepare-docs.sh
-
-      - name: Build the documentation (both locales, strict validation)
-        run: ./scripts/build-pages.sh prepare=no docs=yes demo=skip
+    uses: ./.github/workflows/docs.yml
