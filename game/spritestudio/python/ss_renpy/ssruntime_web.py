@@ -16,12 +16,18 @@ from __future__ import annotations
 
 import sys
 import array
+import json
 import math
 
 try:
     import emscripten
 except ImportError:
     emscripten = None
+
+# Every Python value spliced into a script goes through int(), _jsnum, _jsstr
+# or "true"/"false" first, the coercions the native bridge's ctypes argtypes
+# make. A bare True / None / nan is an undefined identifier in JS, and the
+# ReferenceError aborts the frame where native would have coerced or raised.
 
 
 def _jsnum(x) -> str:
@@ -42,6 +48,19 @@ def _jsnum(x) -> str:
     if x == -math.inf:
         return "-Infinity"
     return repr(x)
+
+
+def _jsstr(s) -> str:
+    """Format a str as a JS string literal.
+
+    ``json.dumps`` escapes quotes, backslashes and line breaks, and every
+    non-ASCII character as well, so a name can neither end the literal early
+    nor inject into the eval'd source. Anything but a str raises, as the native
+    bridge's ``name.encode()`` does, instead of reaching the Brain as ``null``.
+    """
+    if not isinstance(s, str):
+        raise TypeError("expected a str, not %s" % type(s).__name__)
+    return json.dumps(s)
 
 
 # The SoA buffers a frame copies across, in the order of ``ss_bufs[id].soa``:
@@ -198,7 +217,6 @@ def load_library(path=None, base_dir=None, *, timeout=10.0):
     native loader's does, rather than leave the first player to hit a JS
     ``TypeError`` that cannot be caught across the emscripten boundary.
     """
-    import json
     import time
     web_dir = path or (base_dir.rstrip("/") + "/web")
     emscripten.run_script(f"""
@@ -275,7 +293,6 @@ class _WebRuntime:
             window.ss_ctxs[{self._ctx_id}] = new window.ssruntime.SSRuntimeContext();
         """)
         self._res = None
-        self._ssab_bytes = None
         self._frame_rate = None
 
         # Where every per-frame copy lands. Each buffer starts empty and is
@@ -304,42 +321,62 @@ class _WebRuntime:
                at(self._plan_buf)))
 
     def configure(self, *, render_mode=0, coordinate_system=1, origin=0, unit=0):
+        # The JS coordinate-system / origin / unit setters take an enum and
+        # throw on anything but 0 or 1, where the C-API reads 1 as Y-down /
+        # top-left / normalized and any other value as the other one. Fold
+        # the same way, so a stray value configures what native would.
         emscripten.run_script(f"""
             var ctx = window.ss_ctxs[{self._ctx_id}];
-            ctx.set_render_mode({render_mode});
-            ctx.set_coordinate_system({coordinate_system});
-            ctx.set_origin({origin});
-            ctx.set_unit({unit});
+            ctx.set_render_mode({int(render_mode)});
+            ctx.set_coordinate_system({1 if int(coordinate_system) == 1 else 0});
+            ctx.set_origin({1 if int(origin) == 1 else 0});
+            ctx.set_unit({1 if int(unit) == 1 else 0});
         """)
         return self
 
     def load_ssab_bytes(self, data: bytes, *, borrow: bool = True):
-        self._ssab_bytes = bytes(data)
+        """Bind ``data`` to the context as the animation resource.
 
-        with open("/temp_ssab.bin", "wb") as f:
-            f.write(data)
+        The pack is read straight out of this heap at the address
+        ``array.buffer_info`` gives, as a frame is written into it, and the
+        Brain keeps a copy of its own: ``borrow`` has no effect here, and
+        nothing outlives the call on this side — no file on the emscripten
+        FS, no second copy of the pack held here.
 
-        emscripten.run_script(f"""
-            var u8 = FS.readFile('/temp_ssab.bin');
-            var res = new window.ssruntime.SSRuntimeResource(u8);
-            var success = window.ss_ctxs[{self._ctx_id}].bind_resource(res);
-            if (success) {{
-                // Free the PREVIOUS resource only after the new one is bound
-                // (native ordering: bind new -> destroy old). Otherwise a
-                // re-load on this context leaks the old SSRuntimeResource, which
-                // holds a full wasm-heap copy of the previous .ssab.
+        A pack the Brain rejects — a schema-version mismatch, or bytes it
+        cannot parse — raises RuntimeError with the Brain's reason, as the
+        native bridge raises, and leaves the previous resource bound. The
+        constructor throws on such a pack, so the throw is caught in the
+        script: one that escaped would abort the frame instead.
+        """
+        buf = array.array("B", data)
+        addr, n = buf.buffer_info()
+        err = emscripten.run_script_string(f"""
+            (function (ctx) {{
+                var res;
+                try {{
+                    res = new window.ssruntime.SSRuntimeResource(
+                        Module.HEAPU8.subarray({addr}, {addr + n}));
+                }} catch (e) {{
+                    return 'ss_resource_create failed: ' + ((e && e.message) || String(e));
+                }}
+                var bound = false;
+                try {{ bound = ctx.bind_resource(res); }} catch (e) {{}}
+                if (!bound) {{
+                    res.free();
+                    return 'ss_runtime_bind_resource failed';
+                }}
+                // Free the previous resource only once the new one is bound
+                // (bind new, then destroy old, as native does): a re-load
+                // that skipped it would leak the old pack's wasm-heap copy.
                 var prev = window.ss_resources[{self._ctx_id}];
                 window.ss_resources[{self._ctx_id}] = res;
                 if (prev) prev.free();
-            }} else {{
-                res.free();
-            }}
-            window.ss_success = success;
+                return '';
+            }})(window.ss_ctxs[{self._ctx_id}])
         """)
-
-        success = emscripten.run_script_int("window.ss_success ? 1 : 0")
-        if not success:
-            raise RuntimeError("ss_runtime_bind_resource failed")
+        if err:
+            raise RuntimeError(err)
 
         self._frame_rate = None
         self._res = True
@@ -350,17 +387,15 @@ class _WebRuntime:
             return self.load_ssab_bytes(fh.read())
 
     def setup_animation(self, name: str) -> bool:
-        import json
         # The JS setup_animation THROWS on an unknown/invalid name where native
         # returns False; a JS throw cannot be caught across the emscripten
         # boundary (it aborts the frame), so catch it in JS and surface a real
-        # bool. json.dumps escapes the name into a valid JS string literal — a
-        # raw name containing a quote / backslash / newline would otherwise break
-        # or inject into the eval'd source.
+        # bool.
+        literal = _jsstr(name)
         self._frame_rate = None
         emscripten.run_script(f"""
             try {{
-                window.ss_ctxs[{self._ctx_id}].setup_animation({json.dumps(name)});
+                window.ss_ctxs[{self._ctx_id}].setup_animation({literal});
                 window.ss_setup_ok = true;
             }} catch (e) {{
                 window.ss_setup_ok = false;
@@ -382,7 +417,7 @@ class _WebRuntime:
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].stop();")
 
     def set_loop_count(self, loop_count: int):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_loop_count({loop_count});")
+        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_loop_count({int(loop_count)});")
         return self
 
     def set_speed_scale(self, rate: float):
@@ -396,14 +431,20 @@ class _WebRuntime:
         return self
 
     def set_frame_rate(self, fps: int):
+        fps = int(fps)
         self._frame_rate = None
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_frame_rate({fps});")
 
     def set_animation_section(self, start: int, end: int):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_animation_section({start}, {end});")
+        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_animation_section({int(start)}, {int(end)});")
 
     def set_playback_direction(self, direction: int, style: int = 0):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_playback_direction({direction}, {style});")
+        # WebPlaybackDirection / WebPlaybackStyle throw on anything but 0 or
+        # 1; the C-API reads any non-zero as backward / ping-pong, so fold to
+        # match.
+        emscripten.run_script(
+            f"window.ss_ctxs[{self._ctx_id}].set_playback_direction("
+            f"{1 if int(direction) else 0}, {1 if int(style) else 0});")
 
     def set_skip_frames(self, skip: bool) -> None:
         """Toggle frame skipping (see the native wrapper). Feature-detected:
@@ -538,7 +579,7 @@ class _WebRuntime:
         return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_count()")
 
     def passed_event_index(self, i: int) -> int:
-        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_index({i})")
+        return emscripten.run_script_int(f"window.ss_ctxs[{self._ctx_id}].get_passed_event_index({int(i)})")
 
     def passed_event_source_handle(self, i: int):
         """See the native wrapper. None on a build without the export."""
@@ -579,10 +620,9 @@ class _WebRuntime:
         return None if v is None or v == 0xFFFFFFFF else v
 
     def set_track_animation(self, track: int, name: str) -> bool:
-        import json
+        call = "set_track_animation(%d, %s)" % (int(track), _jsstr(name))
         self._frame_rate = None     # track 0's animation may change
-        return self._mix_set("set_track_animation(%d, %s)"
-                             % (int(track), json.dumps(name)))
+        return self._mix_set(call)
 
     def track_count(self) -> int:
         return self._mix_int("get_track_count()") or 0
@@ -639,8 +679,8 @@ class _WebRuntime:
         # WebPlaybackDirection / WebPlaybackStyle are 0 / 1 in JS; the C-API
         # reads any non-zero as backward / ping-pong, so fold to match.
         return self._mix_set("set_track_playback_direction(%d, %d, %d)"
-                             % (int(track), 1 if direction else 0,
-                                1 if style else 0))
+                             % (int(track), 1 if int(direction) else 0,
+                                1 if int(style) else 0))
 
     def track_playback_direction(self, track: int):
         return self._mix_int("get_track_playback_direction(%d)" % int(track))
@@ -669,10 +709,10 @@ class _WebRuntime:
         return self._mix_get("get_track_outgoing_event_threshold(%d)" % int(track))
 
     def crossfade(self, track: int, name: str, duration_ms: float) -> bool:
-        import json
+        call = ("crossfade(%d, %s, %s)"
+                % (int(track), _jsstr(name), _jsnum(duration_ms)))
         self._frame_rate = None     # track 0's animation may change
-        return self._mix_set("crossfade(%d, %s, %s)"
-                             % (int(track), json.dumps(name), _jsnum(duration_ms)))
+        return self._mix_set(call)
 
     def fade_track(self, track: int, target_alpha: float,
                    duration_ms: float) -> bool:
@@ -689,9 +729,8 @@ class _WebRuntime:
         return self._mix_handle("get_track_main_source(%d)" % int(track))
 
     def add_track_source(self, track: int, name: str, weight: float):
-        import json
         return self._mix_handle("add_track_source(%d, %s, %s)"
-                                % (int(track), json.dumps(name), _jsnum(weight)))
+                                % (int(track), _jsstr(name), _jsnum(weight)))
 
     def set_source_weight(self, handle: int, weight: float) -> bool:
         return self._mix_set("set_source_weight(%d, %s)" % (int(handle), _jsnum(weight)))
@@ -832,10 +871,10 @@ class _WebRuntime:
             f"? 1 : 0)") == 1
 
     def find_part_index(self, part_name: str) -> int:
-        import json
+        literal = _jsstr(part_name)
         emscripten.run_script(f"""
             try {{
-                window.ss_part_idx = window.ss_ctxs[{self._ctx_id}].find_part_index({json.dumps(part_name)});
+                window.ss_part_idx = window.ss_ctxs[{self._ctx_id}].find_part_index({literal});
             }} catch (e) {{
                 window.ss_part_idx = -1;
             }}
@@ -909,11 +948,12 @@ class _WebRuntime:
 
     def instance_slot_destroy(self, slot):
         if slot is not None:
-            emscripten.run_script(f"window.ss_instances[{slot}].free(); delete window.ss_instances[{slot}];")
+            emscripten.run_script("window.ss_instances[%d].free(); delete window.ss_instances[%d];"
+                                  % (slot, slot))
 
     def instance_slot_reset(self, slot):
         if slot is not None:
-            emscripten.run_script(f"window.ss_instances[{slot}].reset();")
+            emscripten.run_script("window.ss_instances[%d].reset();" % slot)
 
     def instance_slot_step(self, slot, ev, child_ctx, parent_frame,
                            delta_seconds, parent_looped):
@@ -933,7 +973,8 @@ class _WebRuntime:
         # boundary — such a throw is NOT a Python exception and could not be
         # caught by the caller.
         return emscripten.run_script_int(
-            f"(function(s){{return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;}})(window.ss_instances[{slot}])") == 1
+            "(function(s){return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;})(window.ss_instances[%d])"
+            % slot) == 1
 
     def effect_slot_create(self, effect_name_hash, seed=0):
         if not self._res:
@@ -941,7 +982,7 @@ class _WebRuntime:
         emscripten.run_script(f"""
             var id = window.ss_effect_counter++;
             try {{
-                window.ss_effects[id] = window.ssruntime.SSRuntimeEffectSlot.create(window.ss_resources[{self._ctx_id}], {effect_name_hash}, {seed});
+                window.ss_effects[id] = window.ssruntime.SSRuntimeEffectSlot.create(window.ss_resources[{self._ctx_id}], {int(effect_name_hash) & 0xFFFFFFFF}, {int(seed) & 0xFFFFFFFF});
                 window.ss_tmp_id = id;
             }} catch(e) {{
                 window.ss_tmp_id = -1;
@@ -952,11 +993,12 @@ class _WebRuntime:
 
     def effect_slot_destroy(self, slot):
         if slot is not None:
-            emscripten.run_script(f"window.ss_effects[{slot}].free(); delete window.ss_effects[{slot}];")
+            emscripten.run_script("window.ss_effects[%d].free(); delete window.ss_effects[%d];"
+                                  % (slot, slot))
 
     def effect_slot_reset(self, slot):
         if slot is not None:
-            emscripten.run_script(f"window.ss_effects[{slot}].reset();")
+            emscripten.run_script("window.ss_effects[%d].reset();" % slot)
 
     def effect_slot_step(self, slot, ev, parent_frame, delta_seconds, fps,
                          parent_looped, y_flip=True, vert_stride=2, *, draw):
@@ -991,7 +1033,8 @@ class _WebRuntime:
         # Guard the getter name so a JS TypeError can't unwind the emscripten
         # boundary uncatchably (see instance_slot_is_independent).
         return emscripten.run_script_int(
-            f"(function(s){{return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;}})(window.ss_effects[{slot}])") == 1
+            "(function(s){return (s.is_independent?s.is_independent():(s.independent?s.independent():false))?1:0;})(window.ss_effects[%d])"
+            % slot) == 1
 
     def close(self):
         if hasattr(self, '_ctx_id') and emscripten:
@@ -1008,7 +1051,6 @@ class _WebRuntime:
                 if (window.ss_bufs) delete window.ss_bufs[{self._ctx_id}];
             """)
         self._res = None
-        self._ssab_bytes = None
 
     def __enter__(self):
         return self
