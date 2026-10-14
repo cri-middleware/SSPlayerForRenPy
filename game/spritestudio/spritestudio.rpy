@@ -3357,10 +3357,12 @@ init -10 python:
             self._loop_after_switch()
             self._section = None
             self.animation = self._core.current_animation
-            self._record_playback(self._core)
 
         def _mix_drawn(self, ok):
+            # Every track setter ends here, and several move what a save keeps:
+            # a switch on track 0, or a seek of track 0 or of a source on it.
             if ok:
+                self._record_playback(self._core)
                 renpy.redraw(self, 0)
             return ok
 
