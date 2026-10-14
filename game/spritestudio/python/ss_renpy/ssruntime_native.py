@@ -5,8 +5,8 @@ This is the FFI layer of the Ren'Py SSPlayer. It is intentionally free of any
 as well as from inside Ren'Py's bundled interpreter (M1+).
 
 Signatures are transcribed from the generated C header
-``libs/ssruntime/target/ssruntime.h`` into the ``_REQUIRED`` / ``_OPTIONAL``
-tables — that header is the source of truth; keep them in sync with it.
+``libs/ssruntime/target/ssruntime.h`` into the ``_REQUIRED`` table — that
+header is the source of truth; keep the table in sync with it.
 :func:`load_library` refuses a library missing anything in ``_REQUIRED``, with
 one error naming what is missing, rather than letting ctypes fail on the first.
 
@@ -289,14 +289,9 @@ _log_cb_ref = None
 # from ``dlsym`` that names one symbol and says nothing of why — or, for a
 # symbol only a later call reaches, in the middle of a game.
 #
-# ``_OPTIONAL`` holds the exports that arrived after everything in
-# ``_REQUIRED``, so a library can lack one and still pass that check. Their
-# wrappers answer for it: the track-stack ones report a refusal or no value,
-# and the clock getters a stopped clock, which leaves the track stack still,
-# as on a library with no track stack at all. Tolerance stops there because a
-# library older than every one of them already fails ``_REQUIRED``; a new
-# export belongs in ``_REQUIRED`` unless its wrapper has an answer for a
-# library without it.
+# A new export goes in here too. A wrapper that answered for a library
+# without it would keep that library playing with one feature quietly gone,
+# where the load would have said which file is out of date.
 #
 # Nothing is bound that nothing calls: each row is one more way for the load
 # to fail.
@@ -369,6 +364,8 @@ _REQUIRED = (
     ("ss_runtime_just_looped", [_P], _b),
     ("ss_runtime_is_playing", [_P], _b),
     ("ss_runtime_is_pausing", [_P], _b),
+    ("ss_runtime_is_clock_playing", [_P], _b),
+    ("ss_runtime_is_clock_pausing", [_P], _b),
     ("ss_runtime_is_finished", [_P], _b),
     ("ss_runtime_is_playing_forward", [_P], _b),
     ("ss_runtime_get_start_frame", [_P], _i32),
@@ -392,9 +389,25 @@ _REQUIRED = (
     ("ss_runtime_get_track_alpha", [_P, _u32], _f32),
     ("ss_runtime_set_track_blend", [_P, _u32, _u32], _b),
     ("ss_runtime_get_track_blend", [_P, _u32], _u32),
+    ("ss_runtime_set_track_sync", [_P, _u32, _u32], _b),
+    ("ss_runtime_get_track_sync", [_P, _u32], _u32),
     ("ss_runtime_set_track_frame", [_P, _u32, _f32], _b),
     ("ss_runtime_get_track_frame", [_P, _u32], _f32),
     ("ss_runtime_set_track_speed", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_track_speed", [_P, _u32], _f32),
+    ("ss_runtime_set_track_frame_rate", [_P, _u32, C.c_int], _b),
+    ("ss_runtime_get_track_frame_rate", [_P, _u32], _i32),
+    ("ss_runtime_set_track_skip_frames", [_P, _u32, _b], _b),
+    ("ss_runtime_get_track_skip_frames", [_P, _u32], _b),
+    ("ss_runtime_set_track_playback_direction", [_P, _u32, C.c_int, C.c_int], _b),
+    ("ss_runtime_get_track_playback_direction", [_P, _u32], _i32),
+    ("ss_runtime_get_track_playback_style", [_P, _u32], _i32),
+    ("ss_runtime_set_track_loop_count", [_P, _u32, C.c_int], _b),
+    ("ss_runtime_get_track_loop_count", [_P, _u32], _i32),
+    ("ss_runtime_is_track_finished", [_P, _u32], _b),
+    ("ss_runtime_track_just_looped", [_P, _u32], _b),
+    ("ss_runtime_set_track_outgoing_event_threshold", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_track_outgoing_event_threshold", [_P, _u32], _f32),
     ("ss_runtime_crossfade", [_P, _u32, _str, _f32], _b),
     ("ss_runtime_fade_track", [_P, _u32, _f32, _f32], _b),
     ("ss_runtime_get_track_fade_progress", [_P, _u32], _f32),
@@ -407,6 +420,7 @@ _REQUIRED = (
     ("ss_runtime_get_source_frame", [_P, _u32], _f32),
     ("ss_runtime_set_source_event_threshold", [_P, _u32, _f32], _b),
     ("ss_runtime_get_source_event_threshold", [_P, _u32], _f32),
+    ("ss_runtime_get_source_animation_index", [_P, _u32], _i32),
 
     # hashing helper (texture/animation name -> u32 fnv1a)
     ("ss_runtime_hash_string", [_str], _u32),
@@ -450,32 +464,6 @@ _REQUIRED = (
     ("ss_runtime_get_active_effect_event", [_P, _u32], ss_effect_event_info),
 )
 
-_OPTIONAL = (
-    # The character's clock, which drives every track and fade (is_playing /
-    # is_pausing describe track 0 only).
-    ("ss_runtime_is_clock_playing", [_P], _b),
-    ("ss_runtime_is_clock_pausing", [_P], _b),
-    # Track sync, the per-track playback settings, and the animation a source
-    # plays.
-    ("ss_runtime_set_track_sync", [_P, _u32, _u32], _b),
-    ("ss_runtime_get_track_sync", [_P, _u32], _u32),
-    ("ss_runtime_get_track_speed", [_P, _u32], _f32),
-    ("ss_runtime_set_track_frame_rate", [_P, _u32, C.c_int], _b),
-    ("ss_runtime_get_track_frame_rate", [_P, _u32], _i32),
-    ("ss_runtime_set_track_skip_frames", [_P, _u32, _b], _b),
-    ("ss_runtime_get_track_skip_frames", [_P, _u32], _b),
-    ("ss_runtime_set_track_playback_direction", [_P, _u32, C.c_int, C.c_int], _b),
-    ("ss_runtime_get_track_playback_direction", [_P, _u32], _i32),
-    ("ss_runtime_get_track_playback_style", [_P, _u32], _i32),
-    ("ss_runtime_set_track_loop_count", [_P, _u32, C.c_int], _b),
-    ("ss_runtime_get_track_loop_count", [_P, _u32], _i32),
-    ("ss_runtime_is_track_finished", [_P, _u32], _b),
-    ("ss_runtime_track_just_looped", [_P, _u32], _b),
-    ("ss_runtime_set_track_outgoing_event_threshold", [_P, _u32, _f32], _b),
-    ("ss_runtime_get_track_outgoing_event_threshold", [_P, _u32], _f32),
-    ("ss_runtime_get_source_animation_index", [_P, _u32], _i32),
-)
-
 
 def _missing_symbols(lib: C.CDLL) -> list[str]:
     """The ``_REQUIRED`` exports ``lib`` lacks, in table order; empty when it
@@ -503,11 +491,6 @@ def _declare(lib: C.CDLL) -> None:
         fn = getattr(lib, name)
         fn.argtypes = args
         fn.restype = res
-    for name, args, res in _OPTIONAL:
-        fn = getattr(lib, name, None)
-        if fn is not None:
-            fn.argtypes = args
-            fn.restype = res
 
 
 def load_library(path: str | None = None, base_dir: str | None = None,
@@ -809,15 +792,14 @@ class _NativeRuntime:
         """Whether the character's clock runs (or is held by pause).
 
         Set by play, cleared by stop and a successful setup_animation; unlike
-        :attr:`is_playing` it outlives track 0 finishing. False when the
-        loaded runtime does not export it."""
-        return bool(self._mix("ss_runtime_is_clock_playing"))
+        :attr:`is_playing` it outlives track 0 finishing."""
+        return bool(self._lib.ss_runtime_is_clock_playing(self._ctx))
 
     @property
     def is_clock_pausing(self) -> bool:
         """Whether pause holds the character's clock; implies
-        :attr:`is_clock_playing`. False when the export is absent."""
-        return bool(self._mix("ss_runtime_is_clock_pausing"))
+        :attr:`is_clock_playing`."""
+        return bool(self._lib.ss_runtime_is_clock_pausing(self._ctx))
 
     @property
     def is_finished(self) -> bool:
@@ -896,29 +878,26 @@ class _NativeRuntime:
 
     def passed_event_source_handle(self, i: int):
         """Handle of the source whose animation fired the ``i``-th passed
-        event, or None (no such event, or a runtime without the export)."""
+        event, or None when there is no such event."""
         return self._mix_handle("ss_runtime_get_passed_event_source_handle", i)
 
     # -- animation mixing (the track stack; see ss_renpy.player) ----------
     # Thin passthroughs over the ss_runtime_*track* / *source* C-API. Its
     # "no value" sentinels (NaN, -1, the invalid handle) come back as None and
-    # the setters as a bool. A symbol the loaded library does not export (one
-    # of ``_OPTIONAL``; load_library refuses a library missing any other) reads
-    # as a refusal / None, so a drop-in on older libs keeps playing.
+    # the setters as a bool.
     def _mix(self, symbol, *args):
-        fn = getattr(self._lib, symbol, None)
-        return None if fn is None else fn(self._ctx, *args)
+        return getattr(self._lib, symbol)(self._ctx, *args)
 
     def _mix_ok(self, symbol, *args) -> bool:
         return bool(self._mix(symbol, *args))
 
     def _mix_float(self, symbol, *args):
         v = self._mix(symbol, *args)
-        return None if v is None or v != v else float(v)
+        return None if v != v else float(v)
 
     def _mix_int(self, symbol, *args, none=-1):
         v = self._mix(symbol, *args)
-        return None if v is None or v == none else int(v)
+        return None if v == none else int(v)
 
     def _mix_handle(self, symbol, *args):
         return self._mix_int(symbol, *args, none=INVALID_HANDLE)
@@ -928,7 +907,7 @@ class _NativeRuntime:
                             name.encode("utf-8"))
 
     def track_count(self) -> int:
-        return int(self._mix("ss_runtime_get_track_count") or 0)
+        return int(self._mix("ss_runtime_get_track_count"))
 
     def clear_track(self, track: int) -> bool:
         return self._mix_ok("ss_runtime_clear_track", track)
