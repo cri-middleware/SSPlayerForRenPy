@@ -106,6 +106,18 @@ def _pack_rgba(color) -> int:
     return (r << 24) | (g << 16) | (b << 8) | a
 
 
+def _acquire_images(rm, base_dir: str, images) -> None:
+    """Ask ``rm`` for each image path, resolved against ``base_dir``."""
+    for img in set(images):
+        if not img:
+            continue
+        path = (base_dir + "/" + img) if base_dir else img
+        try:
+            rm.acquire(path)
+        except Exception:
+            pass
+
+
 class SSInternalPlayer:
     """Pure, engine-independent playback of ONE animation from a ``.ssab`` pack.
 
@@ -269,14 +281,7 @@ class SSInternalPlayer:
         return (self.base_dir + "/" + img) if self.base_dir else img
 
     def _acquire_textures(self, images) -> None:
-        for img in set(images):
-            if not img:
-                continue
-            path = (self.base_dir + "/" + img) if self.base_dir else img
-            try:
-                self._rm.acquire(path)
-            except Exception:
-                pass
+        _acquire_images(self._rm, self.base_dir, images)
 
     def _make_loader(self):
         """``loader(pack_name)->bytes`` for external instance packs.
@@ -284,19 +289,28 @@ class SSInternalPlayer:
         Caches bytes, merges each loaded pack's cellmap -> image-path entries
         into ``self._texmap`` so child-part texture hashes resolve, and asks the
         ResourceManager to acquire those newly-discovered textures.
+
+        The closure holds what it uses, never ``self``: this player keeps it,
+        so a reference back would make a cycle, and the native runtime and slot
+        handles would then wait for the cyclic garbage collector instead of
+        going when the host drops the player.
         """
         cache: dict = {}
+        pack_reader = self._pack_reader
+        texmap = self._texmap
+        rm = self._rm
+        base_dir = self.base_dir
 
         def load(pack_name):
             if pack_name in cache:
                 return cache[pack_name]
-            data = self._pack_reader(pack_name) if self._pack_reader else b""
+            data = pack_reader(pack_name) if pack_reader else b""
             cache[pack_name] = data
             if data:
                 try:
                     new_map = SsabMeta(data).texture_hash_map()
-                    self._texmap.update(new_map)
-                    self._acquire_textures(new_map.values())
+                    texmap.update(new_map)
+                    _acquire_images(rm, base_dir, new_map.values())
                 except Exception:
                     pass
             return data
