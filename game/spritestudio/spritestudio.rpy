@@ -1135,7 +1135,8 @@ init -10 python:
             if predicting:
                 renpy.display.predict.predicting = True
 
-    # Instance packs already reported missing: said once, not by every player.
+    # Instance packs already reported missing, and Instance parts already
+    # reported unbuilt: said once, not by every player.
     _SS_MISSING_PACKS = set()
 
     def _ss_renpy_pack_reader(base_rel):
@@ -1702,6 +1703,14 @@ init -10 python:
                 raise Exception(
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
+            # An Instance part whose pack would not load (a stale one) draws
+            # nothing while the rest plays on, as for a pack not found, so it
+            # is said the same way.
+            if config.developer:
+                for _msg in self._core.instance_problems:
+                    if (self.ssab, _msg) not in _SS_MISSING_PACKS:
+                        _SS_MISSING_PACKS.add((self.ssab, _msg))
+                        print("[SSPlayer] %s: %s" % (self.ssab, _msg))
 
             # Frame skipping and the frame-rate override survive
             # setup_animation, so they can go on now. So do the playback modes

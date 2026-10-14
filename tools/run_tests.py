@@ -8,7 +8,7 @@ Both gaps have the same shape: a tool that cannot find its pack **prints
 a tree where nothing was ever loaded. That is the failure this runner exists to
 make impossible, in two steps:
 
-  1. **Preflight before anything runs.** The Brain and all three asset packs are
+  1. **Preflight before anything runs.** The Brain and the four asset packs are
      checked up front — present, and current: the Brain must load through the
      same gate the player uses, and every pack must bind against it — and a
      missing or stale one stops the run with the script that produces it. A
@@ -45,8 +45,8 @@ _GAME = os.path.join(_ROOT, "game")
 
 sys.path.insert(0, os.path.join(_GAME, "spritestudio", "python"))  # import ss_renpy
 
-# The packs every tool resolves against, and the script that produces them.
-_REQUIRED_PACKS = ("overall", "Ringo", "ParticleEffect")
+# The packs every tool resolves against; deploy-examples produces all of them.
+_REQUIRED_PACKS = ("overall", "Ringo", "ParticleEffect", "Doll")
 
 
 def _script(name: str) -> str:

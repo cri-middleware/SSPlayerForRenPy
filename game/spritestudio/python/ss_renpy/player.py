@@ -136,7 +136,8 @@ class SSInternalPlayer:
                  enable_events: bool = True,
                  coordinate_system: int = ssruntime.COORD_Y_DOWN,
                  origin: int = ssruntime.ORIGIN_CENTER,
-                 loader=None, texmap=None, parent_driven: bool = False):
+                 loader=None, texmap=None, parent_driven: bool = False,
+                 problems=None):
         self._data = ssab_data
         self._lib = lib
         # ``base_dir`` is the host-relative dir used only to build texture
@@ -191,6 +192,11 @@ class SSInternalPlayer:
         # acquires via the shared rm). The root builds one; children share it so
         # an external pack is read + registered once for the whole tree.
         self._loader = loader if loader is not None else self._make_loader()
+        # Why Instance parts could not be built, one message each, shared
+        # across the tree like the texmap so the root holds its descendants'
+        # too. A part without its child draws nothing while the rest plays on,
+        # so this is the only trace of it the host can report.
+        self._problems = problems if problems is not None else []
         # Parent-driven flag: a child's own per-tick update() is a no-op — the
         # parent seeks it.
         self._parent_driven = bool(parent_driven)
@@ -432,6 +438,14 @@ class SSInternalPlayer:
         return self._current_animation
 
     @property
+    def instance_problems(self) -> List[str]:
+        """Why Instance parts anywhere in this tree draw nothing: one message
+        per part whose pack would not load (a stale or invalid pack) or lacks
+        the animation the part plays. Empty when every part has its child. A
+        pack the pack reader could not find is the reader's to report."""
+        return list(self._problems)
+
+    @property
     def frame_rate(self) -> int:
         """Frames per second in effect: the pack's authored rate unless
         :meth:`set_frame_rate` overrode it."""
@@ -571,7 +585,7 @@ class SSInternalPlayer:
         """Re-arm this player's Instance/Effect slots (parent calls on replay)."""
         self._reset_slots()
 
-    def make_child(self, child_data: bytes):
+    def make_child(self, child_data: bytes, what: str = ""):
         """Build a parent-driven child player that shares this player's resources.
 
         The Instance rig (``ss_renpy.instance``) resolves *which* pack/animation a
@@ -580,15 +594,18 @@ class SSInternalPlayer:
         texmap and base_dir, running parent-driven (the parent seeks it) with its
         own timeline events suppressed (root-only). Keeping construction here
         keeps the owner's construction details out of the instance module.
-        Returns ``None`` on construction failure.
+        Returns ``None`` on construction failure, recording why in
+        :attr:`instance_problems`, after ``what`` (which part, playing what).
         """
         try:
             return SSInternalPlayer(
                 child_data, lib=self._lib, base_dir=self.base_dir,
                 resource_manager=self._rm, sub_frame=self._sub_frame,
                 enable_events=False, parent_driven=True,
-                loader=self._loader, texmap=self._texmap)
-        except Exception:
+                loader=self._loader, texmap=self._texmap,
+                problems=self._problems)
+        except Exception as e:
+            self._problems.append("%s: %s" % (what, e) if what else str(e))
             return None
 
     def render_at(self, frame_no, looped, dt_s, sub_frame=None, inherited=None):
