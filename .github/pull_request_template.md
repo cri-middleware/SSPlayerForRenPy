@@ -17,7 +17,7 @@ that is useful information, not a problem.
 -->
 
 - [ ] `scripts/run-tests.sh` — a SKIP that survives the run counts as a failure
-- [ ] `renpy-sdk/renpy.sh . lint` from the repository root (`scripts/fetch-renpy-sdk.sh` first)
+- [ ] `renpy-sdk/renpy.sh . lint --error-code` from the repository root, leaving no `traceback.txt` or `errors.txt` (`scripts/fetch-renpy-sdk.sh` first)
 - [ ] `scripts/run-demo.sh` — checked drawing in the demo; GL2 rendering has no headless check
 - [ ] Not run — see notes below / 未実行（理由は下記）
 

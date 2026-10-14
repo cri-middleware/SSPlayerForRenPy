@@ -93,8 +93,23 @@ jobs:
           path: renpy-sdk
           key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
 
+      # Without --error-code the lint exits 0 whatever it reports. Even with it,
+      # an exception raised before the lint gets going (in an init block, say)
+      # exits 0 and leaves only traceback.txt, so either file Ren'Py writes when
+      # it fails is a failure here too.
       - name: Lint (Ren'Py)
-        run: renpy-sdk/renpy.sh . lint
+        run: |
+          rm -f traceback.txt errors.txt
+          status=0
+          renpy-sdk/renpy.sh . lint --error-code || status=$?
+          for f in traceback.txt errors.txt; do
+            if [ -f "$f" ]; then
+              echo "::error::Ren'Py wrote $f during the lint:"
+              cat "$f"
+              status=1
+            fi
+          done
+          exit "$status"
 
   # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
   # only release/X.Y is merged into main.
