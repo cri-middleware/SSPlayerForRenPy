@@ -53,7 +53,7 @@ Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-
 ```renpy
 # Example usage in a Ren'Py script
 screen demo():
-    add SSPlayer("overall/Basic.ssab") xalign 0.5 yalign 0.5
+    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
 ```
 *For details, see the [Setup Guide](docs/en/setup.md) and [Usage & Control](docs/en/usage.md).*
 
