@@ -28,7 +28,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 
 foreach ($item in $Args) {
-    if ($item -match "^-?-?help$" -or $item -eq "-h") {
+    if ($item -cmatch '^(-h|--help|help)$') {
         # The contiguous block from "# Usage:" to "# Exit status", which is what
         # the .sh twin prints with sed -n '/^# Usage:/,/^# Exit status/p'.
         $emit = $false
@@ -41,33 +41,34 @@ foreach ($item in $Args) {
     }
 }
 
-# Same interpreter resolution as deploy-examples.ps1: prefer the python Ren'Py
-# ships for THIS host when the SDK is present, so a machine with only the
-# Ren'Py SDK can still run the suite.
+# Same interpreter resolution as run-tests.sh and deploy-examples.*: prefer the
+# python Ren'Py ships for THIS host and arch when the SDK is present (a bare
+# py3-* glob grabs py3-linux first, and on Linux the first arch), so a machine
+# with only the Ren'Py SDK can still run the suite. Not found is a preflight
+# failure, exit status 2, as documented above.
 $pythonCmd = ""
-$RenpyLibDir = Join-Path $RootDir "renpy-sdk\lib"
+$RenpyLibDir = Join-Path $RootDir "renpy-sdk/lib"
 if (Test-Path $RenpyLibDir) {
-    $plat = if ($IsMacOS) { "py3-mac-*" } elseif ($IsLinux) { "py3-linux-*" } else { "py3-windows-*" }
-    $RenpyPythonDirs = Get-ChildItem -Path $RenpyLibDir -Directory -Filter $plat
-    if ($RenpyPythonDirs.Count -gt 0) {
-        $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python.exe"
-        if (-not (Test-Path $bundledPython)) {
-            $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python"
-        }
-        if (Test-Path $bundledPython) {
-            $pythonCmd = $bundledPython
+    $plat = if ($IsMacOS) { "py3-mac-*" } elseif ($IsLinux) { "py3-linux-$("$(& uname -m)".Trim())*" } else { "py3-windows-*" }
+    $RenpyPythonDir = Get-ChildItem -Path $RenpyLibDir -Directory -Filter $plat | Sort-Object Name | Select-Object -First 1
+    if ($RenpyPythonDir) {
+        foreach ($name in "python", "python.exe") {
+            $candidate = Join-Path $RenpyPythonDir.FullName $name
+            if (Test-Path -PathType Leaf $candidate) { $pythonCmd = $candidate; break }
         }
     }
 }
-
 if (-not $pythonCmd) {
-    if (Get-Command "python" -ErrorAction SilentlyContinue) {
-        $pythonCmd = "python"
-    } elseif (Get-Command "python3" -ErrorAction SilentlyContinue) {
-        $pythonCmd = "python3"
-    } else {
-        Write-Error "python/python3 not found in renpy-sdk or PATH"
+    # python3 first, as in the .sh twin -- except on Windows, where python3 is
+    # often only the Microsoft Store's stand-in and python the real interpreter.
+    $order = if ($IsMacOS -or $IsLinux) { @("python3", "python") } else { @("python", "python3") }
+    foreach ($name in $order) {
+        if (Get-Command $name -ErrorAction SilentlyContinue) { $pythonCmd = $name; break }
     }
+}
+if (-not $pythonCmd) {
+    [Console]::Error.WriteLine("run-tests.ps1: python/python3 not found in renpy-sdk or PATH")
+    exit 2
 }
 
 & $pythonCmd (Join-Path $RootDir "tools\run_tests.py") @Args

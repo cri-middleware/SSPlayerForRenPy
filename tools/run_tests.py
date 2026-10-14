@@ -8,9 +8,11 @@ Both gaps have the same shape: a tool that cannot find its pack **prints
 a tree where nothing was ever loaded. That is the failure this runner exists to
 make impossible, in two steps:
 
-  1. **Preflight before anything runs.** The Brain and all three asset packs are
-     checked up front, and a missing one stops the run with the script that
-     produces it. A partial suite is never started.
+  1. **Preflight before anything runs.** The Brain and the four asset packs are
+     checked up front — present, and current: the Brain must load through the
+     same gate the player uses, and every pack must bind against it — and a
+     missing or stale one stops the run with the script that produces it. A
+     partial suite is never started, nor one that would die on tracebacks.
   2. **A skip is not a pass.** Preflight having passed, a tool that still
      reports a pack missing is reporting a real defect, so its ``SKIP`` is
      surfaced and fails the run. (Sub-case skips — "this part does not draw in
@@ -43,8 +45,8 @@ _GAME = os.path.join(_ROOT, "game")
 
 sys.path.insert(0, os.path.join(_GAME, "spritestudio", "python"))  # import ss_renpy
 
-# The packs every tool resolves against, and the script that produces them.
-_REQUIRED_PACKS = ("overall", "Ringo", "ParticleEffect")
+# The packs every tool resolves against; deploy-examples produces all of them.
+_REQUIRED_PACKS = ("overall", "Ringo", "ParticleEffect", "Doll")
 
 
 def _script(name: str) -> str:
@@ -52,26 +54,75 @@ def _script(name: str) -> str:
     return f"scripts\\{name}.ps1" if os.name == "nt" else f"scripts/{name}.sh"
 
 
+def _unbindable(ssruntime, lib, packs) -> tuple[int, list[str]]:
+    """``(checked, failures)`` for binding every ``.ssab`` of ``packs``.
+
+    Bound the way the player binds one — the identifier gate, then the native
+    bridge, which refuses a schema version the runtime does not read before
+    the runtime sees it — so a stale pack is caught here, with the bridge's
+    reason, rather than as a traceback in whichever tool loads it first."""
+    from ss_renpy.ssab_meta import SsabMeta
+    checked, failures = 0, []
+    for pack in packs:
+        folder = os.path.join(_GAME, "ss_assets", pack)
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".ssab"):
+                continue
+            checked += 1
+            rt = None
+            try:
+                with open(os.path.join(folder, name), "rb") as fh:
+                    data = fh.read()
+                SsabMeta(data)
+                rt = ssruntime.SSRuntime(lib)
+                rt.load_ssab_bytes(data)
+            except Exception as e:  # noqa: BLE001 — any refusal is the finding
+                failures.append(f"{pack}/{name}: {e}")
+            finally:
+                if rt is not None:
+                    rt.close()
+    return checked, failures
+
+
 def preflight() -> list[str]:
     """Return the reasons the suite cannot run yet — empty when it can."""
     problems: list[str] = []
 
     try:
-        from ss_renpy import ssruntime_native
-        lib = ssruntime_native.default_library_path()
+        from ss_renpy import ssruntime, ssruntime_native
+        lib_path = ssruntime_native.default_library_path()
     except Exception as e:  # noqa: BLE001 — a broken import is a preflight failure
         return [f"ss_renpy did not import ({e}) — is game/spritestudio/python intact?"]
-    if not os.path.exists(lib):
+    lib = None
+    if not os.path.exists(lib_path):
         problems.append(
-            f"the Brain is not built: {os.path.relpath(lib, _ROOT)} is missing\n"
+            f"the Brain is not built: {os.path.relpath(lib_path, _ROOT)} is missing\n"
             f"      -> {_script('build-runtime')}")
+    else:
+        try:
+            lib = ssruntime.load_library()
+        except Exception as e:  # noqa: BLE001 — what every tool would die on
+            problems.append(
+                f"the Brain does not load: {e}\n"
+                f"      -> {_script('build-runtime')}")
 
-    missing = [p for p in _REQUIRED_PACKS
-               if not os.path.isdir(os.path.join(_GAME, "ss_assets", p))]
+    present = [p for p in _REQUIRED_PACKS
+               if os.path.isdir(os.path.join(_GAME, "ss_assets", p))]
+    missing = [p for p in _REQUIRED_PACKS if p not in present]
     if missing:
         problems.append(
             f"playback data is not deployed: game/ss_assets/{{{','.join(missing)}}}\n"
             f"      -> {_script('deploy-examples')}")
+    if lib is not None and present:
+        checked, failures = _unbindable(ssruntime, lib, present)
+        if failures:
+            shown = "\n        ".join(failures[:3])
+            more = (f"\n        ... and {len(failures) - 3} more"
+                    if len(failures) > 3 else "")
+            problems.append(
+                f"playback data is stale: {len(failures)} of {checked} packs "
+                f"under game/ss_assets/ will not bind\n        {shown}{more}\n"
+                f"      -> {_script('deploy-examples')}")
     return problems
 
 
@@ -146,7 +197,8 @@ def main(argv: list[str]) -> int:
         print("run_tests.py: the suite cannot run yet.\n")
         for p in problems:
             print(f"  !!  {p}")
-        print("\nBoth outputs are gitignored, so a fresh clone always needs them.")
+        print("\nBoth outputs are gitignored, so a fresh clone always needs them,"
+              "\nand an SDK bump can leave either behind the bindings.")
         return 2
 
     print(f"== headless suite: {len(tools)} tool{'s' if len(tools) != 1 else ''} "

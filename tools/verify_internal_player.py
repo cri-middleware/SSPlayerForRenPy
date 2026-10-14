@@ -394,7 +394,7 @@ def check_restore_state(lib) -> bool:
     p.close()
     if saved is None:
         print("    FAIL: 'attack1' never finished under set_loop_count(1)"); return False
-    # What the host's _playback_state() reads to classify it as "stopped".
+    # What host_state.playback_state() reads to classify it as "stopped".
     if not finished_state or still_playing:
         print(f"    FAIL: a completed one-shot should read is_finished=True / "
               f"is_playing=False, got {finished_state}/{still_playing}"); ok = False

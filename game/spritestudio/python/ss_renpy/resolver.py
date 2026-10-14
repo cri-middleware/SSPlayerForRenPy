@@ -1,12 +1,10 @@
 """Resolve a bare ``.ssab`` short name to its gamedir-relative path (no renpy).
 
-Lets a caller write ``SSPlayer("Ringo")`` instead of the full
-``"ss_assets/Ringo/Ringo.ssab"``. We scan the asset roots for ``.ssab`` files
-and match by file stem — keying off the *output* packs (not the ``.sspj``
-import pipeline), so this works identically for auto-imported and hand-dropped
-packs. Explicit paths (anything containing ``/`` or ending in ``.ssab``) never
-reach here: the displayable uses them verbatim, so existing code is unaffected
-and pays no scan cost.
+Lets the asset browser and ``ss_list_assets()`` name a pack ``"Ringo"`` rather
+than ``"ss_assets/Ringo/Ringo.ssab"``. ``SSPlayer`` itself takes the path and
+never consults this. We scan the asset roots for ``.ssab`` files and match by
+file stem — keying off the *output* packs (not the ``.sspj`` import pipeline),
+so this works identically for auto-imported and hand-dropped packs.
 
 Pure CPython: the engine layer hands us ``gamedir`` + relative roots; we walk
 them with ``os`` and read animation names via :class:`SsabMeta`. A pack that is

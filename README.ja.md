@@ -51,7 +51,7 @@
 ```renpy
 # ゲームプロジェクト内で呼び出す例
 screen demo():
-    add SSPlayer("overall/Basic.ssab") xalign 0.5 yalign 0.5
+    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
 ```
 ※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
 

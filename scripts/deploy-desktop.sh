@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# Build a runnable desktop distribution of the SSPlayer demo for the HOST OS,
-# using Ren'Py's standard "Build Distributions". Unlike the Web target, the
-# desktop target needs NO post-export steps: the native "Brain" library under
+# Build a runnable desktop distribution of the SSPlayer demo, using Ren'Py's
+# standard "Build Distributions". Unlike the Web target, the desktop target
+# needs NO post-export steps: the native "Brain" library under
 # game/spritestudio/libs/ is bundled automatically and resolved at runtime.
 #
-# This .sh handles the Unix desktops; for a Windows .exe run deploy-desktop.ps1:
-#   macOS (Darwin) -> mac package   -> an unpacked, double-clickable <name>.app
-#   Linux          -> linux package -> an unpacked <name>-linux-x86_64/ folder
-#                                       (run its <name>.sh)
-#
-# The native library for the host platform must be present under
-# game/spritestudio/libs/ first (macos/libssruntime.framework on macOS,
-# linux/x86_64/libssruntime.so on Linux) — get it with
-# scripts/download-sdk.sh (prebuilt) or scripts/build-runtime.sh
-# (from source).
+# Each twin packages the OS it runs on, from that OS's native library, which
+# has to be under game/spritestudio/libs/ first:
+#   deploy-desktop.sh,  macOS:   mac package, an unpacked, double-clickable
+#                                <name>.app        (macos/libssruntime.framework)
+#   deploy-desktop.sh,  Linux:   linux package, an unpacked <name>-linux/
+#                                folder; run its <name>.sh (linux/x86_64/libssruntime.so)
+#   deploy-desktop.ps1, Windows: win package, an unpacked <name>-win/ folder
+#                                with <name>.exe   (windows/x86_64/ssruntime.dll)
+# Get the library with scripts/download-sdk.sh (prebuilt) or
+# scripts/build-runtime.sh (from source).
 #
 # Usage: scripts/deploy-desktop.sh [dest_dir]
 #   dest_dir : output folder (default: dist)
@@ -25,8 +25,18 @@ RENPY_SDK="$ROOT_DIR/renpy-sdk"
 LAUNCHER="$RENPY_SDK/launcher"
 LIBS="$ROOT_DIR/game/spritestudio/libs"
 
-DEST="${1:-dist}"
-case "$DEST" in -h|--help|help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+# --- parse args (one positional dest) ---------------------------------------
+# The help is the header comment, all of it.
+usage() { sed -n '2,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
+DEST=""
+for a in "$@"; do
+  case "$a" in
+    -h|--help|help) usage; exit 0 ;;
+    -*) echo "deploy-desktop.sh: unknown flag '$a'" >&2; exit 2 ;;
+    *) [ -z "$DEST" ] || { echo "deploy-desktop.sh: unexpected extra arg '$a'" >&2; exit 2; }; DEST="$a" ;;
+  esac
+done
+DEST="${DEST:-dist}"
 case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 
 # --- host platform -> Ren'Py package + the native lib it requires ---------

@@ -207,7 +207,8 @@ def build_subplayer(owner, part):
     (shared lib / rm / loader / texmap / base_dir) is delegated to
     :meth:`SSInternalPlayer.make_child`, keeping the owner's construction
     details out of this module. Returns ``None`` (caller skips the slot)
-    when the pack/animation can't resolve.
+    when the pack/animation can't resolve, and for a pack that would not load
+    or lacks the animation, says why in ``owner.instance_problems``.
     """
     ref_pack = part.ref_anime_pack
     ref_anim = part.ref_anime_name
@@ -221,10 +222,14 @@ def build_subplayer(owner, part):
     if not child_data:
         return None
 
-    child = owner.make_child(child_data)
+    what = "instance part %r (playing %s/%s) draws nothing" % (
+        part.name, ref_pack or owner._meta.name, ref_anim)
+    child = owner.make_child(child_data, what)
     if child is None:
         return None
     if not child.set_animation(ref_anim):
+        owner._problems.append("%s: that pack has no animation %r"
+                               % (what, ref_anim))
         child.close()
         return None
     return child

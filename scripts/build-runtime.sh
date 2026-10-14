@@ -2,14 +2,16 @@
 #
 # Build the native runtime libssruntime from the SpriteStudio-SDK and place it
 # in the library's per-platform/arch layout. Interface: platform=/arch=/build=
-# key=value arguments. For linux/windows DESKTOP we build
-# only the feature-enabled `ssruntime` cdylib directly (NOT via the SDK
-# release-*.sh, which also build the whole workspace + ssconverter — wasteful
-# here). macOS is the exception: it ships the Brain as a versioned, signable
-# libssruntime.framework (App Store / notarization want a .framework bundle, not
-# a bare dylib), so — like android/ios/web — it DOES delegate to the SDK's
-# release-macos.sh, which builds the universal slices and wraps + codesigns the
-# framework. (That path is always universal; no fast single-arch host build.)
+# key=value arguments, the same as build-runtime.ps1. For linux/windows DESKTOP
+# it builds just the two cdylibs it places -- ssruntime-ffi (feature-enabled)
+# and ssconverter-ffi -- with cargo directly, NOT via the SDK's release-*
+# scripts, which build the whole workspace (and release-windows*.ps1 always in
+# release, whatever build= says). macOS is the exception: it ships the Brain as
+# a versioned, signable libssruntime.framework (App Store / notarization want a
+# .framework bundle, not a bare dylib), so -- like android/ios/web -- it DOES
+# delegate to the SDK's release-macos.sh, which builds the universal slices and
+# wraps + codesigns the framework. (That path is always universal; no fast
+# single-arch host build.)
 #
 #   game/spritestudio/libs/
 #     macos/libssruntime.framework             (universal arm64+x86_64; + libssconverter.dylib)
@@ -52,6 +54,16 @@ for item in "$@"; do
     *) echo "build-runtime.sh: unknown arg '$item'" >&2; usage; exit 2 ;;
   esac
 done
+# Checked before anything is written: libs/VERSION is stamped below, and a typo
+# should not cost the libraries already in place their version.
+case "$PLATFORM" in
+  windows|macos|linux|android|ios|web) ;;
+  *) echo "build-runtime.sh: unknown platform '$PLATFORM'" >&2; exit 2 ;;
+esac
+case "$BUILD_MODE" in
+  debug|release) ;;
+  *) echo "build-runtime.sh: build must be debug or release (got '$BUILD_MODE')" >&2; exit 2 ;;
+esac
 
 # --- locate the SDK -------------------------------------------------------
 SDK_DIR="${SSSDK:-}"
@@ -159,6 +171,5 @@ case "$PLATFORM" in
     mkdir -p "$LIB_ROOT/web"
     cp -R "$SDK_DIR/pkg/runtime-web/$BUILD_MODE/"* "$LIB_ROOT/web/"
     echo "   -> game/spritestudio/libs/web/" ;;
-  *) echo "build-runtime.sh: unknown platform '$PLATFORM'" >&2; exit 2 ;;
 esac
 echo "build-runtime.sh: done."

@@ -44,6 +44,26 @@ $app = Split-Path -Leaf $PSCommandPath
 $rootDirectory = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $packageDirectory = "$rootDirectory/game/spritestudio"
 
+# Plain stderr and the code, matching the .sh twin (2 = bad usage, 1 = the
+# release cannot be built). Write-Error throws under $ErrorActionPreference =
+# "Stop", so an `exit 2` after one never runs and the shell always sees 1.
+function Fail([string] $Message, [int] $Code = 1) {
+    [Console]::Error.WriteLine("${app}: $Message")
+    exit $Code
+}
+
+# $ErrorActionPreference does not cover native commands, nor a child script
+# that ends with `exit <n>`: both only set $LASTEXITCODE. Every one is checked,
+# as `set -e` does in the .sh twin.
+function Assert-Exit([string] $What) {
+    if ($LASTEXITCODE -ne 0) { Fail "$What failed ($LASTEXITCODE)" }
+}
+function Invoke-Script([string] $Name, [string[]] $ScriptArgs = @()) {
+    $global:LASTEXITCODE = 0
+    & "$rootDirectory/scripts/$Name" @ScriptArgs
+    Assert-Exit $Name
+}
+
 # --- options ---------------------------------------------------------------
 
 $out = "release-dist"
@@ -55,65 +75,65 @@ $clean = "yes"
 function Show-Usage {
     Write-Host "Usage: $app [options]"
     Write-Host "$app options:"
-    Write-Host "  out=<dir>               Where the zips and SHA256SUMS land (default:"
-    Write-Host "                          release-dist). Relative paths resolve against the"
-    Write-Host "                          current directory."
+    Write-Host "  out=<dir>               Where the zips and SHA256SUMS land (default: $out)."
+    Write-Host "                          Relative paths resolve against the current directory."
     Write-Host "  sdk=<download|build|skip>"
     Write-Host "                          Where the SpriteStudio SDK libs come from (default:"
-    Write-Host "                          download). download = download-sdk.ps1, the version"
-    Write-Host "                          pinned by scripts/SDK_VERSION.txt (what CI uses)."
-    Write-Host "                          build = build-runtime.ps1, from the submodule sources"
-    Write-Host "                          -- this host's platform only, so never a release."
-    Write-Host "                          skip = use game/spritestudio/libs/ as it stands."
-    Write-Host "  demo=<build|skip>       Whether to build the Web demo (default: build)."
+    Write-Host "                          $sdk). download = download-sdk.ps1, the release"
+    Write-Host "                          pinned by scripts/SDK_VERSION.txt (release.yml's"
+    Write-Host "                          choice). build = build-runtime.ps1, from the submodule"
+    Write-Host "                          sources -- this host's platform only, so never a"
+    Write-Host "                          release. skip = use game/spritestudio/libs/ as it"
+    Write-Host "                          stands."
+    Write-Host "  demo=<build|skip>       Whether to build the Web demo (default: $demo)."
     Write-Host "                          build fetches the Ren'Py SDK and runs the Web export,"
     Write-Host "                          which is most of the wall clock here. skip leaves the"
     Write-Host "                          demo out -- fine while iterating on the plugin zip,"
     Write-Host "                          never for a release: pages.yml publishes the demo by"
     Write-Host "                          downloading it off the Release."
-    Write-Host "  verify=<yes|no>         Re-open the finished zips and check them (default: yes)."
-    Write-Host "  clean=<yes|no>          Delete <out> before building (default: yes)."
-        Write-Host "  in= skip=               Accepted and ignored here. The family's build-release"
+    Write-Host "  verify=<yes|no>         Re-open the finished zips and check them (default:"
+    Write-Host "                          $verify)."
+    Write-Host "  clean=<yes|no>          Delete <out> before building (default: $clean)."
+    Write-Host "  in= skip=               Accepted and ignored here. The family's build-release"
     Write-Host "                          scripts share out= clean= verify= in= sdk= skip=,"
     Write-Host "                          so one command line drives all of them."
-Write-Host "  -h | --help             Show this help"
+    Write-Host "  -h | --help             Show this help"
     Write-Host ""
     Write-Host "Output: <out>/ holds SSPlayerForRenPy-<version>.zip, the Web demo zip, the"
     Write-Host "version-less alias of each (the stable releases/latest/download/ names the"
     Write-Host "README, the docs and pages.yml use), and SHA256SUMS over all four."
     Write-Host ""
     Write-Host "There is no option for which release this is: the tag comes from the checkout"
-    Write-Host "this runs in, and it must match __version__."
+    Write-Host "this runs in (the ref the workflow was dispatched from, or 'git checkout <tag>'"
+    Write-Host "locally), and it must match __version__."
 }
 
+# Case-sensitive, and `continue` after a match (switch -Regex runs every case
+# that matches), so an argument means here what it means to the .sh twin.
 foreach ($argument in $Arguments) {
-    switch -Regex ($argument) {
+    switch -Regex -CaseSensitive ($argument) {
         '^(-h|--help|help)$' { Show-Usage; exit 0 }
         # Lower-cased where the option is a keyword; out= is a path.
-        '^out='    { $out = $argument.Substring(4) }
-        '^sdk='    { $sdk = $argument.Substring(4).ToLower() }
-        '^demo='   { $demo = $argument.Substring(5).ToLower() }
-        '^verify=' { $verify = $argument.Substring(7).ToLower() }
-        '^clean='  { $clean = $argument.Substring(6).ToLower() }
+        '^out='    { $out = $argument.Substring(4); continue }
+        '^sdk='    { $sdk = $argument.Substring(4).ToLower(); continue }
+        '^demo='   { $demo = $argument.Substring(5).ToLower(); continue }
+        '^verify=' { $verify = $argument.Substring(7).ToLower(); continue }
+        '^clean='  { $clean = $argument.Substring(6).ToLower(); continue }
         # Accepted so one command line drives build-release in every repository
         # of the family; this one has no use for them.
         '^(in|skip)=' {
             [Console]::Error.WriteLine("${app}: " + ($argument -replace '=.*$', '') + "= does not apply here; ignored")
+            continue
         }
-        default {
-            # Plain stderr and the code, matching the .sh twin (2 = bad usage).
-            # Write-Error throws under $ErrorActionPreference = "Stop", so an
-            # `exit 2` after one never runs and the shell sees 1.
-            [Console]::Error.WriteLine("${app}: unknown argument '$argument' (options are key=value; see $app --help)")
-            exit 2
-        }
+        '=' { Fail "unknown option '$($argument -replace '=.*$', '')' (see $app --help)" 2 }
+        default { Fail "unknown argument '$argument' (options are key=value; see $app --help)" 2 }
     }
 }
 
-if ($sdk    -notin @("download", "build", "skip")) { Write-Error "${app}: sdk must be download, build or skip (got '$sdk')" }
-if ($demo   -notin @("build", "skip"))             { Write-Error "${app}: demo must be build or skip (got '$demo')" }
-if ($verify -notin @("yes", "no"))                 { Write-Error "${app}: verify must be yes or no (got '$verify')" }
-if ($clean  -notin @("yes", "no"))                 { Write-Error "${app}: clean must be yes or no (got '$clean')" }
+if ($sdk    -notin @("download", "build", "skip")) { Fail "sdk must be download, build or skip (got '$sdk')" 2 }
+if ($demo   -notin @("build", "skip"))             { Fail "demo must be build or skip (got '$demo')" 2 }
+if ($verify -notin @("yes", "no"))                 { Fail "verify must be yes or no (got '$verify')" 2 }
+if ($clean  -notin @("yes", "no"))                 { Fail "clean must be yes or no (got '$clean')" 2 }
 
 # GetFullPath(path, basePath) rather than Join-Path: Join-Path concatenates
 # unconditionally, so an out= that is already absolute would be appended to the
@@ -123,13 +143,15 @@ $out = [System.IO.Path]::GetFullPath($out, (Get-Location).Path)
 $rootFull = [System.IO.Path]::GetFullPath($rootDirectory)
 $packageFull = [System.IO.Path]::GetFullPath($packageDirectory)
 if (($out -eq $rootFull) -or ($out -eq $packageFull) -or ($out -eq [System.IO.Path]::GetPathRoot($out))) {
-    Write-Error "${app}: refusing to use '$out' as out= (it is deleted when clean=yes)"
+    Fail "refusing to use '$out' as out= (it is deleted when clean=yes)" 2
 }
 
 Set-Location $rootDirectory
 
 # --- what this release is called -------------------------------------------
-$version = (& "$rootDirectory/scripts/release-version.ps1").Trim()
+$global:LASTEXITCODE = 0
+$version = "$(& "$rootDirectory/scripts/release-version.ps1")".Trim()
+Assert-Exit "release-version.ps1"
 $manifestTag = "v$version"
 
 if (($env:GITHUB_REF_TYPE -eq "tag") -and $env:GITHUB_REF_NAME) {
@@ -168,21 +190,25 @@ Write-Host "              ($tagSource)"
 # Release would be called one thing and carry a zip called another, and the
 # version inside the drop-in folder a creator ends up with is the zip's.
 if ($tag -and ($tag -ne $manifestTag)) {
-    Write-Host ""
-    Write-Error "${app}: tag $tag does not match __version__ ($manifestTag). Bump ss_renpy.__version__, or retag -- the assets would be named $artifact."
+    [Console]::Error.WriteLine("")
+    [Console]::Error.WriteLine("${app}: tag $tag does not match __version__ ($manifestTag).")
+    Fail "bump ss_renpy.__version__, or retag -- the assets would be named $artifact."
 }
 
 # --- preflight -------------------------------------------------------------
 
 if (-not (Test-Path -PathType Container $packageDirectory)) {
-    Write-Error "${app}: game/spritestudio not found -- is this the SSPlayerForRenPy repo?"
+    Fail "game/spritestudio not found -- is this the SSPlayerForRenPy repo?"
 }
 
 # `zip` rather than Compress-Archive: -y stores symlinks rather than following
 # them, which Compress-Archive cannot do at all, and the macOS framework depends
-# on it. Same tool as the .sh twin, so the two archives match.
-if (-not (Get-Command zip -ErrorAction SilentlyContinue)) {
-    Write-Error "${app}: zip not found -- it is what packages the archives, and Compress-Archive cannot store the symlinks the macOS framework needs. Install it, or run scripts/build-release.sh."
+# on it. `unzip` for the verify step, for the same reason. The same tools as the
+# .sh twin, so the two archives match.
+foreach ($tool in @("zip", "unzip")) {
+    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+        Fail "$tool not found -- it is what packages the archives, and Compress-Archive / Expand-Archive cannot handle the symlinks the macOS framework needs. Install it, or run scripts/build-release.sh."
+    }
 }
 
 # Get-FileHash returns an upper-case hash; sha256sum writes lower-case. Emit the
@@ -203,18 +229,19 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 # --- the native libraries --------------------------------------------------
 if ($sdk -eq "download") {
     Write-Step "installing the pinned SDK native libraries"
-    & "$rootDirectory/scripts/download-sdk.ps1"
+    Invoke-Script "download-sdk.ps1"
 } elseif ($sdk -eq "build") {
     Write-Step "building the SDK native libraries from source (THIS HOST ONLY)"
     Write-Host "   Other platforms are left as they were, so what lands in the zip is"
     Write-Host "   whatever is in game/spritestudio/libs. Never a release."
-    & "$rootDirectory/scripts/build-runtime.ps1"
+    Invoke-Script "build-runtime.ps1"
 } else {
     Write-Step "sdk=skip -- keeping game/spritestudio/libs as it stands"
 }
 
 if (-not (Test-Path "$packageDirectory/libs/VERSION")) {
-    Write-Error "${app}: game/spritestudio/libs/VERSION is missing -- the SDK libs are not installed. Run scripts/download-sdk.ps1, or pass sdk=download"
+    [Console]::Error.WriteLine("${app}: game/spritestudio/libs/VERSION is missing -- the SDK libs are not installed")
+    Fail "run scripts/download-sdk.ps1, or pass sdk=download"
 }
 Write-Host "   libs/VERSION => $((Get-Content "$packageDirectory/libs/VERSION").Trim())"
 
@@ -256,6 +283,7 @@ try {
     Push-Location "$rootDirectory/game"
     try {
         & zip -qr -X -y "$out/$artifact" spritestudio -x '*.rpyc' '*/__pycache__/*' '*/.DS_Store'
+        Assert-Exit "zip ($artifact)"
     } finally { Pop-Location }
 } finally {
     Remove-Item -Force -ErrorAction SilentlyContinue "$packageDirectory/LICENSE.md", "$packageDirectory/LICENSE.ja.md", "$packageDirectory/THIRD_PARTY_NOTICES.md", "$packageDirectory/README.md"
@@ -272,12 +300,15 @@ if ($demo -eq "build") {
     # The Ren'Py SDK plus its Web support, then the animation data the demo
     # plays, then the export itself. deploy-examples must run before deploy-web:
     # the exporter packs game/ as it stands.
-    & "$rootDirectory/scripts/fetch-renpy-sdk.ps1"
-    & "$rootDirectory/scripts/fetch-renpy-web.ps1"
-    & "$rootDirectory/scripts/deploy-examples.ps1"
-    & "$rootDirectory/scripts/deploy-web.ps1" web_out
+    Invoke-Script "fetch-renpy-sdk.ps1"
+    Invoke-Script "fetch-renpy-web.ps1"
+    Invoke-Script "deploy-examples.ps1"
+    Invoke-Script "deploy-web.ps1" @("web_out")
     Push-Location "$rootDirectory/web_out"
-    try { & zip -qr -X "$out/$demoZip" . -x '*/.DS_Store' } finally { Pop-Location }
+    try {
+        & zip -qr -X "$out/$demoZip" . -x '*/.DS_Store'
+        Assert-Exit "zip ($demoZip)"
+    } finally { Pop-Location }
     Copy-Item -Force "$out/$demoZip" "$out/$demoAlias"
     Write-Host "   $demoZip"
     Write-Host "   $demoAlias  (stable name pages.yml downloads)"
@@ -310,6 +341,7 @@ if ($verify -eq "yes") {
     if (Test-Path $check) { Remove-Item -Recurse -Force $check }
     New-Item -ItemType Directory -Force -Path $check | Out-Null
     & unzip -qq "$out/$artifact" -d $check
+    Assert-Exit "unzip ($artifact)"
 
     $framework = "$check/spritestudio/libs/macos/libssruntime.framework"
     if (-not (Test-Path -PathType Container $framework)) {
@@ -359,6 +391,7 @@ if ($verify -eq "yes") {
     # Compiled bytecode and caches are excluded on purpose: .rpyc files built
     # against this Ren'Py would be stale in a creator's project.
     $entries = & unzip -Z1 "$out/$artifact"
+    Assert-Exit "unzip -Z1 ($artifact)"
     if ($entries | Where-Object { $_ -match '\.rpyc$|/__pycache__/' }) {
         $failed.Add("$artifact contains .rpyc or __pycache__ (the -x patterns did not hold)")
     }
@@ -367,6 +400,7 @@ if ($verify -eq "yes") {
 
     if ($demo -eq "build") {
         $demoEntries = & unzip -Z1 "$out/$demoZip"
+        Assert-Exit "unzip -Z1 ($demoZip)"
         foreach ($f in @("index.html", "game.zip")) {
             if ($demoEntries -notcontains $f) { $failed.Add("$demoZip has no $f") }
         }
@@ -377,6 +411,7 @@ if ($verify -eq "yes") {
         & unzip -q "$out/$demoZip" game.zip -d $demoCheck
         if ($LASTEXITCODE -eq 0) {
             $gameEntries = & unzip -Z1 "$demoCheck/game.zip"
+            Assert-Exit "unzip -Z1 (game.zip)"
             foreach ($f in @("ssruntime.js", "ssruntime_bg.wasm")) {
                 if ($gameEntries -notcontains "game/spritestudio/libs/web/$f") {
                     $failed.Add("${demoZip}: game.zip has no spritestudio/libs/web/$f")
@@ -411,8 +446,8 @@ if ($verify -eq "yes") {
     }
 
     if ($failed.Count -gt 0) {
-        Write-Host ""
-        Write-Error "${app}: the release in $out is not shippable:`n  $($failed -join "`n  ")"
+        [Console]::Error.WriteLine("")
+        Fail "the release in $out is not shippable:`n  $($failed -join "`n  ")"
     }
     Write-Host "   aliases identical, SHA256SUMS verified"
     Write-Host "   all checks passed"

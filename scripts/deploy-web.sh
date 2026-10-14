@@ -17,8 +17,18 @@ RENPY_SDK="$ROOT_DIR/renpy-sdk"
 LAUNCHER="$RENPY_SDK/launcher"
 WEB_ASSETS="$ROOT_DIR/game/spritestudio/libs/web"
 
-DEST="${1:-web_out}"
-case "$DEST" in -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+# --- parse args (one positional dest) ---------------------------------------
+# The help is the header comment, all of it.
+usage() { sed -n '2,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
+DEST=""
+for a in "$@"; do
+  case "$a" in
+    -h|--help|help) usage; exit 0 ;;
+    -*) echo "deploy-web.sh: unknown flag '$a'" >&2; exit 2 ;;
+    *) [ -z "$DEST" ] || { echo "deploy-web.sh: unexpected extra arg '$a'" >&2; exit 2; }; DEST="$a" ;;
+  esac
+done
+DEST="${DEST:-web_out}"
 case "$DEST" in /*) : ;; *) DEST="$ROOT_DIR/$DEST" ;; esac   # absolutise
 
 # --- prerequisites --------------------------------------------------------

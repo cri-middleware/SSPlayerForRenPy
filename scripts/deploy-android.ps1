@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 #
-# Build a signed Android package (APK by default, or an AAB with -Bundle) of the
+# Build a signed Android package (APK by default, or an AAB with --bundle) of the
 # SSPlayer demo using Ren'Py's RAPT toolchain (launcher android_build). The native
 # "Brain" .so must land in the APK's lib\<abi>\ (jniLibs) — the only place Android's
 # linker will dlopen from — so this script stages game\spritestudio\libs\android\<abi>\
@@ -15,20 +15,11 @@
 #   * Generate Keys: creates android.keystore (+ bundle.keystore) used to sign
 # RAPT itself (the packaging tool) is fetched by scripts\fetch-renpy-android.ps1.
 #
-# Usage: scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+# Usage: scripts\deploy-android.ps1 [dest_dir] [--bundle] [--install] [--launch]
 #   dest_dir  : output folder (default: dist)
-#   -Bundle   : build an .aab App Bundle (Play upload) instead of a Universal .apk
-#   -Install  : adb-install onto a connected device after the build
-#   -Launch   : install then launch on the device (implies -Install)
-
-[CmdletBinding()]
-param(
-    [string]$Dest = "dist",
-    [switch]$Bundle,
-    [switch]$Install,
-    [switch]$Launch,
-    [switch]$Help
-)
+#   --bundle  : build an .aab App Bundle (Play upload) instead of a Universal .apk
+#   --install : adb-install onto a connected device after the build
+#   --launch  : install then launch on the device (implies --install)
 
 $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
@@ -37,10 +28,34 @@ $Launcher = Join-Path $RenpySdk "launcher"
 $Rapt = Join-Path $RenpySdk "rapt"
 $Libs = Join-Path $RootDir "game/spritestudio/libs"
 
-if ($Help) {
-    Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
-    exit 0
+# The help is the header comment, all of it, as the .sh twin prints it.
+function Show-Usage {
+    foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 1)) {
+        if ($line -notmatch '^#') { break }
+        $line -replace '^# ?', ''
+    }
 }
+
+# --- parse args (one positional dest + passthrough flags) -----------------
+# Spelled as the .sh twin spells them, and unknown flags refused the same way:
+# a param() block would bind a bare `help` or `--bundle` to the destination.
+# -Bundle / -Install / -Launch / -Help, this script's own spelling before, are
+# still accepted.
+$Dest = ""; $Bundle = $false; $Pass = @()
+foreach ($a in $args) {
+    switch -Regex -CaseSensitive ($a) {
+        '^(-h|--help|help|-(?i:help))$' { Show-Usage; exit 0 }
+        '^(--bundle|-(?i:bundle))$'   { $Bundle = $true; $Pass += "--bundle"; continue }
+        '^(--install|-(?i:install))$' { $Pass += "--install"; continue }
+        '^(--launch|-(?i:launch))$'   { $Pass += "--launch"; continue }
+        '^-' { [Console]::Error.WriteLine("deploy-android.ps1: unknown flag '$a'"); exit 2 }
+        default {
+            if ($Dest) { [Console]::Error.WriteLine("deploy-android.ps1: unexpected extra arg '$a'"); exit 2 }
+            $Dest = $a
+        }
+    }
+}
+if (-not $Dest) { $Dest = "dist" }
 if (-not [System.IO.Path]::IsPathRooted($Dest)) { $Dest = Join-Path $RootDir $Dest }
 
 # --- prerequisites --------------------------------------------------------
@@ -75,7 +90,7 @@ deploy-android.ps1: Android SDK not installed (no renpy-sdk\rapt\Sdk\platform-to
 "@
     exit 1
 }
-# Signing keys (android.keystore in the project root; bundle.keystore for -Bundle)
+# Signing keys (android.keystore in the project root; bundle.keystore for --bundle)
 if ((-not (Test-Path (Join-Path $RootDir "android.keystore"))) -or ($Bundle -and -not (Test-Path (Join-Path $RootDir "bundle.keystore")))) {
     $need = if ($Bundle) { "android.keystore + bundle.keystore" } else { "android.keystore" }
     Write-Error @"
@@ -130,10 +145,6 @@ foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64")) {
 }
 
 # --- build ----------------------------------------------------------------
-$Pass = @()
-if ($Bundle)  { $Pass += "--bundle" }
-if ($Install) { $Pass += "--install" }
-if ($Launch)  { $Pass += "--launch" }
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 $kind = if ($Bundle) { "App Bundle (.aab)" } else { "package (.apk)" }
 Write-Host ">> building Android $kind -> $Dest"
@@ -148,7 +159,7 @@ if ($Out) {
     $Adb = Join-Path $Rapt "Sdk/platform-tools/adb.exe"
     Write-Host "deploy-android.ps1: done -> $($Out.FullName)"
     Write-Host "  Install on a connected device:  & `"$Adb`" install -r `"$($Out.FullName)`""
-    Write-Host "  (or re-run with -Install / -Launch to have RAPT do it.)"
+    Write-Host "  (or re-run with --install / --launch to have RAPT do it.)"
 } else {
     Write-Error "deploy-android.ps1: build finished but no .apk/.aab found in $Dest — inspect the output above."
     exit 1

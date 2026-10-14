@@ -111,7 +111,7 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver, mask
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver, mask, host_state
     from ss_renpy.effect import EffectRig
     from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
@@ -1135,7 +1135,8 @@ init -10 python:
             if predicting:
                 renpy.display.predict.predicting = True
 
-    # Instance packs already reported missing: said once, not by every player.
+    # Instance packs already reported missing, and Instance parts already
+    # reported unbuilt: said once, not by every player.
     _SS_MISSING_PACKS = set()
 
     def _ss_renpy_pack_reader(base_rel):
@@ -1417,10 +1418,19 @@ init -10 python:
             # The current frame + loop count to restore on rollback/reshow, plus
             # whether playback was live at that point ("playing" / "paused" /
             # "stopped"): restoring a paused, stopped or naturally finished
-            # player must NOT silently resume it (see _ensure / _playback_state).
+            # player must NOT silently resume it (see host_state.restore).
             self._saved_frame = -1.0
             self._saved_loop = self._initial_loop
-            self._saved_state = "playing"
+            self._saved_state = host_state.PLAYING
+            # The playback section the game set on the current animation, as
+            # (start, end), or None. The Brain resets it on every animation
+            # change, so this goes back to None with each one; a rebuilt core
+            # would lose it altogether, so _ensure puts it back.
+            self._section = None
+            # The frame-rate override (ss_set_frame_rate), or None for none set.
+            # The Brain keeps it across animation changes, but not across a
+            # rebuilt core.
+            self._frame_rate = None
             # Playback modes the Brain resets on every setup_animation and that
             # a rebuilt core would lose entirely: reverse / ping-pong, and frame
             # skipping (on by default, like `sub_frame` — both keep the runtime's
@@ -1435,7 +1445,7 @@ init -10 python:
             self._core = None       # ss_renpy.player.SSInternalPlayer
             self._rm = None         # RenPyResourceManager (Ren'Py texture cache)
             self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
-            self._last_st = None
+            self._clock = None      # host_state.ShowClock, made on first render
             self._idle = False       # the last render asked for no redraw
             self._warned = set()
             self._mask_white = None  # cached white tex0 for textureless writers
@@ -1467,14 +1477,13 @@ init -10 python:
             state["_core"] = None
             state["_rm"] = None
             state["_texpath"] = {}
-            state["_last_st"] = None
+            state["_clock"] = None              # st of this session's renders only
             state["_warned"] = set()
             state["_prewarm_pending"] = None   # GPU textures are gone too; re-warm
             state["_audio_preloaded"] = False  # core is rebuilt; preload re-runs
             state["_audio_channels_used"] = set()
             state["_xform_cache"] = {}         # pure render cache; rebuild lazily
             state["_box_rect"] = False         # re-read from the pack; see _canvas_box
-            state["_drawn_frame"] = None       # a frame number of this session only
             return state
 
         def after_setstate(self):
@@ -1483,6 +1492,10 @@ init -10 python:
             # script's ringo.ss_* calls never reach.
             if self.__dict__.get("_duplicatable") is True:
                 del self.__dict__["_duplicatable"]
+            # What the render clock was before _clock replaced it; always None
+            # in a save, and read by nothing now.
+            self.__dict__.pop("_last_st", None)
+            self.__dict__.pop("_drawn_frame", None)
 
         # -- equality: what lets a screen keep its player -------------------
         def __eq__(self, o):
@@ -1690,63 +1703,59 @@ init -10 python:
                 raise Exception(
                     "ss: cannot load .ssab %r — the pack data is invalid "
                     "(re-export it from the .sspj). [%s]" % (self.ssab, e))
+            # An Instance part whose pack would not load (a stale one) draws
+            # nothing while the rest plays on, as for a pack not found, so it
+            # is said the same way.
+            if config.developer:
+                for _msg in self._core.instance_problems:
+                    if (self.ssab, _msg) not in _SS_MISSING_PACKS:
+                        _SS_MISSING_PACKS.add((self.ssab, _msg))
+                        print("[SSPlayer] %s: %s" % (self.ssab, _msg))
 
-            # Frame skipping survives setup_animation, so it can go on now. So do
-            # the playback modes -- but this core is a fresh one with runtime
-            # defaults, so they still have to be put back once (below, after the
-            # restore, since set_animation would otherwise be the thing carrying
-            # a value that is not there yet).
-            if not getattr(self, "_frame_skip", True):
-                self._core.set_frame_skip_enabled(False)
+            # Frame skipping and the frame-rate override survive
+            # setup_animation, so they can go on now. So do the playback modes
+            # -- but this core is a fresh one with runtime defaults, so they
+            # still have to be put back once (below, after the restore, since
+            # set_animation would otherwise be the thing carrying a value that
+            # is not there yet).
+            host_state.apply_kept(self._core,
+                                  getattr(self, "_frame_skip", True),
+                                  getattr(self, "_frame_rate", None))
 
-            # If restoring from a saved state (e.g. after rollback unpickled this
-            # instance), restore the exact animation and frame.
-            if getattr(self, "_saved_frame", -1.0) >= 0.0:
-                core = self._core
-                core.set_speed_scale(self.speed)
-                # Loop count: use the value the core actually last ran with
-                # (snapshotted each frame in render()). This preserves a runtime
-                # ss_set_loop_count / ss_play(loop=...) across rollback — mirroring how
-                # speed is carried above — and already encodes the sequence rule
-                # (1 for a mid-chain clip, the request for the final one).
-                core.set_loop_count(getattr(self, "_saved_loop", self._initial_loop))
-                anim = getattr(self, "animation", None)
-                if not anim:
-                    anim = self._initial_animation
-                    if isinstance(anim, (list, tuple)) and anim:
-                        anim = anim[0]
-                if core.set_animation(anim):
-                    # Restore the *state* too, not just the head. A save written
-                    # before this existed has no _saved_state -> "playing",
-                    # i.e. the previous behaviour.
-                    state = getattr(self, "_saved_state", "playing")
-                    if state == "stopped":
-                        # Paused-forever: a stopped player, or a one-shot that
-                        # had already finished. Deliberately NO play() — that
-                        # would resume it, and for a finished one-shot it would
-                        # also re-arm the completion edge so on_animation_finished (and
-                        # sequence advance) fired a second time for the same
-                        # playthrough. set_animation left the head parked, so
-                        # seeking alone poses the saved frame.
-                        core.set_frame_no(self._saved_frame)
-                    else:
-                        # play() re-seeks to the section start, so seek to the
-                        # saved frame AFTER starting playback. Seeking first and
-                        # then play()ing would clobber the head back to frame 0
-                        # (i.e. the animation would still reset on rollback), and
-                        # update(0) on the first post-rollback render then poses
-                        # this exact frame.
-                        core.play()
-                        core.set_frame_no(self._saved_frame)
-                        if state == "paused":
-                            core.pause()
-                else:
-                    # Saved animation is gone (e.g. the pack changed since the
-                    # save) — fall back to a fresh start rather than leaving the
-                    # core with no animation set (a silently blank sprite).
+            # Starting the animation can fail -- a constructor animation the
+            # pack lacks -- and that is reported once, from here: the next
+            # render finds the core built and draws nothing. So the rest of
+            # the setup below runs first, or a game that recovers with
+            # ss_set_animation() would get a core without its playback modes,
+            # overrides or audio.
+            setup_error = None
+            try:
+                # Restoring from a saved state (a load, or a core dropped on
+                # pickling) puts back the exact animation, frame and state.
+                # The loop count is the one the core last ran with (recorded
+                # each frame in render()), so a runtime ss_set_loop_count /
+                # ss_play(loop=...) survives too. A save written before
+                # _saved_state existed restores as "playing", as it did then.
+                restored = False
+                if getattr(self, "_saved_frame", -1.0) >= 0.0:
+                    anim = getattr(self, "animation", None)
+                    if not anim:
+                        anim = self._initial_animation
+                        if isinstance(anim, (list, tuple)) and anim:
+                            anim = anim[0]
+                    restored = host_state.restore(
+                        self._core, anim, self.speed,
+                        getattr(self, "_saved_loop", self._initial_loop),
+                        self._saved_frame,
+                        getattr(self, "_saved_state", host_state.PLAYING),
+                        getattr(self, "_section", None))
+                if not restored:
+                    # Never shown, or the saved animation is gone (the pack
+                    # was re-exported since the save): start afresh rather
+                    # than leave the core with nothing set up.
                     self._start_initial()
-            else:
-                self._start_initial()
+            except Exception as e:
+                setup_error = e
 
             # Ren'Py drops the native core on pickling and rebuilds it with the
             # runtime defaults, so a reverse / ping-pong sprite needs its modes
@@ -1767,6 +1776,8 @@ init -10 python:
             # non-blocking hint ss_attach gives once the core is live.
             for _rec in self._attach_list():
                 self._warn_if_skinned_target(_rec["part"])
+            if setup_error is not None:
+                raise setup_error
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -1775,34 +1786,15 @@ init -10 python:
             host: for a list we play the first now and keep the rest in
             ``self._anim_queue``, advancing on each ``FramePlan.finished`` in
             render(). This mirrors the SSPlayerForGodot node owning chaining over
-            its SsInternalPlayer (the core itself has no notion of a queue)."""
-            core = self._core
-            core.set_speed_scale(self.speed)
-            anim = self._initial_animation
-            if isinstance(anim, (list, tuple)) and anim:
-                seq = list(anim)
-                first = seq.pop(0)
-                self._anim_queue = seq
-                core.set_loop_count(1 if seq else self._initial_loop)
-                ok = core.set_animation(first)
-            else:
-                self._anim_queue = []
-                core.set_loop_count(self._initial_loop)
-                ok = core.set_animation(anim)   # anim may be None -> first available
-            if not ok:
-                raise Exception(
-                    "ss: animation %r not found in %s (have: %s)"
-                    % (anim, self.ssab,
-                       ", ".join(core.animation_names()) or "(none)"))
-            if start_frame is not None and start_frame >= 0:
-                core.play(start_frame=start_frame)
-            else:
-                core.play()
-            if getattr(self, "_still", False):
-                # `show <tag> still`: held by pausing, which also stops the
-                # redraws — a speed of 0 would redraw the same frame every frame.
-                core.pause()
-            self.animation = core.current_animation
+            its SsInternalPlayer (the core itself has no notion of a queue).
+            `show <tag> still` is held by pausing; see host_state.start_initial."""
+            # The setup resets the section, whether or not it succeeds.
+            self._section = None
+            self._anim_queue = host_state.start_initial(
+                self._core, self._initial_animation, self._initial_loop,
+                self.speed, start_frame=start_frame,
+                still=getattr(self, "_still", False), pack=self.ssab)
+            self.animation = self._core.current_animation
 
         def _texture_path(self, thash):
             # Resolve via the core (which owns the cellmap → image map, merged
@@ -2090,34 +2082,15 @@ init -10 python:
                 if core.set_animation(cand):
                     core.play()
                     # As in ss_set_animation: the Brain dropped visibility +
-                    # non-Permanent overrides, so drop them from the record too.
+                    # non-Permanent overrides and the section, so drop them
+                    # from the record too.
                     self._prune_overrides_for_new_animation()
+                    self._section = None
                     return True
                 self._warn_once(("chain", cand),
                                 "sequence animation %r not found; skipped"
                                 % (cand,))
             return False
-
-        # -- rollback state snapshot ---------------------------------------
-        def _playback_state(self, core):
-            """``"playing"`` / ``"paused"`` / ``"stopped"`` for the rollback record.
-
-            Ren'Py pickles this displayable without the native core and rebuilds
-            it lazily, so whether playback was *live* has to be carried as plain
-            data alongside the frame — otherwise every restore resumes. A
-            naturally finished one-shot reads as "stopped": the Brain parks it on
-            the final frame with is_playing false,
-            and restoring it as playing would
-            re-fire the completion edge. Never raises — an unreadable state
-            degrades to the previous behaviour ("playing")."""
-            try:
-                if core.is_pausing():
-                    return "paused"
-                if core.is_finished() or not core.is_playing():
-                    return "stopped"
-            except Exception:
-                pass
-            return "playing"
 
         def _canvas_box(self):
             """The authored canvas of `_box_anim` as (x, y, w, h), origin-relative
@@ -2138,17 +2111,19 @@ init -10 python:
             # One player can be drawn from several places at once — every
             # particle of a SnowBlossom, or `show expression ringo` under two
             # tags — and each place hands it its own st. Only the first render
-            # of a frame moves the animation; the others draw that same frame.
-            # Otherwise each later st, being smaller, reads as a re-show and
-            # restarts the animation on every frame.
-            frame = renpy.config.frames
-            again = getattr(self, "_drawn_frame", None) == frame
-            self._drawn_frame = frame
+            # of a frame moves the animation, by how far its place moved on;
+            # the others draw that same frame. A render no place from the last
+            # frame accounts for is a re-show. See host_state.ShowClock.
+            clock = getattr(self, "_clock", None)
+            if clock is None:
+                clock = self._clock = host_state.ShowClock()
+            dt = clock.advance(renpy.config.frames, st)
+            again = dt is None
 
-            # Detect re-show (time went backwards) -> restart from the top
-            # (resets the animation sequence too).
+            # Re-show -> restart from the top (resets the animation sequence
+            # too).
             core = self._core
-            if not again and self._last_st is not None and st < self._last_st:
+            if clock.reshown:
                 self._saved_frame = -1.0
                 self._start_initial(start_frame=0)
                 # A re-show restarts the animation, and that setup_animation
@@ -2169,11 +2144,8 @@ init -10 python:
             # on, so the render that wakes it (ss_play, ss_resume, a crossfade
             # from a finished animation) must not hand the runtime that gap:
             # the playhead would jump, and a fade would be over in one frame.
-            idle = getattr(self, "_idle", False)
-            dt = 0.0 if (again or idle or self._last_st is None) \
-                else max(0.0, st - self._last_st)
-            if not again:
-                self._last_st = st
+            if again or getattr(self, "_idle", False):
+                dt = 0.0
             # Advance the engine-independent core (it takes milliseconds) and get
             # this frame's z-ordered, world-space draw plan.
             _tg = time.perf_counter() if SS_PROFILE else 0.0
@@ -2203,7 +2175,7 @@ init -10 python:
             # `plan` so a degraded (exception) frame still records the true head.
             self._saved_frame = core.frame_no
             self._saved_loop = core.loop_count
-            self._saved_state = self._playback_state(core)
+            self._saved_state = host_state.playback_state(core)
 
             _draw = 0.0
             # The box Ren'Py lays us out by, and where the animation's origin
@@ -3089,8 +3061,9 @@ init -10 python:
                 return False
             self._loop_after_switch()
             # setup_animation dropped the Brain's visibility + non-Permanent
-            # overrides; keep our restore record in step with it.
+            # overrides and the section; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
+            self._section = None
             self.animation = self._core.current_animation
             renpy.redraw(self, 0)
             return True
@@ -3138,22 +3111,25 @@ init -10 python:
             self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
 
+        # These act on the playback itself, so like ss_play they build the core
+        # first: a player not drawn yet (or since a load) has none, and the
+        # call would otherwise be lost.
         def ss_pause(self):
-            if self._core:
-                self._core.pause()
+            self._ensure()
+            self._core.pause()
 
         def ss_resume(self):
-            if self._core:
-                self._core.resume()
-                renpy.redraw(self, 0)
+            self._ensure()
+            self._core.resume()
+            renpy.redraw(self, 0)
 
         def ss_stop(self):
-            if self._core:
-                self._core.stop()
-                # stop() does not rewind -- the head stays where it stands -- but
-                # the stopped frame still has to reach the screen, so re-arm in
-                # case the loop had gone quiescent.
-                renpy.redraw(self, 0)
+            self._ensure()
+            self._core.stop()
+            # stop() does not rewind -- the head stays where it stands -- but
+            # the stopped frame still has to reach the screen, so re-arm in
+            # case the loop had gone quiescent.
+            renpy.redraw(self, 0)
             # The sound it started is deliberately left alone: what has begun
             # sounding outlives the playback that triggered it, and SpriteStudio
             # has no infinite loop, so it ends on its own. `ss_stop_audio()` is
@@ -3196,9 +3172,9 @@ init -10 python:
             return self._core.frame_no if self._core else 0.0
 
         def ss_set_frame_no(self, frame):
-            if self._core:
-                self._core.set_frame_no(frame)
-                renpy.redraw(self, 0)
+            self._ensure()
+            self._core.set_frame_no(frame)
+            renpy.redraw(self, 0)
 
         def ss_total_frames(self):
             return self._core.total_frames if self._core else 0
@@ -3242,9 +3218,16 @@ init -10 python:
             return self.loop
 
         def ss_set_animation_section(self, start, end):
-            if self._core:
-                self._core.set_animation_section(start, end)
-                renpy.redraw(self, 0)
+            """Play only frames ``start``..``end`` of the current animation.
+
+            It belongs to that animation: the next animation change (an
+            ss_set_animation, a sequence moving on, a crossfade on track 0)
+            plays the whole of the new one. Kept on the displayable too, so a
+            load puts it back."""
+            self._ensure()
+            self._core.set_animation_section(start, end)
+            self._section = (int(start), int(end))
+            renpy.redraw(self, 0)
 
         def _apply_playback_modes(self):
             """Push the recorded direction / ping-pong style onto the core.
@@ -3306,6 +3289,11 @@ init -10 python:
                     else getattr(self, "_frame_skip", True))
 
         def ss_set_frame_rate(self, fps):
+            """Play at ``fps`` whatever the animation's own rate; 0 clears it.
+
+            Recorded like the speed, since Ren'Py drops the native core on
+            pickling and the rebuilt one starts without it."""
+            self._frame_rate = fps
             if self._core:
                 self._core.set_frame_rate(fps)
 
@@ -3342,8 +3330,10 @@ init -10 python:
             laid there, as after ss_set_animation (see _loop_after_switch). No
             on_animation_started -- the incoming animation carries on playing,
             it is not started -- and the overrides stay, since only setup drops
-            them."""
+            them. The section does not: it starts over with the incoming
+            animation."""
             self._loop_after_switch()
+            self._section = None
             self.animation = self._core.current_animation
 
         def _mix_drawn(self, ok):
