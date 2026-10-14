@@ -3210,9 +3210,11 @@ init -10 python:
             return self._core.speed_scale if self._core else self.speed
 
         def ss_set_loop_count(self, count):
+            # Builds the core first, like the calls above: before it, the
+            # count would miss the animation the constructor starts.
+            self._ensure()
             self.loop = count
-            if self._core:
-                self._core.set_loop_count(count)
+            self._core.set_loop_count(count)
 
         def ss_get_loop_count(self):
             return self.loop
