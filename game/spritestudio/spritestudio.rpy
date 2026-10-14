@@ -1732,8 +1732,8 @@ init -10 python:
             try:
                 # Restoring from a saved state (a load, or a core dropped on
                 # pickling) puts back the exact animation, frame and state.
-                # The loop count is the one the core last ran with (recorded
-                # each frame in render()), so a runtime ss_set_loop_count /
+                # The loop count is the one the core last ran with (see
+                # _record_playback), so a runtime ss_set_loop_count /
                 # ss_play(loop=...) survives too. A save written before
                 # _saved_state existed restores as "playing", as it did then.
                 restored = False
@@ -1778,6 +1778,19 @@ init -10 python:
                 self._warn_if_skinned_target(_rec["part"])
             if setup_error is not None:
                 raise setup_error
+
+        def _record_playback(self, core):
+            """Record what a rebuilt core is put back on: the head, the loop
+            count the core runs with, and whether it plays (host_state.restore).
+
+            render() records it every frame, and so does each call that moves
+            it. A save can come before the player is drawn again -- one that is
+            not on screen is not drawn at all -- and a load would otherwise put
+            back what it was before the call, or, for a player never drawn,
+            start the constructor's animation afresh."""
+            self._saved_frame = core.frame_no
+            self._saved_loop = core.loop_count
+            self._saved_state = host_state.playback_state(core)
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -2173,9 +2186,7 @@ init -10 python:
             # animation with the OLD clip's last frame — an out-of-range seek
             # whenever the next clip is shorter. Read from the core rather than
             # `plan` so a degraded (exception) frame still records the true head.
-            self._saved_frame = core.frame_no
-            self._saved_loop = core.loop_count
-            self._saved_state = host_state.playback_state(core)
+            self._record_playback(core)
 
             _draw = 0.0
             # The box Ren'Py lays us out by, and where the animation's origin
@@ -3065,6 +3076,7 @@ init -10 python:
             self._prune_overrides_for_new_animation()
             self._section = None
             self.animation = self._core.current_animation
+            self._record_playback(self._core)
             renpy.redraw(self, 0)
             return True
 
@@ -3108,24 +3120,29 @@ init -10 python:
             else:
                 self._core.play()
             self.animation = self._core.current_animation
+            self._record_playback(self._core)
             self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
 
         # These act on the playback itself, so like ss_play they build the core
         # first: a player not drawn yet (or since a load) has none, and the
-        # call would otherwise be lost.
+        # call would otherwise be lost. Each records what it did, for a save
+        # that comes before the next draw.
         def ss_pause(self):
             self._ensure()
             self._core.pause()
+            self._record_playback(self._core)
 
         def ss_resume(self):
             self._ensure()
             self._core.resume()
+            self._record_playback(self._core)
             renpy.redraw(self, 0)
 
         def ss_stop(self):
             self._ensure()
             self._core.stop()
+            self._record_playback(self._core)
             # stop() does not rewind -- the head stays where it stands -- but
             # the stopped frame still has to reach the screen, so re-arm in
             # case the loop had gone quiescent.
@@ -3174,6 +3191,7 @@ init -10 python:
         def ss_set_frame_no(self, frame):
             self._ensure()
             self._core.set_frame_no(frame)
+            self._record_playback(self._core)
             renpy.redraw(self, 0)
 
         def ss_total_frames(self):
@@ -3215,6 +3233,7 @@ init -10 python:
             self._ensure()
             self.loop = count
             self._core.set_loop_count(count)
+            self._record_playback(self._core)
 
         def ss_get_loop_count(self):
             return self.loop
@@ -3229,6 +3248,7 @@ init -10 python:
             self._ensure()
             self._core.set_animation_section(start, end)
             self._section = (int(start), int(end))
+            self._record_playback(self._core)
             renpy.redraw(self, 0)
 
         def _apply_playback_modes(self):
@@ -3337,6 +3357,7 @@ init -10 python:
             self._loop_after_switch()
             self._section = None
             self.animation = self._core.current_animation
+            self._record_playback(self._core)
 
         def _mix_drawn(self, ok):
             if ok:

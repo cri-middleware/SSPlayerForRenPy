@@ -183,7 +183,8 @@ def check_start_initial(lib) -> bool:
 
 
 def _record(core):
-    """What SSPlayer.render() records each frame, and __getstate__ keeps."""
+    """What SSPlayer._record_playback records -- each frame in render(), and
+    after each call that moves the playback -- and __getstate__ keeps."""
     return (core.current_animation, core.frame_no, core.loop_count,
             host_state.playback_state(core))
 
@@ -268,6 +269,30 @@ def check_restore(lib) -> bool:
             p.close()
             if q:
                 q.close()
+
+    # Called on before it was ever drawn: no update() has run, and the record
+    # taken right after the calls is what a save then holds.
+    p = _ringo(lib)
+    q = None
+    try:
+        host_state.start_initial(p, "wait1", -1, 1.0, pack=_RINGO)
+        p.set_animation("attack1")
+        p.set_loop_count(2)
+        p.play()
+        p.pause()
+        rec = _record(p)
+        if rec != ("attack1", 0.0, 2, PAUSED):
+            print(f"    FAIL: the calls before a draw recorded {rec}"); ok = False
+        q, restored = rebuild(rec)
+        dt_ms = 1000.0 / (q.frame_rate or 30)
+        held = [q.update(dt_ms).frame_no for _ in range(3)]
+        if not restored or _record(q) != rec or any(abs(f) > _EPS for f in held):
+            print(f"    FAIL: undrawn: restored {_record(q)} moving {held}, "
+                  f"saved {rec}"); ok = False
+    finally:
+        p.close()
+        if q:
+            q.close()
 
     # A playing one stays playing.
     p = _ringo(lib)
