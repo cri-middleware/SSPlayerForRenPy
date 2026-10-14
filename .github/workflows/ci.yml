@@ -3,12 +3,13 @@ name: CI
 # Two tiers, as in SpriteStudio-SDK. Every pull request runs release.yml's
 # headless gate (the plain-CPython tests under tools/ and the Ren'Py lint), with
 # the runtime built from the SDK submodule rather than downloaded: the submodule
-# is the source a PR that bumps it changes. The weekly run, a dispatch and the
-# release PR (release/X.Y into main) also build the runtime for macOS, Windows
-# and Web, export the project for each desktop platform and for the Web, and
-# build the documentation site through docs.yml, which a pull request that
-# touches the docs runs on its own. Android and iOS are left out: their exports
-# need the launcher's interactive setup and Xcode.
+# is the source a PR that bumps it changes. It also checks that each script under
+# scripts/ and its twin in the other shell take the same arguments. The weekly
+# run, a dispatch and the release PR (release/X.Y into main) also build the
+# runtime for macOS, Windows and Web, export the project for each desktop
+# platform and for the Web, and build the documentation site through docs.yml,
+# which a pull request that touches the docs runs on its own. Android and iOS are
+# left out: their exports need the launcher's interactive setup and Xcode.
 #
 # GL2 rendering cannot be verified here: sign it off locally (Shift+B /
 # scripts/run-demo.*) before releasing.
@@ -111,6 +112,19 @@ jobs:
             fi
           done
           exit "$status"
+
+  # Each .sh under scripts/ and its .ps1 twin must take the same arguments and
+  # print the same help; check-twins.sh runs both with --help and with an
+  # option neither takes. The runner image has PowerShell 7.
+  twins:
+    name: 🐧 Script twins (bash / PowerShell)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare each script with its twin
+        run: bash scripts/check-twins.sh
 
   # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
   # only release/X.Y is merged into main.

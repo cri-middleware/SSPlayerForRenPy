@@ -1,17 +1,20 @@
 #!/usr/bin/env pwsh
 #
-# Build a runnable Windows desktop distribution (.exe) of the SSPlayer demo,
-# using Ren'Py's standard "Build Distributions". Unlike the Web target, the
-# desktop target needs NO post-export steps: the native "Brain" library under
-# game\spritestudio\libs\ is bundled automatically and resolved at runtime.
+# Build a runnable desktop distribution of the SSPlayer demo, using Ren'Py's
+# standard "Build Distributions". Unlike the Web target, the desktop target
+# needs NO post-export steps: the native "Brain" library under
+# game/spritestudio/libs/ is bundled automatically and resolved at runtime.
 #
-# This .ps1 targets Windows -> win package -> an unpacked <name>-win\ folder
-# containing <name>.exe. For a macOS .app or a Linux folder, run
-# scripts\deploy-desktop.sh on that OS instead.
-#
-# The win package needs game\spritestudio\libs\windows\x86_64\ssruntime.dll.
-# Native libraries are not committed to this repo, so fetch them first with
-# scripts\download-sdk.ps1 (prebuilt) or scripts\build-runtime.ps1 (from source).
+# Each twin packages the OS it runs on, from that OS's native library, which
+# has to be under game/spritestudio/libs/ first:
+#   deploy-desktop.sh,  macOS:   mac package, an unpacked, double-clickable
+#                                <name>.app        (macos/libssruntime.framework)
+#   deploy-desktop.sh,  Linux:   linux package, an unpacked <name>-linux/
+#                                folder; run its <name>.sh (linux/x86_64/libssruntime.so)
+#   deploy-desktop.ps1, Windows: win package, an unpacked <name>-win/ folder
+#                                with <name>.exe   (windows/x86_64/ssruntime.dll)
+# Get the library with scripts\download-sdk.ps1 (prebuilt) or
+# scripts\build-runtime.ps1 (from source).
 #
 # Usage: scripts\deploy-desktop.ps1 [dest_dir]
 #   dest_dir : output folder (default: dist)
@@ -22,11 +25,27 @@ $RenpySdk = Join-Path $RootDir "renpy-sdk"
 $Launcher = Join-Path $RenpySdk "launcher"
 $Libs = Join-Path $RootDir "game/spritestudio/libs"
 
-if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
-    Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
-    exit 0
+# The help is the header comment, all of it, as the .sh twin prints it.
+function Show-Usage {
+    foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 1)) {
+        if ($line -notmatch '^#') { break }
+        $line -replace '^# ?', ''
+    }
 }
-$Dest = if ($Args.Count -ge 1) { $Args[0] } else { "dist" }
+
+# --- parse args (one positional dest) ---------------------------------------
+$Dest = ""
+foreach ($a in $args) {
+    switch -Regex -CaseSensitive ($a) {
+        '^(-h|--help|help)$' { Show-Usage; exit 0 }
+        '^-' { [Console]::Error.WriteLine("deploy-desktop.ps1: unknown flag '$a'"); exit 2 }
+        default {
+            if ($Dest) { [Console]::Error.WriteLine("deploy-desktop.ps1: unexpected extra arg '$a'"); exit 2 }
+            $Dest = $a
+        }
+    }
+}
+if (-not $Dest) { $Dest = "dist" }
 if (-not [System.IO.Path]::IsPathRooted($Dest)) { $Dest = Join-Path $RootDir $Dest }
 
 # --- prerequisites --------------------------------------------------------

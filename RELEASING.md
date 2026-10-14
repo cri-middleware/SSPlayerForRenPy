@@ -197,7 +197,7 @@ scripts/build-release.sh              # both assets
 scripts/build-release.sh demo=skip    # the plugin zip only, much faster
 ```
 
-`demo=skip` is for iterating on the plugin zip, never for a release: `pages.yml` publishes the playable demo by downloading it off the Release, so a release without it leaves the site on the previous one. The `.ps1` twin produces a byte-identical archive from the same inputs, and both need `zip` on PATH — `Compress-Archive` cannot store symlinks at all.
+`demo=skip` is for iterating on the plugin zip, never for a release: `pages.yml` publishes the playable demo by downloading it off the Release, so a release without it leaves the site on the previous one. The `.ps1` twin produces a byte-identical archive from the same inputs, and both need `zip` and `unzip` on PATH — `Compress-Archive` cannot store symlinks at all, and the archive is checked by unpacking it.
 
 **The macOS framework must still be a bundle.** `libs/macos/libssruntime.framework` is versioned, its `Versions/Current` and bundle-root aliases are symlinks, and `zip` follows symlinks unless given `-y`. Flattening them invalidates the code signature, so a game bundling the extracted framework can no longer be signed or notarised. Consumers get that framework only through this zip, and the working tree here always has the real symlinks, so a flattened bundle would ship unnoticed. The script unpacks the finished archive and asserts they survived.
 
@@ -404,6 +404,6 @@ scripts/build-release.sh              # 両方の asset
 scripts/build-release.sh demo=skip    # プラグイン zip だけ。かなり速い
 ```
 
-`demo=skip` はプラグイン zip を反復するためのもので、リリースには使いません。`pages.yml` は Release からデモを取得して公開するため、デモの無いリリースはサイトを前のバージョンのまま残します。`.ps1` 版は同じ入力からバイト一致のアーカイブを作りますが、どちらも PATH 上の `zip` が必要です（`Compress-Archive` は symlink を格納できません）。
+`demo=skip` はプラグイン zip を反復するためのもので、リリースには使いません。`pages.yml` は Release からデモを取得して公開するため、デモの無いリリースはサイトを前のバージョンのまま残します。`.ps1` 版は同じ入力からバイト一致のアーカイブを作りますが、どちらも PATH 上の `zip` と `unzip` が必要です（`Compress-Archive` は symlink を格納できず、アーカイブは展開して確かめるためです）。
 
 **macOS の framework はバンドルのままでなければなりません。** `libs/macos/libssruntime.framework` はバージョン付きで、`Versions/Current` とバンドルルートのエイリアスは symlink です。`zip` は `-y` を付けない限り symlink を辿ります。これを平坦化するとコード署名が無効になり、展開した framework を同梱したゲームは署名も公証もできなくなります。利用者がこの framework を受け取る経路はこの zip だけで、ここの作業ツリーには常に本物の symlink があるため、平坦化されたバンドルは気づかれずに出荷されます。スクリプトは完成したアーカイブを展開し、symlink が残っていることを確かめます。

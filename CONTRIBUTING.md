@@ -70,7 +70,7 @@ Once built, deploy the example assets and run the demo:
 ./scripts/run-demo.sh
 ```
 
-Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `fetch-renpy-ios.sh`, which need macOS and Xcode anyway, and `scan-snippets.sh`, a release step. `scan-snippets`, `run-demo` and `download-flatbuffers` take nothing and refuse any argument; the others all take `key=value` options and `--help`.
+Every script is `scripts/*.sh` with a `.ps1` twin, except `deploy-ios.sh` and `fetch-renpy-ios.sh`, which need macOS and Xcode anyway, `scan-snippets.sh`, a release step, and `check-twins.sh`, which runs both halves of every pair and so needs bash and PowerShell 7 both. The `build-*` scripts, `prepare-docs` and `run-tests` take `key=value` options; `deploy-desktop`, `deploy-web`, `deploy-android` and `deploy-ios` take an optional destination folder, the last two `--flags` as well; `fetch-renpy-*` take an optional Ren'Py version; `download-sdk`, `deploy-examples`, `generate-fbs-code` and `release-version` take nothing more. All of those take `--help` and exit 2 on an argument they do not take. `scan-snippets`, `run-demo` and `download-flatbuffers` take nothing, `--help` included, and refuse any argument. A pull request's CI runs `check-twins.sh`, which holds each pair to the same exit status for `--help` and for an unknown option, and to the same help.
 
 ### Test
 ```bash
@@ -185,7 +185,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ./scripts/run-demo.sh
 ```
 
-スクリプトはすべて `scripts/*.sh` と `.ps1` の双子です。ただし `deploy-ios.sh` と `fetch-renpy-ios.sh` はどのみち macOS と Xcode が必要なので `.sh` だけです。リリースの手順で使う `scan-snippets.sh` も `.sh` だけです。`scan-snippets`、`run-demo`、`download-flatbuffers` は何も取らず、引数を渡すと何もせずに止まります。ほかはいずれも `key=value` オプションと `--help` を取ります。
+スクリプトはすべて `scripts/*.sh` と `.ps1` の双子です。ただし `deploy-ios.sh` と `fetch-renpy-ios.sh` はどのみち macOS と Xcode が必要なので `.sh` だけです。リリースの手順で使う `scan-snippets.sh` も `.sh` だけです。双子の両方を実行する `check-twins.sh` も、bash と PowerShell 7 の両方が要るので `.sh` だけです。`build-*`、`prepare-docs`、`run-tests` は `key=value` オプションを取ります。`deploy-desktop`、`deploy-web`、`deploy-android`、`deploy-ios` は省略できる出力先フォルダーを取り、後の 2 つは `--` で始まるフラグも取ります。`fetch-renpy-*` は省略できる Ren'Py のバージョンを取ります。`download-sdk`、`deploy-examples`、`generate-fbs-code`、`release-version` はそれ以上何も取りません。これらはいずれも `--help` を取り、受け付けない引数を渡すと exit 2 で止まります。`scan-snippets`、`run-demo`、`download-flatbuffers` は `--help` も含めて何も取らず、引数を渡すと何もせずに止まります。プルリクエストの CI は `check-twins.sh` を実行し、双子が `--help` と知らないオプションに同じ終了コードで応え、同じヘルプを出すことを確かめます。
 
 ### テスト
 ```bash

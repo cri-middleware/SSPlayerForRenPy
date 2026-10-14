@@ -20,7 +20,7 @@ GAME_DIR="$ROOT_DIR/game"
 
 for arg in "$@"; do
   case "$arg" in
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; exit 0 ;;
     *) echo "deploy-examples.sh: unknown arg '$arg'" >&2; exit 2 ;;
   esac
 done

@@ -17,11 +17,27 @@ $RenpySdk = Join-Path $RootDir "renpy-sdk"
 $Launcher = Join-Path $RenpySdk "launcher"
 $WebAssets = Join-Path $RootDir "game/spritestudio/libs/web"
 
-if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
-    Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
-    exit 0
+# The help is the header comment, all of it, as the .sh twin prints it.
+function Show-Usage {
+    foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 1)) {
+        if ($line -notmatch '^#') { break }
+        $line -replace '^# ?', ''
+    }
 }
-$Dest = if ($Args.Count -ge 1) { $Args[0] } else { "web_out" }
+
+# --- parse args (one positional dest) ---------------------------------------
+$Dest = ""
+foreach ($a in $args) {
+    switch -Regex -CaseSensitive ($a) {
+        '^(-h|--help|help)$' { Show-Usage; exit 0 }
+        '^-' { [Console]::Error.WriteLine("deploy-web.ps1: unknown flag '$a'"); exit 2 }
+        default {
+            if ($Dest) { [Console]::Error.WriteLine("deploy-web.ps1: unexpected extra arg '$a'"); exit 2 }
+            $Dest = $a
+        }
+    }
+}
+if (-not $Dest) { $Dest = "web_out" }
 if (-not [System.IO.Path]::IsPathRooted($Dest)) { $Dest = Join-Path $RootDir $Dest }
 
 # --- prerequisites --------------------------------------------------------

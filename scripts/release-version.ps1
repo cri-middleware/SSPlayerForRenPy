@@ -21,14 +21,19 @@ $ErrorActionPreference = "Stop"
 
 $app = Split-Path -Leaf $PSCommandPath
 foreach ($argument in $Arguments) {
-    switch -Regex ($argument) {
+    switch -Regex -CaseSensitive ($argument) {
         '^(-h|--help|help)$' {
             Write-Host "Usage: $app"
             Write-Host "Prints __version__ from game/spritestudio/python/ss_renpy/__init__.py"
             Write-Host "(no leading 'v')."
             exit 0
         }
-        default { Write-Error "${app}: unexpected argument '$argument' (see $app --help)" }
+        # Plain stderr and 2 (bad usage), as the .sh twin answers: Write-Error
+        # throws under "Stop", and the shell would see 1.
+        default {
+            [Console]::Error.WriteLine("${app}: unexpected argument '$argument' (see $app --help)")
+            exit 2
+        }
     }
 }
 
