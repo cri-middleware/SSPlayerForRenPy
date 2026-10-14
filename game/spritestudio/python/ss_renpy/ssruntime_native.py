@@ -5,8 +5,10 @@ This is the FFI layer of the Ren'Py SSPlayer. It is intentionally free of any
 as well as from inside Ren'Py's bundled interpreter (M1+).
 
 Signatures are transcribed from the generated C header
-``libs/ssruntime/target/ssruntime.h`` — that header is the source of truth;
-keep ``argtypes``/``restype`` in sync with it.
+``libs/ssruntime/target/ssruntime.h`` into the ``_REQUIRED`` / ``_OPTIONAL``
+tables — that header is the source of truth; keep them in sync with it.
+:func:`load_library` refuses a library missing anything in ``_REQUIRED``, with
+one error naming what is missing, rather than letting ctypes fail on the first.
 
 Lifetime rules:
   * The runtime ref-counts the ``resource`` with ``Arc``, so the resource and
@@ -40,6 +42,8 @@ import ctypes as C
 import os
 import platform
 import sys
+
+from ss.format.SsAnimeBinary import SsAnimeBinary
 
 # --- enums mirrored from the C-API / schema -------------------------------
 
@@ -277,318 +281,233 @@ _LOG_CB_TYPE = C.CFUNCTYPE(None, C.c_int, C.c_char_p)
 _log_cb_ref = None
 
 
-def _declare(lib: C.CDLL) -> None:
-    """Attach argtypes/restype to every function we use. void* -> c_void_p."""
-    P = C.c_void_p
-    f = lib
+# --- the C ABI this module binds -------------------------------------------
+# One ``(name, argtypes, restype)`` row per export, transcribed from the
+# generated ssruntime.h. ``_REQUIRED`` is what :func:`load_library` checks
+# before it binds anything. A library missing a row cannot run this player,
+# and unchecked it fails in ctypes' words instead — a bare ``AttributeError``
+# from ``dlsym`` that names one symbol and says nothing of why — or, for a
+# symbol only a later call reaches, in the middle of a game.
+#
+# ``_OPTIONAL`` holds the exports that arrived after everything in
+# ``_REQUIRED``, so a library can lack one and still pass that check. Their
+# wrappers answer for it: the track-stack ones report a refusal or no value,
+# and the clock getters a stopped clock, which leaves the track stack still,
+# as on a library with no track stack at all. Tolerance stops there because a
+# library older than every one of them already fails ``_REQUIRED``; a new
+# export belongs in ``_REQUIRED`` unless its wrapper has an answer for a
+# library without it.
+#
+# Nothing is bound that nothing calls: each row is one more way for the load
+# to fail.
+_P = C.c_void_p
+_u8, _u32, _i32, _f32, _b = C.c_uint8, C.c_uint32, C.c_int32, C.c_float, C.c_bool
+_str, _size = C.c_char_p, C.c_size_t
+_FLOAT_SOA = [_P, C.POINTER(C.POINTER(C.c_float)), C.POINTER(_size)]
+_I32_SOA = [_P, C.POINTER(C.POINTER(C.c_int32)), C.POINTER(_size)]
+_U32_SOA = [_P, C.POINTER(C.POINTER(C.c_uint32)), C.POINTER(_size)]
 
-    f.ss_runtime_set_log_callback.argtypes = [_LOG_CB_TYPE]
-    f.ss_runtime_set_log_callback.restype = None
+_REQUIRED = (
+    ("ss_runtime_set_log_callback", [_LOG_CB_TYPE], None),
 
-    # resource lifecycle
-    f.ss_resource_create_copy.argtypes = [C.c_char_p, C.c_size_t]
-    f.ss_resource_create_copy.restype = P
-    f.ss_resource_create_borrow.argtypes = [C.c_char_p, C.c_size_t]
-    f.ss_resource_create_borrow.restype = P
-    f.ss_resource_destroy.argtypes = [P]
-    f.ss_resource_destroy.restype = None
+    # resource lifecycle, and the .ssab schema version this runtime reads
+    ("ss_resource_create_copy", [_str, _size], _P),
+    ("ss_resource_create_borrow", [_str, _size], _P),
+    ("ss_resource_destroy", [_P], None),
+    ("ss_runtime_ssab_schema_version", [], _u32),
 
-    # context lifecycle
-    f.ss_runtime_create.argtypes = []
-    f.ss_runtime_create.restype = P
-    f.ss_runtime_destroy.argtypes = [P]
-    f.ss_runtime_destroy.restype = None
-    f.ss_runtime_reset.argtypes = [P]
-    f.ss_runtime_reset.restype = None
-    f.ss_runtime_bind_resource.argtypes = [P, P]
-    f.ss_runtime_bind_resource.restype = C.c_bool
-
-    # animation selection
-    f.ss_runtime_setup_animation.argtypes = [P, C.c_char_p]
-    f.ss_runtime_setup_animation.restype = C.c_bool
-    f.ss_runtime_setup_animation_by_hash.argtypes = [P, C.c_uint32]
-    f.ss_runtime_setup_animation_by_hash.restype = C.c_bool
+    # context lifecycle and animation selection
+    ("ss_runtime_create", [], _P),
+    ("ss_runtime_destroy", [_P], None),
+    ("ss_runtime_bind_resource", [_P, _P], _b),
+    ("ss_runtime_setup_animation", [_P, _str], _b),
 
     # render/coordinate configuration
-    f.ss_runtime_set_render_mode.argtypes = [P, C.c_uint8]
-    f.ss_runtime_set_render_mode.restype = None
-    f.ss_runtime_get_render_mode.argtypes = [P]
-    f.ss_runtime_get_render_mode.restype = C.c_uint8
-    f.ss_runtime_set_coordinate_system.argtypes = [P, C.c_int32]
-    f.ss_runtime_set_coordinate_system.restype = None
-    f.ss_runtime_set_origin.argtypes = [P, C.c_int32]
-    f.ss_runtime_set_origin.restype = None
-    f.ss_runtime_set_unit.argtypes = [P, C.c_int32]
-    f.ss_runtime_set_unit.restype = None
+    ("ss_runtime_set_render_mode", [_P, _u8], None),
+    ("ss_runtime_set_coordinate_system", [_P, _i32], None),
+    ("ss_runtime_set_origin", [_P, _i32], None),
+    ("ss_runtime_set_unit", [_P, _i32], None),
 
     # frame data (FlatBuffers) + SoA getters
-    f.ss_runtime_get_frame_data.argtypes = [
-        P, C.c_float, C.POINTER(C.POINTER(C.c_ubyte)), C.POINTER(C.c_size_t)]
-    f.ss_runtime_get_frame_data.restype = None
-    for name in (
-        "ss_runtime_get_world_matrices",
-        "ss_runtime_get_local_uvs",
-        "ss_runtime_get_cell_meta",
-        "ss_runtime_get_local_vertices",
-        "ss_runtime_get_shape_vertices",
-        "ss_runtime_get_shape_vertex_box_coords",
-        "ss_runtime_get_mesh_vertices_x",
-        "ss_runtime_get_mesh_vertices_y",
-        "ss_runtime_get_mesh_uvs",
-    ):
-        fn = getattr(f, name)
-        fn.argtypes = [P, C.POINTER(C.POINTER(C.c_float)), C.POINTER(C.c_size_t)]
-        fn.restype = None
-    f.ss_runtime_get_shape_vertex_counts.argtypes = [
-        P, C.POINTER(C.POINTER(C.c_int32)), C.POINTER(C.c_size_t)]
-    f.ss_runtime_get_mesh_indices.argtypes = [
-        P, C.POINTER(C.POINTER(C.c_int32)), C.POINTER(C.c_size_t)]
-    for name in ("ss_runtime_get_mesh_vertex_offsets",
-                 "ss_runtime_get_mesh_index_offsets"):
-        fn = getattr(f, name)
-        fn.argtypes = [P, C.POINTER(C.POINTER(C.c_uint32)), C.POINTER(C.c_size_t)]
-        fn.restype = None
+    ("ss_runtime_get_frame_data",
+     [_P, _f32, C.POINTER(C.POINTER(C.c_ubyte)), C.POINTER(_size)], None),
+    ("ss_runtime_get_world_matrices", _FLOAT_SOA, None),
+    ("ss_runtime_get_local_uvs", _FLOAT_SOA, None),
+    ("ss_runtime_get_cell_meta", _FLOAT_SOA, None),
+    ("ss_runtime_get_local_vertices", _FLOAT_SOA, None),
+    ("ss_runtime_get_shape_vertices", _FLOAT_SOA, None),
+    ("ss_runtime_get_shape_vertex_box_coords", _FLOAT_SOA, None),
+    ("ss_runtime_get_mesh_vertices_x", _FLOAT_SOA, None),
+    ("ss_runtime_get_mesh_vertices_y", _FLOAT_SOA, None),
+    ("ss_runtime_get_mesh_uvs", _FLOAT_SOA, None),
+    ("ss_runtime_get_shape_vertex_counts", _I32_SOA, None),
+    ("ss_runtime_get_mesh_indices", _I32_SOA, None),
+    ("ss_runtime_get_mesh_vertex_offsets", _U32_SOA, None),
+    ("ss_runtime_get_mesh_index_offsets", _U32_SOA, None),
 
     # playback control
-    f.ss_runtime_update.argtypes = [P, C.c_float]
-    f.ss_runtime_update.restype = C.c_float
-    f.ss_runtime_play.argtypes = [P]
-    f.ss_runtime_play.restype = None
-    f.ss_runtime_play_with_start_frame.argtypes = [P, C.c_float]
-    f.ss_runtime_play_with_start_frame.restype = None
-    f.ss_runtime_pause.argtypes = [P]
-    f.ss_runtime_pause.restype = None
-    f.ss_runtime_resume.argtypes = [P]
-    f.ss_runtime_resume.restype = None
-    f.ss_runtime_stop.argtypes = [P]
-    f.ss_runtime_stop.restype = None
-    f.ss_runtime_set_frame_no.argtypes = [P, C.c_float]
-    f.ss_runtime_set_frame_no.restype = None
-    f.ss_runtime_next_frame.argtypes = [P]
-    f.ss_runtime_prev_frame.argtypes = [P]
-    f.ss_runtime_set_loop_count.argtypes = [P, C.c_int]
-    f.ss_runtime_set_loop_count.restype = None
-    f.ss_runtime_set_frame_rate.argtypes = [P, C.c_int]
-    f.ss_runtime_set_frame_rate.restype = None
-    f.ss_runtime_set_speed_scale.argtypes = [P, C.c_float]
-    f.ss_runtime_set_speed_scale.restype = None
-    f.ss_runtime_set_playback_direction.argtypes = [P, C.c_int, C.c_int]
-    f.ss_runtime_set_playback_direction.restype = None
-    f.ss_runtime_set_animation_section.argtypes = [P, C.c_int, C.c_int]
-    f.ss_runtime_set_animation_section.restype = None
+    ("ss_runtime_update", [_P, _f32], _f32),
+    ("ss_runtime_play", [_P], None),
+    ("ss_runtime_play_with_start_frame", [_P, _f32], None),
+    ("ss_runtime_pause", [_P], None),
+    ("ss_runtime_resume", [_P], None),
+    ("ss_runtime_stop", [_P], None),
+    ("ss_runtime_set_frame_no", [_P, _f32], None),
+    ("ss_runtime_set_loop_count", [_P, C.c_int], None),
+    ("ss_runtime_set_frame_rate", [_P, C.c_int], None),
+    ("ss_runtime_set_speed_scale", [_P, _f32], None),
+    ("ss_runtime_set_playback_direction", [_P, C.c_int, C.c_int], None),
+    ("ss_runtime_set_animation_section", [_P, C.c_int, C.c_int], None),
+    ("ss_runtime_set_skip_frames", [_P, _b], None),
 
-    # state getters
-    f.ss_runtime_get_frame_no.argtypes = [P]
-    f.ss_runtime_get_frame_no.restype = C.c_float
-    f.ss_runtime_get_speed_scale.argtypes = [P]
-    f.ss_runtime_get_speed_scale.restype = C.c_float
-    for name in ("ss_runtime_just_looped", "ss_runtime_is_playing",
-                 "ss_runtime_is_pausing"):
-        fn = getattr(f, name)
-        fn.argtypes = [P]
-        fn.restype = C.c_bool
-    # ss_runtime_is_finished: "every configured loop has played" — a sticky
-    # state, cleared by the next play/setup and never raised by stop(). Optional
-    # (same stale-lib tolerance as is_playing_forward below): it replaced the
-    # withdrawn ss_runtime_is_end_frame_reached, so a drop-in whose libs predate
-    # it must still LOAD — binding it in the mandatory loop above would abort
-    # load_library() and kill the whole player. The wrapper reports "not
-    # finished" when it is absent.
-    try:
-        f.ss_runtime_is_finished.argtypes = [P]
-        f.ss_runtime_is_finished.restype = C.c_bool
-    except AttributeError:
-        pass
-    # The character's clock, which drives every track and fade (is_playing /
-    # is_pausing describe track 0 only). Optional, symbol by symbol: they came
-    # after the track stack, and a drop-in whose libs predate them reads a
-    # stopped clock, which leaves the track stack still, as on libs that have
-    # no track stack at all.
-    for name in ("ss_runtime_is_clock_playing", "ss_runtime_is_clock_pausing"):
-        fn = getattr(f, name, None)
-        if fn is not None:
-            fn.argtypes = [P]
-            fn.restype = C.c_bool
-    for name in ("ss_runtime_get_start_frame", "ss_runtime_get_end_frame",
-                 "ss_runtime_get_frame_rate", "ss_runtime_get_loop_count",
-                 "ss_runtime_get_remaining_loops"):
-        fn = getattr(f, name)
-        fn.argtypes = [P]
-        fn.restype = C.c_int32
-    # Effective playback direction (forward incl. ping-pong leg + Backward
-    # setting; the *speed-sign* is NOT folded in — the caller compares it. SS
-    # does not support reverse audio playback).
-    # Optional: older prebuilt runtimes may
-    # not export it, so bind tolerantly and let the wrapper assume forward when
-    # absent.
-    try:
-        f.ss_runtime_is_playing_forward.argtypes = [P]
-        f.ss_runtime_is_playing_forward.restype = C.c_bool
-    except AttributeError:
-        pass
-    # The playback-mode readbacks and the frame-skip toggle. Declared as one
-    # optional group (same stale-lib tolerance as is_playing_forward above): a
-    # drop-in whose libs predate them must still LOAD, and the wrappers then
-    # report the runtime's own defaults.
-    try:
-        f.ss_runtime_get_playback_direction.argtypes = [P]
-        f.ss_runtime_get_playback_direction.restype = C.c_int32
-        f.ss_runtime_get_playback_style.argtypes = [P]
-        f.ss_runtime_get_playback_style.restype = C.c_int32
-        f.ss_runtime_get_skip_frames.argtypes = [P]
-        f.ss_runtime_get_skip_frames.restype = C.c_bool
-        f.ss_runtime_set_skip_frames.argtypes = [P, C.c_bool]
-        f.ss_runtime_set_skip_frames.restype = None
-    except AttributeError:
-        pass
+    # state getters. ss_runtime_is_finished is "every configured loop has
+    # played": sticky, cleared by the next play/setup, never raised by stop().
+    # ss_runtime_is_playing_forward is the effective direction (the Backward
+    # setting and the ping-pong leg; a speed sign stops rather than reverses).
+    ("ss_runtime_get_frame_no", [_P], _f32),
+    ("ss_runtime_get_speed_scale", [_P], _f32),
+    ("ss_runtime_just_looped", [_P], _b),
+    ("ss_runtime_is_playing", [_P], _b),
+    ("ss_runtime_is_pausing", [_P], _b),
+    ("ss_runtime_is_finished", [_P], _b),
+    ("ss_runtime_is_playing_forward", [_P], _b),
+    ("ss_runtime_get_start_frame", [_P], _i32),
+    ("ss_runtime_get_end_frame", [_P], _i32),
+    ("ss_runtime_get_frame_rate", [_P], _i32),
+    ("ss_runtime_get_remaining_loops", [_P], _i32),
+    ("ss_runtime_get_playback_direction", [_P], _i32),
+    ("ss_runtime_get_playback_style", [_P], _i32),
+    ("ss_runtime_get_skip_frames", [_P], _b),
 
     # events
-    f.ss_runtime_get_passed_event_count.argtypes = [P]
-    f.ss_runtime_get_passed_event_count.restype = C.c_int32
-    f.ss_runtime_get_passed_event_index.argtypes = [P, C.c_int32]
-    f.ss_runtime_get_passed_event_index.restype = C.c_int32
+    ("ss_runtime_get_passed_event_count", [_P], _i32),
+    ("ss_runtime_get_passed_event_index", [_P, _i32], _i32),
+    ("ss_runtime_get_passed_event_source_handle", [_P, _i32], _u32),
 
-    # --- Animation mixing: the track stack and its sources ----------------
-    # Each symbol is bound on its own (the stale-lib tolerance above, made
-    # finer): a drop-in whose libs predate the stack, or predate the track
-    # playback settings that came after it, still loads, and the wrappers
-    # report a refusal or no value for whatever is missing. Binding them as one
-    # group would leave the ones after a missing symbol without argtypes.
-    u32, f32, i32, b = C.c_uint32, C.c_float, C.c_int32, C.c_bool
-    for name, args, res in (
-        ("ss_runtime_set_track_animation", [P, u32, C.c_char_p], b),
-        ("ss_runtime_get_track_count", [P], u32),
-        ("ss_runtime_clear_track", [P, u32], b),
-        ("ss_runtime_set_track_alpha", [P, u32, f32], b),
-        ("ss_runtime_get_track_alpha", [P, u32], f32),
-        ("ss_runtime_set_track_blend", [P, u32, u32], b),
-        ("ss_runtime_get_track_blend", [P, u32], u32),
-        ("ss_runtime_set_track_sync", [P, u32, u32], b),
-        ("ss_runtime_get_track_sync", [P, u32], u32),
-        ("ss_runtime_set_track_frame", [P, u32, f32], b),
-        ("ss_runtime_get_track_frame", [P, u32], f32),
-        ("ss_runtime_set_track_speed", [P, u32, f32], b),
-        ("ss_runtime_get_track_speed", [P, u32], f32),
-        ("ss_runtime_set_track_frame_rate", [P, u32, C.c_int], b),
-        ("ss_runtime_get_track_frame_rate", [P, u32], i32),
-        ("ss_runtime_set_track_skip_frames", [P, u32, b], b),
-        ("ss_runtime_get_track_skip_frames", [P, u32], b),
-        ("ss_runtime_set_track_playback_direction", [P, u32, C.c_int, C.c_int], b),
-        ("ss_runtime_get_track_playback_direction", [P, u32], i32),
-        ("ss_runtime_get_track_playback_style", [P, u32], i32),
-        ("ss_runtime_set_track_loop_count", [P, u32, C.c_int], b),
-        ("ss_runtime_get_track_loop_count", [P, u32], i32),
-        ("ss_runtime_is_track_finished", [P, u32], b),
-        ("ss_runtime_track_just_looped", [P, u32], b),
-        ("ss_runtime_set_track_outgoing_event_threshold", [P, u32, f32], b),
-        ("ss_runtime_get_track_outgoing_event_threshold", [P, u32], f32),
-        ("ss_runtime_crossfade", [P, u32, C.c_char_p, f32], b),
-        ("ss_runtime_fade_track", [P, u32, f32, f32], b),
-        ("ss_runtime_get_track_fade_progress", [P, u32], f32),
-        ("ss_runtime_cancel_track_fade", [P, u32], b),
-        ("ss_runtime_get_track_main_source", [P, u32], u32),
-        ("ss_runtime_add_track_source", [P, u32, C.c_char_p, f32], u32),
-        ("ss_runtime_set_source_weight", [P, u32, f32], b),
-        ("ss_runtime_get_source_weight", [P, u32], f32),
-        ("ss_runtime_set_source_frame", [P, u32, f32], b),
-        ("ss_runtime_get_source_frame", [P, u32], f32),
-        ("ss_runtime_set_source_event_threshold", [P, u32, f32], b),
-        ("ss_runtime_get_source_event_threshold", [P, u32], f32),
-        ("ss_runtime_get_source_animation_index", [P, u32], i32),
-        ("ss_runtime_get_passed_event_source_handle", [P, i32], u32),
-    ):
-        fn = getattr(f, name, None)
+    # animation mixing: the track stack and its sources
+    ("ss_runtime_set_track_animation", [_P, _u32, _str], _b),
+    ("ss_runtime_get_track_count", [_P], _u32),
+    ("ss_runtime_clear_track", [_P, _u32], _b),
+    ("ss_runtime_set_track_alpha", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_track_alpha", [_P, _u32], _f32),
+    ("ss_runtime_set_track_blend", [_P, _u32, _u32], _b),
+    ("ss_runtime_get_track_blend", [_P, _u32], _u32),
+    ("ss_runtime_set_track_frame", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_track_frame", [_P, _u32], _f32),
+    ("ss_runtime_set_track_speed", [_P, _u32, _f32], _b),
+    ("ss_runtime_crossfade", [_P, _u32, _str, _f32], _b),
+    ("ss_runtime_fade_track", [_P, _u32, _f32, _f32], _b),
+    ("ss_runtime_get_track_fade_progress", [_P, _u32], _f32),
+    ("ss_runtime_cancel_track_fade", [_P, _u32], _b),
+    ("ss_runtime_get_track_main_source", [_P, _u32], _u32),
+    ("ss_runtime_add_track_source", [_P, _u32, _str, _f32], _u32),
+    ("ss_runtime_set_source_weight", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_source_weight", [_P, _u32], _f32),
+    ("ss_runtime_set_source_frame", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_source_frame", [_P, _u32], _f32),
+    ("ss_runtime_set_source_event_threshold", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_source_event_threshold", [_P, _u32], _f32),
+
+    # hashing helper (texture/animation name -> u32 fnv1a)
+    ("ss_runtime_hash_string", [_str], _u32),
+
+    # Override Layer: Color / Cell / Visibility, applied by the Brain on the
+    # *resolved* pose so an override wins over both the keyframe and any
+    # blend. Parts are addressed by the positional part index.
+    ("ss_runtime_find_part_index", [_P, _str], _i32),
+    ("ss_runtime_set_part_visibility_override",
+     [_P, _u32, C.c_ubyte, C.c_ubyte], _b),
+    ("ss_runtime_clear_part_visibility_override", [_P, _u32], _b),
+    ("ss_runtime_set_part_color_override",
+     [_P, _u32, C.c_ubyte, _u32, C.c_ubyte], _b),
+    ("ss_runtime_set_part_color_override_corners",
+     [_P, _u32, C.c_ubyte, C.POINTER(C.c_uint32), C.c_ubyte], _b),
+    ("ss_runtime_clear_part_color_override", [_P, _u32], _b),
+    ("ss_runtime_set_part_cell_override",
+     [_P, _u32, _u32, _u32, C.c_ubyte], _b),
+    ("ss_runtime_clear_part_cell_override", [_P, _u32], _b),
+    ("ss_runtime_clear_all_part_overrides", [_P], _b),
+
+    # Instance / Effect slots. Effect slots bind to a *resource* + effect-name
+    # hash; instance slots are stateless and step against a *child context*
+    # per call. The active-event getters resolve the per-slot event off the
+    # parent context (slot_index = the part index from the draw plan).
+    ("ss_effect_slot_create", [_P, _u32, _u32], _P),
+    ("ss_effect_slot_destroy", [_P], None),
+    ("ss_effect_slot_reset", [_P], None),
+    ("ss_effect_slot_step",
+     [_P, ss_effect_event_info, _f32, _f32, _f32, _b, _b, _u8, _b],
+     ss_effect_step_result),
+    ("ss_effect_slot_is_independent", [_P], _b),
+    ("ss_instance_slot_create", [], _P),
+    ("ss_instance_slot_destroy", [_P], None),
+    ("ss_instance_slot_reset", [_P], None),
+    ("ss_instance_slot_step",
+     [_P, ss_event_instance_info, _P, _f32, _f32, _b],
+     ss_instance_step_result),
+    ("ss_instance_slot_is_independent", [_P], _b),
+    ("ss_runtime_get_active_event_instance", [_P, _u32], ss_event_instance_info),
+    ("ss_runtime_get_active_effect_event", [_P, _u32], ss_effect_event_info),
+)
+
+_OPTIONAL = (
+    # The character's clock, which drives every track and fade (is_playing /
+    # is_pausing describe track 0 only).
+    ("ss_runtime_is_clock_playing", [_P], _b),
+    ("ss_runtime_is_clock_pausing", [_P], _b),
+    # Track sync, the per-track playback settings, and the animation a source
+    # plays.
+    ("ss_runtime_set_track_sync", [_P, _u32, _u32], _b),
+    ("ss_runtime_get_track_sync", [_P, _u32], _u32),
+    ("ss_runtime_get_track_speed", [_P, _u32], _f32),
+    ("ss_runtime_set_track_frame_rate", [_P, _u32, C.c_int], _b),
+    ("ss_runtime_get_track_frame_rate", [_P, _u32], _i32),
+    ("ss_runtime_set_track_skip_frames", [_P, _u32, _b], _b),
+    ("ss_runtime_get_track_skip_frames", [_P, _u32], _b),
+    ("ss_runtime_set_track_playback_direction", [_P, _u32, C.c_int, C.c_int], _b),
+    ("ss_runtime_get_track_playback_direction", [_P, _u32], _i32),
+    ("ss_runtime_get_track_playback_style", [_P, _u32], _i32),
+    ("ss_runtime_set_track_loop_count", [_P, _u32, C.c_int], _b),
+    ("ss_runtime_get_track_loop_count", [_P, _u32], _i32),
+    ("ss_runtime_is_track_finished", [_P, _u32], _b),
+    ("ss_runtime_track_just_looped", [_P, _u32], _b),
+    ("ss_runtime_set_track_outgoing_event_threshold", [_P, _u32, _f32], _b),
+    ("ss_runtime_get_track_outgoing_event_threshold", [_P, _u32], _f32),
+    ("ss_runtime_get_source_animation_index", [_P, _u32], _i32),
+)
+
+
+def _missing_symbols(lib: C.CDLL) -> list[str]:
+    """The ``_REQUIRED`` exports ``lib`` lacks, in table order; empty when it
+    can run this player."""
+    return [name for name, _args, _res in _REQUIRED if not hasattr(lib, name)]
+
+
+def _mismatch_message(where: str, missing: list[str]) -> str:
+    shown = ", ".join(missing[:12])
+    if len(missing) > 12:
+        shown += f", and {len(missing) - 12} more"
+    return (
+        f"The SpriteStudio runtime at {where} does not match this player's "
+        f"bindings: it lacks {len(missing)} of the {len(_REQUIRED)} functions "
+        f"they call ({shown}). This normally means game/spritestudio/libs/ is "
+        "older than the .rpy and .py files beside it. Replace "
+        "game/spritestudio/ as a whole, from a single release; when you build "
+        "from source, rebuild or redownload the runtime.")
+
+
+def _declare(lib: C.CDLL) -> None:
+    """Attach argtypes/restype to every bound export. Call after
+    :func:`_missing_symbols` came back empty."""
+    for name, args, res in _REQUIRED:
+        fn = getattr(lib, name)
+        fn.argtypes = args
+        fn.restype = res
+    for name, args, res in _OPTIONAL:
+        fn = getattr(lib, name, None)
         if fn is not None:
             fn.argtypes = args
             fn.restype = res
-
-    # hashing helper (texture/animation name -> u32 fnv1a)
-    f.ss_runtime_hash_string.argtypes = [C.c_char_p]
-    f.ss_runtime_hash_string.restype = C.c_uint32
-
-    # --- Override Layer: per-part runtime overrides -----------------------
-    # Color / Cell / Visibility, applied by the Brain on the *resolved* pose so
-    # an override wins over both the keyframe and any blend.
-    # Parts are addressed by the positional
-    # part index. Declared as one optional group (same stale-lib tolerance as
-    # is_playing_forward above): they land together in one SDK version, so a
-    # drop-in whose libs predate the Override Layer simply leaves the whole group
-    # unbound and the wrapper reports "unsupported" instead of failing to load.
-    try:
-        f.ss_runtime_find_part_index.argtypes = [P, C.c_char_p]
-        f.ss_runtime_find_part_index.restype = C.c_int32
-        f.ss_runtime_set_part_visibility_override.argtypes = [
-            P, C.c_uint32, C.c_ubyte, C.c_ubyte]
-        f.ss_runtime_set_part_color_override.argtypes = [
-            P, C.c_uint32, C.c_ubyte, C.c_uint32, C.c_ubyte]
-        f.ss_runtime_set_part_color_override_corners.argtypes = [
-            P, C.c_uint32, C.c_ubyte, C.POINTER(C.c_uint32), C.c_ubyte]
-        f.ss_runtime_set_part_cell_override.argtypes = [
-            P, C.c_uint32, C.c_uint32, C.c_uint32, C.c_ubyte]
-        for name in ("ss_runtime_clear_part_visibility_override",
-                     "ss_runtime_clear_part_color_override",
-                     "ss_runtime_clear_part_cell_override"):
-            fn = getattr(f, name)
-            fn.argtypes = [P, C.c_uint32]
-            fn.restype = C.c_bool
-        f.ss_runtime_clear_all_part_overrides.argtypes = [P]
-        for name in ("ss_runtime_set_part_visibility_override",
-                     "ss_runtime_set_part_color_override",
-                     "ss_runtime_set_part_color_override_corners",
-                     "ss_runtime_set_part_cell_override",
-                     "ss_runtime_clear_all_part_overrides"):
-            getattr(f, name).restype = C.c_bool
-    except AttributeError:
-        pass
-
-    # --- Instance / Effect slot API (``ss_effect_slot_*`` /
-    # ``ss_instance_slot_*`` in the generated ssruntime.h) ------------------
-    # Effect slots bind to a *resource* + effect-name hash; instance slots are
-    # stateless and step against a *child context* per call. The active-event
-    # getters resolve the per-slot event off the parent context (slot_index =
-    # the part index from the draw plan).
-    f.ss_effect_slot_create.argtypes = [P, C.c_uint32, C.c_uint32]
-    f.ss_effect_slot_create.restype = P
-    f.ss_effect_slot_destroy.argtypes = [P]
-    f.ss_effect_slot_destroy.restype = None
-    f.ss_effect_slot_reset.argtypes = [P]
-    f.ss_effect_slot_reset.restype = None
-    f.ss_effect_slot_step.argtypes = [
-        P, ss_effect_event_info, C.c_float, C.c_float, C.c_float,
-        C.c_bool, C.c_bool, C.c_uint8, C.c_bool]
-    f.ss_effect_slot_step.restype = ss_effect_step_result
-    f.ss_effect_slot_get_seed.argtypes = [P]
-    f.ss_effect_slot_get_seed.restype = C.c_uint32
-    # Optional (same stale-lib tolerance as is_finished above): a drop-in whose
-    # libs predate this export must still load — the rig's has_independent()
-    # catches the resulting AttributeError and falls back to keep-redrawing.
-    try:
-        f.ss_effect_slot_is_independent.argtypes = [P]
-        f.ss_effect_slot_is_independent.restype = C.c_bool
-    except AttributeError:
-        pass
-
-    f.ss_instance_slot_create.argtypes = []
-    f.ss_instance_slot_create.restype = P
-    f.ss_instance_slot_destroy.argtypes = [P]
-    f.ss_instance_slot_destroy.restype = None
-    f.ss_instance_slot_reset.argtypes = [P]
-    f.ss_instance_slot_reset.restype = None
-    f.ss_instance_slot_step.argtypes = [
-        P, ss_event_instance_info, P, C.c_float, C.c_float, C.c_bool]
-    f.ss_instance_slot_step.restype = ss_instance_step_result
-    # Optional export (stale-lib tolerant, as above); the instance rig reads
-    # independence off the step result, so this bind is only a convenience.
-    try:
-        f.ss_instance_slot_is_independent.argtypes = [P]
-        f.ss_instance_slot_is_independent.restype = C.c_bool
-    except AttributeError:
-        pass
-
-    f.ss_runtime_get_active_event_instance.argtypes = [P, C.c_uint32]
-    f.ss_runtime_get_active_event_instance.restype = ss_event_instance_info
-    f.ss_runtime_get_active_effect_event.argtypes = [P, C.c_uint32]
-    f.ss_runtime_get_active_effect_event.restype = ss_effect_event_info
 
 
 def load_library(path: str | None = None, base_dir: str | None = None,
@@ -598,6 +517,9 @@ def load_library(path: str | None = None, base_dir: str | None = None,
     Pass ``path`` for an explicit library file, or ``base_dir`` to resolve it
     via :func:`default_library_path` (per-platform/arch layout). The returned
     ``CDLL`` is cached on the module so repeated calls reuse it.
+
+    Raises :class:`RuntimeError` naming the missing functions when the library
+    lacks any this player calls (see ``_REQUIRED``), before anything is bound.
 
     Platform notes (see the bundle layout in :func:`platform_subdir`):
       * **Web (WASM)** cannot be loaded through ctypes at all — that target needs
@@ -624,6 +546,10 @@ def load_library(path: str | None = None, base_dir: str | None = None,
             else:
                 load_target = resolved
     lib = C.CDLL(load_target)
+    missing = _missing_symbols(lib)
+    if missing:
+        raise RuntimeError(_mismatch_message(
+            load_target or "the app's own image (statically linked)", missing))
     _declare(lib)
     if log:
         _install_log_callback(lib)
@@ -643,6 +569,36 @@ def _install_log_callback(lib: C.CDLL) -> None:
 
     _log_cb_ref = _LOG_CB_TYPE(_cb)
     lib.ss_runtime_set_log_callback(_log_cb_ref)
+
+
+def _refusal(lib: C.CDLL, data: bytes):
+    """Why ``data`` must not reach ``ss_resource_create_*``, or None when it may.
+
+    The runtime trusts its input. Bytes that are not a ``.ssab`` are read out of
+    bounds, which can abort the whole process — a zero-length buffer does — and
+    the one check it makes, the schema version, it reports only as a NULL with
+    no reason, since the constructors take no context to record one on. So both
+    are checked here, where a refusal is a Python exception that says why. The
+    runtime reads a pack only when its version equals the runtime's own, and
+    this follows that rule; were the runtime to accept a range, a pack it could
+    read would be refused here, so the two must move together."""
+    if not SsAnimeBinary.SsAnimeBinaryBufferHasIdentifier(data, 0):
+        return "not a .ssab pack (missing the 'SSAB' FlatBuffers identifier)"
+    try:
+        got = int(SsAnimeBinary.GetRootAs(data, 0).Version())
+    except Exception:  # noqa: BLE001 — a header that does not parse is the finding
+        return "not a .ssab pack (its header does not parse)"
+    reads = int(lib.ss_runtime_ssab_schema_version())
+    if got == reads:
+        return None
+    if got < reads:
+        fix = "It was converted by an older converter: convert its .sspj again."
+    else:
+        fix = ("It is newer than this runtime: replace game/spritestudio/ with "
+               "the release that converted it, or convert its .sspj again "
+               "with this one.")
+    return (f"this .ssab is schema version {got} and the SpriteStudio runtime "
+            f"reads version {reads}. {fix}")
 
 
 def _readonly_view(ptr, n):
@@ -711,9 +667,17 @@ class _NativeRuntime:
         one is bound, so the old borrow source is never freed while still
         referenced — the single-threaded analogue of Unity's
         ``destroy resource → free pin`` ordering.
+
+        Bytes that are not a ``.ssab``, or a pack of a schema version the
+        runtime does not read, raise RuntimeError saying which before the
+        runtime sees them (see :func:`_refusal`), and leave the previous
+        resource bound.
         """
         L = self._lib
         data = bytes(data)  # ensure an owned, immutable buffer (stable address)
+        refusal = _refusal(L, data)
+        if refusal:
+            raise RuntimeError(refusal)
         prev_res, prev_bytes = self._res, self._ssab_bytes
         self._ssab_bytes = data  # retain: this IS the borrow's backing store
         create = (L.ss_resource_create_borrow if borrow
@@ -800,15 +764,8 @@ class _NativeRuntime:
         **exactly one frame per update**, so no frame is ever skipped and a
         stall stretches the animation instead of dropping it
         (``libs/ssruntime/src/core/playback_controller.rs``). Either way the
-        frames crossed are still reported, so events do not go missing.
-        No-op on a runtime that predates the export."""
-        fn = getattr(self._lib, "ss_runtime_set_skip_frames", None)
-        if fn is None:
-            return
-        try:
-            fn(self._ctx, bool(skip))
-        except Exception:
-            pass
+        frames crossed are still reported, so events do not go missing."""
+        self._lib.ss_runtime_set_skip_frames(self._ctx, bool(skip))
 
     def update(self, dt_seconds: float) -> float:
         """Advance by ``dt_seconds`` **seconds**; returns current frame (float).
@@ -868,19 +825,8 @@ class _NativeRuntime:
 
         A sticky state, not a pulse: it stays true until the next play/setup, so
         callers wanting a one-shot notification take its rising edge. Never true
-        under an infinite loop count, nor after a commanded stop().
-
-        Reports False when the loaded runtime does not export the query (a
-        drop-in whose ``libs/`` predate it): completion then never fires, so a
-        one-shot's on_animation_finished / sequence chaining stops working — bump
-        ``libs/`` to ``scripts/SDK_VERSION.txt`` — but the player still runs."""
-        fn = getattr(self._lib, "ss_runtime_is_finished", None)
-        if fn is None:
-            return False
-        try:
-            return bool(fn(self._ctx))
-        except Exception:
-            return False
+        under an infinite loop count, nor after a commanded stop()."""
+        return bool(self._lib.ss_runtime_is_finished(self._ctx))
 
     @property
     def just_looped(self) -> bool:
@@ -893,52 +839,27 @@ class _NativeRuntime:
 
         Accounts for the Backward direction setting and the current ping-pong
         leg (outbound/return). The speed sign needs no check: a negative speed
-        stops the playhead rather than reversing it.
-        Assumes forward when the native
-        runtime does not export the query (older builds)."""
-        fn = getattr(self._lib, "ss_runtime_is_playing_forward", None)
-        if fn is None:
-            return True
-        try:
-            return bool(fn(self._ctx))
-        except Exception:
-            return True
+        stops the playhead rather than reversing it."""
+        return bool(self._lib.ss_runtime_is_playing_forward(self._ctx))
 
     @property
     def playback_direction(self) -> int:
         """The *configured* direction (DIRECTION_FORWARD / DIRECTION_BACKWARD).
 
         The setting, not the instantaneous heading — on a ping-pong return leg
-        this still reads FORWARD while :attr:`is_playing_forward` reads False.
-        Assumes forward when the runtime does not export the query."""
-        return self._mode_getter("ss_runtime_get_playback_direction",
-                                 DIRECTION_FORWARD)
+        this still reads FORWARD while :attr:`is_playing_forward` reads False."""
+        return int(self._lib.ss_runtime_get_playback_direction(self._ctx))
 
     @property
     def playback_style(self) -> int:
-        """The configured style (STYLE_NORMAL / STYLE_PINGPONG); NORMAL when the
-        runtime does not export the query."""
-        return self._mode_getter("ss_runtime_get_playback_style", STYLE_NORMAL)
+        """The configured style (STYLE_NORMAL / STYLE_PINGPONG)."""
+        return int(self._lib.ss_runtime_get_playback_style(self._ctx))
 
     @property
     def skip_frames(self) -> bool:
         """Whether frame skipping is on (the runtime default); see
-        :meth:`set_skip_frames`. Reports the default when unavailable."""
-        return bool(self._mode_getter("ss_runtime_get_skip_frames", True))
-
-    def _mode_getter(self, symbol: str, default):
-        """Read an optional playback-mode query, falling back to its default.
-
-        These landed after the first shipped runtimes, so a drop-in carrying
-        older ``libs/`` simply reports the runtime's own defaults rather than
-        failing (the same tolerance :attr:`is_playing_forward` uses)."""
-        fn = getattr(self._lib, symbol, None)
-        if fn is None:
-            return default
-        try:
-            return fn(self._ctx)
-        except Exception:
-            return default
+        :meth:`set_skip_frames`."""
+        return bool(self._lib.ss_runtime_get_skip_frames(self._ctx))
 
     @property
     def frame_rate(self) -> int:
@@ -981,7 +902,8 @@ class _NativeRuntime:
     # -- animation mixing (the track stack; see ss_renpy.player) ----------
     # Thin passthroughs over the ss_runtime_*track* / *source* C-API. Its
     # "no value" sentinels (NaN, -1, the invalid handle) come back as None and
-    # the setters as a bool. A symbol the loaded library does not export reads
+    # the setters as a bool. A symbol the loaded library does not export (one
+    # of ``_OPTIONAL``; load_library refuses a library missing any other) reads
     # as a refusal / None, so a drop-in on older libs keeps playing.
     def _mix(self, symbol, *args):
         fn = getattr(self._lib, symbol, None)
@@ -1255,16 +1177,12 @@ class _NativeRuntime:
     # drops everything), so this wrapper keeps no copy.
     #
     # Every method returns False when the call is rejected — unknown part index,
-    # blend_op >= 4, priority_mode >= 3, unresolvable cell — or when the loaded
-    # library predates the Override Layer (see the optional bind in _declare).
-    def _override_fn(self, name):
-        """The named Override-Layer export, or None on a pre-Override library."""
-        return getattr(self._lib, name, None)
-
+    # blend_op >= 4, priority_mode >= 3, unresolvable cell.
     @property
     def supports_overrides(self) -> bool:
-        """Whether the loaded library exports the Override Layer at all."""
-        return self._override_fn("ss_runtime_clear_all_part_overrides") is not None
+        """Whether the loaded library has the Override Layer: always, since
+        load_library refuses one without it. Kept so both bridges answer it."""
+        return True
 
     def find_part_index(self, part_name: str) -> int:
         """The Brain's own name -> part index lookup; -1 when not found.
@@ -1273,46 +1191,43 @@ class _NativeRuntime:
         index space, and it works identically on web); this is the C-API's
         equivalent, kept for cross-checking.
         """
-        fn = self._override_fn("ss_runtime_find_part_index")
-        if fn is None:
-            return -1
-        return int(fn(self._ctx, part_name.encode("utf-8")))
+        return int(self._lib.ss_runtime_find_part_index(
+            self._ctx, part_name.encode("utf-8")))
 
     def set_part_visibility_override(self, part: int, force: int,
                                      cascade: bool = False) -> bool:
         """``force``: 0 = clear/revert to the animation, 1 = force-hide.
         ``cascade`` propagates the force-hide to the part's descendants."""
-        fn = self._override_fn("ss_runtime_set_part_visibility_override")
-        return bool(fn and fn(self._ctx, int(part), int(force),
-                              1 if cascade else 0))
+        return bool(self._lib.ss_runtime_set_part_visibility_override(
+            self._ctx, int(part), int(force), 1 if cascade else 0))
 
     def clear_part_visibility_override(self, part: int) -> bool:
-        fn = self._override_fn("ss_runtime_clear_part_visibility_override")
-        return bool(fn and fn(self._ctx, int(part)))
+        return bool(self._lib.ss_runtime_clear_part_visibility_override(
+            self._ctx, int(part)))
 
     def set_part_color_override(self, part: int, blend_op: int, rgba: int,
                                 priority: int = PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
         """``rgba`` is packed ``0xRRGGBBAA`` in the same 8-bit sRGB space as the
         authored PartColor — the Brain pre-multiplies alpha itself, so pass the
         colour as authored. Fills all four corners."""
-        fn = self._override_fn("ss_runtime_set_part_color_override")
-        return bool(fn and fn(self._ctx, int(part), int(blend_op),
-                              int(rgba) & 0xFFFFFFFF, int(priority)))
+        return bool(self._lib.ss_runtime_set_part_color_override(
+            self._ctx, int(part), int(blend_op), int(rgba) & 0xFFFFFFFF,
+            int(priority)))
 
     def set_part_color_override_corners(self, part: int, blend_op: int,
                                         corners_rgba,
                                         priority: int = PRIORITY_HOLD_UNTIL_NEXT_ANIMATION) -> bool:
         """Four distinct corners, in the runtime's ``lt, rt, lb, rb`` order."""
-        fn = self._override_fn("ss_runtime_set_part_color_override_corners")
         corners = list(corners_rgba)
-        if fn is None or len(corners) != 4:
+        if len(corners) != 4:
             return False
         buf = (C.c_uint32 * 4)(*[int(c) & 0xFFFFFFFF for c in corners])
-        return bool(fn(self._ctx, int(part), int(blend_op), buf, int(priority)))
+        return bool(self._lib.ss_runtime_set_part_color_override_corners(
+            self._ctx, int(part), int(blend_op), buf, int(priority)))
 
     def clear_part_color_override(self, part: int) -> bool:
-        fn = self._override_fn("ss_runtime_clear_part_color_override")
-        return bool(fn and fn(self._ctx, int(part)))
+        return bool(self._lib.ss_runtime_clear_part_color_override(
+            self._ctx, int(part)))
 
     def set_part_cell_override(self, part: int, cellmap_name_hash: int,
                                cell_name_hash: int,
@@ -1320,18 +1235,16 @@ class _NativeRuntime:
         """Point a part at a different cell. Hashes are fnv1a-32 of the cellmap
         name (without ``.ssce``) and the cell name; ``(0, 0)`` reverts to the
         animation. The cell is resolved now, so an unknown name returns False."""
-        fn = self._override_fn("ss_runtime_set_part_cell_override")
-        return bool(fn and fn(self._ctx, int(part),
-                              int(cellmap_name_hash) & 0xFFFFFFFF,
-                              int(cell_name_hash) & 0xFFFFFFFF, int(priority)))
+        return bool(self._lib.ss_runtime_set_part_cell_override(
+            self._ctx, int(part), int(cellmap_name_hash) & 0xFFFFFFFF,
+            int(cell_name_hash) & 0xFFFFFFFF, int(priority)))
 
     def clear_part_cell_override(self, part: int) -> bool:
-        fn = self._override_fn("ss_runtime_clear_part_cell_override")
-        return bool(fn and fn(self._ctx, int(part)))
+        return bool(self._lib.ss_runtime_clear_part_cell_override(
+            self._ctx, int(part)))
 
     def clear_all_part_overrides(self) -> bool:
-        fn = self._override_fn("ss_runtime_clear_all_part_overrides")
-        return bool(fn and fn(self._ctx))
+        return bool(self._lib.ss_runtime_clear_all_part_overrides(self._ctx))
 
     # -- Instance / Effect slots ------------------------------------------
     # Instance: stateless slot stepped against a *child* context per call.
