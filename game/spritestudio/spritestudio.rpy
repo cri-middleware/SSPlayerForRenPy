@@ -1291,7 +1291,7 @@ init -10 python:
         # a store global) so it is never saved/rolled back with the game state.
         _audio_live = set()
 
-        def __init__(self, ssab, animation=None, sprites_subdir=None,
+        def __init__(self, ssab, animation=None,
                      loop=-1, speed=1.0, sub_frame=True, frame_skip=True,
                      size=None, attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
@@ -1308,7 +1308,7 @@ init -10 python:
             # asked for after them.
             self._spec = (ssab,
                           tuple(animation) if isinstance(animation, list) else animation,
-                          sprites_subdir, loop, speed, sub_frame, frame_skip, size,
+                          loop, speed, sub_frame, frame_skip, size,
                           attachments, on_user_data, on_signal, on_audio,
                           on_animation_finished, on_animation_looped,
                           on_animation_started, aliases, audio_channel, kwargs)
@@ -1328,15 +1328,10 @@ init -10 python:
                 self.animation = animation
                 self.loop = loop
 
-            self.sprites_subdir = sprites_subdir
             # Textures and external-instance packs are exported co-located with
             # the .ssab, so the directory that holds the .ssab is the single base
-            # for all of them — the caller does not need a separate sprites_subdir.
-            # `sprites_subdir`, when given, is an optional prefix kept for
-            # backwards compatibility; the base is always re-derived from the
-            # resolved .ssab path below.
-            _relpath = (sprites_subdir.rstrip("/\\") + "/" + ssab) if sprites_subdir else ssab
-            _relpath = _relpath.replace("\\", "/").lstrip("/")
+            # for all of them.
+            _relpath = ssab.replace("\\", "/").lstrip("/")
             self._ssab_relpath = _relpath
             if "/" in _relpath:
                 self._base_dir, self._ssab_name = _relpath.rsplit("/", 1)
@@ -1628,7 +1623,6 @@ init -10 python:
             rv = SSPlayer(
                 self.ssab,
                 animation=target_anim,
-                sprites_subdir=self.sprites_subdir,
                 loop=loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,

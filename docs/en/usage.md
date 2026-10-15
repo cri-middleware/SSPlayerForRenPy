@@ -41,9 +41,6 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xa
 > [!TIP]
 > Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§10) below.
 
-> [!NOTE]
-> The old `sprites_subdir` argument remains for backward compatibility, but it is unnecessary when specifying the path (deprecated).
-
 ---
 
 ## 2. Using as Standing Images (`image` statement and Character integration)
