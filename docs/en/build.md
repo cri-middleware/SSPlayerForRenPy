@@ -95,7 +95,7 @@ scripts/build-runtime.sh
 ```powershell
 scripts\build-runtime.ps1
 ```
-*If you want to perform a release build, specify arguments like `build=release` (for details, refer to the script contents).*
+*If you want to perform a release build, specify arguments like `build=release` (`--help` lists every option).*
 
 ### 2.4 Launching the Demo and Development Iteration
 Perform data conversion and demo launch just like for Customers.
@@ -160,7 +160,7 @@ scripts/deploy-web.sh     [dest_dir]                       # the stock Web expor
 **Windows (`*.ps1`):**
 ```powershell
 scripts\deploy-desktop.ps1 [dest_dir]                      # win desktop app
-scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+scripts\deploy-android.ps1 [dest_dir] [--bundle] [--install] [--launch]
 scripts\deploy-web.ps1     [dest_dir]
 # (iOS export is macOS-only; there is no deploy-ios.ps1)
 ```

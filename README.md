@@ -19,7 +19,7 @@ An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spri
 
 ## 📚 Documentation
 
-For detailed specifications, import procedures, and API references, please visit our MkDocs documentation site.
+For detailed specifications, import procedures, and API references, please visit the documentation site.
 
 - [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/)
 - [**Documentation (English)**](./docs/en/index.md)
