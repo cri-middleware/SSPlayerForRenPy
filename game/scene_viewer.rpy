@@ -9,8 +9,8 @@ init python:
     # Sample packs. The full `overall/` feature set is listed so the viewer
     # exercises every supported feature (Basic alpha, PartsColor, blends, mesh
     # deform, shapes, masks, the ss-* user shaders, instances, timeline events).
-    # Text / NineSlice are listed for completeness but their batch kinds are not
-    # rendered yet (they show empty — later milestones). Ringo is a real
+    # Text.ssab and NineSlice.ssab are left out: those parts are not drawn (see
+    # docs/en/limitations.md), so they would show an empty stage. Ringo is a real
     # character (Normal parts render; Mesh-deform parts do). A trimmed sample of
     # the ParticleEffect packs is appended after these (see below).
     SS_DEMO_PACKS = [
@@ -32,8 +32,6 @@ init python:
         ("ss_assets/overall", "Signal.ssab"),                 # timeline: signal
         ("ss_assets/overall", "Sound.ssab"),                  # timeline: audio
         ("ss_assets/overall", "01-new.ssab"),
-        ("ss_assets/overall", "Text.ssab"),                   # (not rendered yet)
-        ("ss_assets/overall", "NineSlice.ssab"),              # (not rendered yet)
         ("ss_assets/Ringo",   "Ringo.ssab"),                  # character
         ("ss_assets/Ringo",   "Ringo_tyu.ssab"),              # companion
     ]
