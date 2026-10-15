@@ -470,7 +470,7 @@ image boss = SSPlayer(
 > [!NOTE]
 > **[アニメーションのブレンド](#mixing-animations)中のイベント。** イベントはそれぞれ 1 つのアニメーションから出ていて、それを出したアニメーションのハンドルを `source` に持っています（`ss_track_main_source()` / `ss_add_track_source()` が返すものと同じハンドルです）。既定でイベントを出すのはトラック 0 のアニメーションだけです。トラック 0 のクロスフェードでは、それは入ってくる側で、フェードの最初のフレームから出します。出ていく側はフェードの開始と同時に出さなくなるので、フェード中に出ていく側が通過するイベントは報告されません（イベントを数えているゲームでは差が出ます）。`ss_set_track_outgoing_event_threshold(0, 0.5)` にすると、トラック 0 のフェードの前半は出ていく側も出します（設定は残ります）。重ねたアニメーションに出させるには `ss_set_source_event_threshold(handle, 0.0)` を使います。
 
-※ ポーリングベース（`ss_poll_events()`）での受け取り方については、デモプロジェクトの `scene_viewer.rpy` 内 `ss_drain_events()` などの実装をご参照ください。
+※ ポーリングベース（`ss_poll_events()`）での受け取り方については、デモプロジェクトの [`scene_viewer.rpy`](https://github.com/cri-middleware/SSPlayerForRenPy/blob/HEAD/game/scene_viewer.rpy) 内 `ss_drain_events()` などの実装をご参照ください。
 
 ---
 

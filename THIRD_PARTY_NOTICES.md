@@ -245,8 +245,8 @@ Copyright (c) CRI Middleware Co., Ltd. All rights reserved.
 `libssruntime` and `libssconverter` are written in Rust and depend on various third-party open-source crates.
 
 **License Location:**
-Because the runtime binaries are generated artifacts and not checked into this repository, the corresponding license documents for the Rust dependencies are generated or downloaded during the build/setup process.
-You can find these third-party licenses inside the `game/spritestudio/libs/` directory (specifically, `THIRD-PARTY-LICENSES.ssruntime.md` and `LICENSE.md`) after running the setup scripts.
+The license documents for the Rust dependencies ship with the native libraries. In the release zip they are in `spritestudio/libs/` (specifically, `THIRD-PARTY-LICENSES.ssruntime.md`, `THIRD-PARTY-LICENSES.ssconverter.md` and `LICENSE.md`), so once installed they sit in `game/spritestudio/libs/`.
+The runtime binaries are not checked into this repository, so in a source checkout `scripts/download-sdk.*` places the same files in `game/spritestudio/libs/`.
 
 **Distribution Note:**
 If you distribute compiled games or packages that include `libssruntime`, please ensure you also bundle and distribute the license files (`THIRD-PARTY-LICENSES.ssruntime.md` and `LICENSE.md`) located in `game/spritestudio/libs/` to comply with the open-source licenses of the underlying Rust crates.

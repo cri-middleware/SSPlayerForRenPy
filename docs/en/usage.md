@@ -471,7 +471,7 @@ image boss = SSPlayer(
 > [!NOTE]
 > **Events under [animation mixing](#mixing-animations).** Each event comes from one animation, and carries `source`: the handle of the animation that fired it (`ss_track_main_source()` / `ss_add_track_source()` hand out the same handles). By default only track 0's animation fires. In a crossfade on track 0 that is the incoming side, from the first frame of the fade, while the outgoing side falls silent as the fade begins — so the events the outgoing animation reaches during the fade are not reported, which a game that counts them will notice. `ss_set_track_outgoing_event_threshold(0, 0.5)` lets the outgoing side fire through the first half of each fade on track 0 (the setting stays), and `ss_set_source_event_threshold(handle, 0.0)` lets a layered animation fire.
 
-*Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside `scene_viewer.rpy` of the demo project.*
+*Note: For polling-based retrieval (`ss_poll_events()`), refer to implementations like `ss_drain_events()` inside [`scene_viewer.rpy`](https://github.com/cri-middleware/SSPlayerForRenPy/blob/HEAD/game/scene_viewer.rpy) of the demo project.*
 
 ---
 

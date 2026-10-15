@@ -92,7 +92,7 @@ scripts/build-runtime.sh
 ```powershell
 scripts\build-runtime.ps1
 ```
-※リリースビルドを行いたい場合は、引数に `build=release` 等を指定します（詳しくはスクリプトの中身をご参照ください）。
+※リリースビルドを行いたい場合は、引数に `build=release` 等を指定します（オプションの一覧は `--help` で確認できます）。
 
 ### 2.4 デモの起動と開発のイテレーション
 カスタマー向けと同様に、データのコンバートとデモ起動を行います。**開発サイクルの回し方:**
@@ -148,7 +148,7 @@ scripts/deploy-web.sh     [dest_dir]                       # 標準の Web エ�
 **Windows (`*.ps1`):**
 ```powershell
 scripts\deploy-desktop.ps1 [dest_dir]                      # win デスクトップアプリ
-scripts\deploy-android.ps1 [dest_dir] [-Bundle] [-Install] [-Launch]
+scripts\deploy-android.ps1 [dest_dir] [--bundle] [--install] [--launch]
 scripts\deploy-web.ps1     [dest_dir]
 # (iOS エクスポートは macOS 専用のため deploy-ios.ps1 はありません)
 ```

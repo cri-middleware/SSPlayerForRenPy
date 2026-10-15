@@ -8,7 +8,7 @@
 ## 2. ライブラリの配置
 最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードして展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
 
-> **内部構成**: このフォルダにはPythonスクリプト（`spritestudio.rpy` 等）と、各OS向けのネイティブライブラリ(Windows / macOS / Linux)がすべて含まれています。同じリリースのこのドキュメント（英語の Markdown。`README.md` と `docs/`）も入っていて、オフラインで読めます。ドキュメントは、ビルドしたゲームには `spritestudio.rpy` が含めません。
+> **内部構成**: このフォルダにはPythonスクリプト（`spritestudio.rpy` 等）と、各プラットフォーム向けのネイティブライブラリ（Windows / macOS / Linux、Android、iOS、Web）がすべて含まれています。同じリリースのこのドキュメント（英語の Markdown。`README.md` と `docs/`）も入っていて、オフラインで読めます。ビルドしたゲームからは、`spritestudio.rpy` がドキュメントを除外します。
 
 ## 3. 再生データ (`.ssab`) の配置
 SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) は、Ren'Py向けにコンバートしたデータ (`.ssab`) として配置する必要があります。
