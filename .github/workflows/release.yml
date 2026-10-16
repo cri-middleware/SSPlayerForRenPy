@@ -9,11 +9,11 @@ name: Release
 #   __version__ (PEP 440, e.g. 7.0.0b1 — the Ren'Py package's own version,
 #   independent of SDK_VERSION.txt, which only pins which native SDK libs
 #   download-sdk.sh fetches).
-# - Policy: a prerelease (X.Y.ZaN / bN / rcN) is still published as the *latest*
-#   release, so
-#   prerelease stays false — README / docs hand out the
-#   releases/latest/download/SSPlayerForRenPy.zip link, which only resolves for
-#   a non-prerelease release.
+# - Policy: scripts/release-channel.sh marks the draft: no pre-release mark for a
+#   full release or a prerelease (X.Y.ZaN / bN / rcN) before the first one, a
+#   pre-release after that. So releases/latest/download/SSPlayerForRenPy.zip,
+#   which README / docs hand out, resolves to the newest full release, or
+#   before the first one to the newest prerelease.
 on:
   workflow_dispatch:
     inputs:
@@ -99,6 +99,7 @@ jobs:
           # deploy-examples.sh converts the SDK's bundled test projects, so the
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
+          fetch-tags: true
           persist-credentials: false
 
       # The ref decides what the run is: a v* tag is a release, anything else is
@@ -163,12 +164,19 @@ jobs:
           # build fails, in a step that has nothing to do with the release.
           retention-days: 7
 
+      # The pre-release mark the draft carries: one once a full release is
+      # tagged, none before (scripts/release-channel.sh).
+      - name: Read the Release's channel
+        id: channel
+        if: steps.release.outputs.draft == 'true'
+        run: |
+          channel="$(./scripts/release-channel.sh "$GITHUB_REF_NAME")"
+          echo "::notice::${GITHUB_REF_NAME} is a ${channel} release"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
       # The Release is created as a draft: publishing is what triggers pages.yml
       # (docs + Web demo deploy), so the generated notes get a final review
-      # before going live. Publish it from the GitHub Releases page as the latest
-      # release, never a pre-release (the policy at the top) — a decision made
-      # once, where the release is actually published, which is why there is no
-      # prerelease input.
+      # before going live. It carries its pre-release mark (the policy at the top).
       - name: Upload package to release
         if: steps.release.outputs.draft == 'true'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -177,6 +185,7 @@ jobs:
           name: SpriteStudio Player for Ren'Py ${{ github.ref_name }}
           generate_release_notes: true
           draft: true
+          prerelease: ${{ steps.channel.outputs.channel == 'prerelease' }}
           # The version-pinned zips, their stable aliases (the Web demo one is
           # what pages.yml downloads), and the checksum manifest.
           files: |
