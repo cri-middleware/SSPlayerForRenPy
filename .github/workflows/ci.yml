@@ -46,6 +46,7 @@ jobs:
           # deploy-examples.sh converts the SDK's bundled test projects, and the
           # runtime is built from the SDK's source.
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
@@ -122,6 +123,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Compare each script with its twin
         run: bash scripts/check-twins.sh
@@ -153,6 +156,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
@@ -206,6 +210,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       # The web runtime is the SDK's wasm-pack bundle.
       - name: Setup Rust toolchain

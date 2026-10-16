@@ -26,9 +26,11 @@ on:
 permissions:
   contents: write
 
+# One run per ref at a time. A second dispatch of the same tag waits for the
+# first rather than cancelling it, so a half-built release is never abandoned.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # NOTE: both jobs check out the SpriteStudio-SDK submodule and download its
 # Release assets, so they need the SpriteStudio-SDK repository and the release
@@ -40,12 +42,14 @@ jobs:
   # scripts/run-demo.*) before releasing.
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # deploy-examples.sh converts the SDK's bundled test projects, so the
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
+          persist-credentials: false
 
       # Fetches the pre-built SpriteStudio SDK libs (libssruntime/libssconverter
       # for linux included) into game/spritestudio/libs/.
@@ -85,6 +89,7 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write # softprops/action-gh-release creates the GitHub Release
     steps:
@@ -93,6 +98,7 @@ jobs:
           # deploy-examples.sh converts the SDK's bundled test projects, so the
           # SpriteStudio-SDK submodule must be present.
           submodules: recursive
+          persist-credentials: false
 
       # The ref decides what the run is: a v* tag is a release, anything else is
       # a build, kept on the run and drafting nothing. A tag that already has a
