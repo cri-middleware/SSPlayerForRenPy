@@ -225,6 +225,22 @@ fi
 mkdir -p "$OUT"
 
 # --- the native libraries --------------------------------------------------
+# sdk=download ships the release scripts/SDK_VERSION.txt names, while CI tests
+# the submodule and the demo's packs are converted with it: the two have to be
+# the same commit, or what ships is not what was tested.
+if [ "$SDK" = "download" ]; then
+  SDK_PIN="$(tr -d '[:space:]' < "$ROOT_DIR/scripts/SDK_VERSION.txt")"
+  SDK_URL="$(git -C "$ROOT_DIR" config -f .gitmodules submodule.SpriteStudio-SDK.url)"
+  SDK_HAVE="$(git -C "$ROOT_DIR" rev-parse HEAD:SpriteStudio-SDK)"
+  SDK_WANT="$(git ls-remote "$SDK_URL" "refs/tags/$SDK_PIN" "refs/tags/$SDK_PIN^{}" |
+    awk -v t="refs/tags/$SDK_PIN" '$2 == t "^{}" { p = $1 } $2 == t { l = $1 } END { print (p != "" ? p : l) }')"
+  if [ "$SDK_HAVE" != "$SDK_WANT" ]; then
+    echo "$APP: the SpriteStudio-SDK submodule is at $SDK_HAVE, not at $SDK_PIN (${SDK_WANT:-no such tag}), which scripts/SDK_VERSION.txt names" >&2
+    echo "$APP: CI tests the submodule and sdk=download ships $SDK_PIN -- point the submodule at that release, or pass sdk=build" >&2
+    exit 1
+  fi
+  echo "   SpriteStudio-SDK submodule => $SDK_PIN"
+fi
 case "$SDK" in
   download)
     step "installing the pinned SDK native libraries"

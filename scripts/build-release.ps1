@@ -227,6 +227,28 @@ if (($clean -eq "yes") -and (Test-Path $out)) { Remove-Item -Recurse -Force $out
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
 # --- the native libraries --------------------------------------------------
+# sdk=download ships the release scripts/SDK_VERSION.txt names, while CI tests
+# the submodule and the demo's packs are converted with it: the two have to be
+# the same commit, or what ships is not what was tested.
+if ($sdk -eq "download") {
+    $sdkPin = (Get-Content (Join-Path $rootDirectory "scripts/SDK_VERSION.txt") -Raw).Trim()
+    $sdkUrl = "$(& git -C $rootDirectory config -f .gitmodules submodule.SpriteStudio-SDK.url)".Trim()
+    $sdkHave = "$(& git -C $rootDirectory rev-parse HEAD:SpriteStudio-SDK)".Trim()
+    $sdkWant = ""
+    $sdkRefs = @(& git ls-remote $sdkUrl "refs/tags/$sdkPin" "refs/tags/$sdkPin^{}")
+    if ($LASTEXITCODE -ne 0) { Fail "could not list the tags of $sdkUrl" }
+    foreach ($line in $sdkRefs) {
+        $sha, $ref = $line -split "`t"
+        if ($ref -eq "refs/tags/$sdkPin^{}") { $sdkWant = $sha; break }
+        if ($ref -eq "refs/tags/$sdkPin") { $sdkWant = $sha }
+    }
+    if ($sdkHave -ne $sdkWant) {
+        $wantText = if ($sdkWant) { $sdkWant } else { "no such tag" }
+        [Console]::Error.WriteLine("${APP}: the SpriteStudio-SDK submodule is at $sdkHave, not at $sdkPin ($wantText), which scripts/SDK_VERSION.txt names")
+        Fail "CI tests the submodule and sdk=download ships $sdkPin -- point the submodule at that release, or pass sdk=build"
+    }
+    Write-Host "   SpriteStudio-SDK submodule => $sdkPin"
+}
 if ($sdk -eq "download") {
     Write-Step "installing the pinned SDK native libraries"
     Invoke-Script "download-sdk.ps1"
