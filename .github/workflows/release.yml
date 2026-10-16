@@ -9,7 +9,8 @@ name: Release
 #   __version__ (PEP 440, e.g. 7.0.0b1 — the Ren'Py package's own version,
 #   independent of SDK_VERSION.txt, which only pins which native SDK libs
 #   download-sdk.sh fetches).
-# - Policy: a beta (X.Y.ZbN) is still published as the *latest* release, so
+# - Policy: a prerelease (X.Y.ZaN / bN / rcN) is still published as the *latest*
+#   release, so
 #   prerelease stays false — README / docs hand out the
 #   releases/latest/download/SSPlayerForRenPy.zip link, which only resolves for
 #   a non-prerelease release.
@@ -164,10 +165,10 @@ jobs:
 
       # The Release is created as a draft: publishing is what triggers pages.yml
       # (docs + Web demo deploy), so the generated notes get a final review
-      # before going live. Publish it from the GitHub Releases page, choosing
-      # "Set as a pre-release" / "Set as the latest release" there — the same
-      # decision, made once, where the release is actually published, which is
-      # why there is no prerelease input.
+      # before going live. Publish it from the GitHub Releases page as the latest
+      # release, never a pre-release (the policy at the top) — a decision made
+      # once, where the release is actually published, which is why there is no
+      # prerelease input.
       - name: Upload package to release
         if: steps.release.outputs.draft == 'true'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
