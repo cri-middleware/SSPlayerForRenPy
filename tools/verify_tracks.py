@@ -11,7 +11,8 @@ layer adds over it:
   * the track playback settings go through and outlast the animations laid on
     the track, track 0's through the copies ``set_animation`` replays;
   * overlays and fades advance with ``update``, hold on ``pause``, and keep the
-    player animating after track 0 has finished;
+    player animating after track 0 has finished -- a source added to track 0
+    included, a silenced or cleared overlay not;
   * every event is read from the table of the animation whose source fired
     it, carries that source, and the outgoing side of a crossfade falls silent
     unless its track's threshold lets it run on.
@@ -276,6 +277,52 @@ def check_animating_after_track_zero(lib) -> None:
         p.close()
 
 
+def check_stack_motion_after_track_zero(lib) -> None:
+    print("### after track 0 has finished, only what still moves asks for redraws")
+
+    def finished_attack1(lay):
+        p = _player(lib, _RINGO)
+        p.set_loop_count(1)
+        p.set_animation("attack1")
+        p.play()
+        handle = lay(p)
+        for _ in range(60):
+            p.update(_DT)
+        if not p.is_finished():
+            _fail("attack1 did not finish under loop count 1")
+        return p, handle
+
+    # A source added to track 0 plays on past track 0's main one.
+    p, h = finished_attack1(lambda p: p.add_track_source(0, "walk", 0.5))
+    try:
+        f = p.source_frame(h)
+        if not p.is_animating():
+            _fail("a source added to track 0 stopped with track 0")
+        p.update(_DT * 3)
+        if p.source_frame(h) == f:
+            _fail(f"the source added to track 0 did not advance: {f}")
+        p.pause()
+        if p.is_animating():
+            _fail("a paused source still asks for redraws")
+    finally:
+        p.close()
+
+    # A silenced overlay or a cleared one changes nothing on screen.
+    for what, lay in (
+            ("a silenced overlay",
+             lambda p: (p.set_track_animation(1, "walk"),
+                        p.set_track_alpha(1, 0.0))),
+            ("a cleared overlay",
+             lambda p: (p.set_track_animation(1, "walk"),
+                        p.clear_track(1)))):
+        p, _ = finished_attack1(lay)
+        try:
+            if p.is_animating():
+                _fail(f"{what} still asks for redraws")
+        finally:
+            p.close()
+
+
 def check_track_settings(lib) -> None:
     print("### the track playback settings read back, and refuse what has no track")
     p = _ringo(lib)
@@ -382,6 +429,7 @@ def main() -> int:
     for check in (check_current_animation, check_settings_carry,
                   check_outgoing_does_not_finish, check_fade_completes,
                   check_refold, check_overlay, check_animating_after_track_zero,
+                  check_stack_motion_after_track_zero,
                   check_track_settings, check_events):
         check(lib)
     print()
