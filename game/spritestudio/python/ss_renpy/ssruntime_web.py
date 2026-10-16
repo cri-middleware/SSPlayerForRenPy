@@ -491,6 +491,11 @@ class _WebRuntime:
         return self._mode_getter("is_clock_pausing", 0) == 1
 
     @property
+    def is_stack_in_motion(self) -> bool:
+        """See the native wrapper. Feature-detected -> False when absent."""
+        return self._mode_getter("is_stack_in_motion", 0) == 1
+
+    @property
     def is_finished(self) -> bool:
         """True once every configured loop has played.
 

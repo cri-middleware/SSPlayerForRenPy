@@ -243,12 +243,6 @@ class SSInternalPlayer:
         self._event_queue: deque = deque(maxlen=EVENT_QUEUE_MAX)
         self._events_dropped = 0
         self._was_finished = False
-        # The track stack. `_mixing` is set by a call that changes what the
-        # tracks show, and cleared by set_animation, whose setup folds the stack
-        # back to track 0 alone. While it is set the pose depends on more than
-        # track 0: overlays and fades run on after track 0 has finished, which
-        # is_animating has to see.
-        self._mixing = False
 
         # part-query snapshots (last rendered frame)
         self._last_world: list = []
@@ -481,30 +475,20 @@ class SSInternalPlayer:
         redraws (and emitting particles) forever."""
         if self._rt and self._rt.is_playing and not self._rt.is_pausing:
             return True
-        if self._mixing and self._mixing_moves():
+        if self._stack_moves():
             return True
         return self._has_independent_rigs()
 
-    def _mixing_moves(self) -> bool:
-        """Whether the clock runs and something on the track stack moves on it:
-        a fade in flight, or an overlay that has loops left at a speed above 0.
-        A finished overlay holds its last frame, so it no longer asks for
-        redraws. The clock is the Brain's, not track 0's: is_playing /
-        is_pausing go false when track 0 finishes, and the stack runs on."""
+    def _stack_moves(self) -> bool:
+        """Whether the clock runs and the track stack moves the pose on it,
+        beyond track 0's own animation: a fade in flight, or another source
+        still playing on a track that is heard. The clock is the Brain's, not
+        track 0's: is_playing / is_pausing go false when track 0 finishes, and
+        the stack runs on. Which tracks and sources count is the Brain's call;
+        it releases sources itself, so a copy kept here would go stale."""
         rt = self._rt
-        if rt is None or not rt.is_clock_playing or rt.is_clock_pausing:
-            return False
-        try:
-            for t in range(rt.track_count()):
-                if rt.track_fade_progress(t) is not None:
-                    return True
-                if (t and rt.track_loop_count(t) is not None
-                        and not rt.is_track_finished(t)
-                        and (rt.track_speed(t) or 0.0) > 0.0):
-                    return True
-        except Exception:
-            pass
-        return False
+        return (rt is not None and rt.is_clock_playing
+                and not rt.is_clock_pausing and rt.is_stack_in_motion)
 
     def _has_independent_rigs(self) -> bool:
         """Whether any Instance/Effect slot — at this level or nested inside a
@@ -535,8 +519,6 @@ class SSInternalPlayer:
         if not self._rt.setup_animation(name):
             return False
         self._current_animation = name
-        # Setup folds the track stack back to track 0 alone.
-        self._mixing = False
         # The loop count is per-transition, so re-apply ours. Speed and frame
         # skipping survive setup_animation on their own (SDK #369 / #370); they
         # are pushed anyway, because this is the one place a value set before the
@@ -787,12 +769,6 @@ class SSInternalPlayer:
             return -1
         return t if t >= 0 else -1
 
-    def _mixed(self, ok) -> bool:
-        """Note a call that changed what the tracks show (see `_mixing`)."""
-        if ok:
-            self._mixing = True
-        return bool(ok)
-
     def _track_zero_switched(self, name: str) -> None:
         """Track 0 plays ``name`` from this call on, as after set_animation.
 
@@ -825,7 +801,7 @@ class SSInternalPlayer:
         t = self._track(track)
         if t < 0 or not name or self._rt is None:
             return False
-        if not self._mixed(self._rt.set_track_animation(t, name)):
+        if not self._rt.set_track_animation(t, name):
             return False
         if t == 0:
             self._track_zero_switched(name)
@@ -839,7 +815,7 @@ class SSInternalPlayer:
         t = self._track(track)
         if t < 0 or not name or self._rt is None:
             return False
-        if not self._mixed(self._rt.crossfade(t, name, float(duration_ms))):
+        if not self._rt.crossfade(t, name, float(duration_ms)):
             return False
         if t == 0:
             self._track_zero_switched(name)
@@ -850,13 +826,13 @@ class SSInternalPlayer:
 
     def clear_track(self, track) -> bool:
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.clear_track(t))
+        return (t >= 0 and self._rt is not None
+                and self._rt.clear_track(t))
 
     def set_track_alpha(self, track, alpha: float) -> bool:
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.set_track_alpha(t, float(alpha)))
+        return (t >= 0 and self._rt is not None
+                and self._rt.set_track_alpha(t, float(alpha)))
 
     def track_alpha(self, track) -> Optional[float]:
         t = self._track(track)
@@ -865,8 +841,8 @@ class SSInternalPlayer:
     def set_track_blend(self, track, blend: int) -> bool:
         """``blend`` is ``ssruntime.TRACK_BLEND_MIX`` or ``_ADDITIVE``."""
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.set_track_blend(t, int(blend)))
+        return (t >= 0 and self._rt is not None
+                and self._rt.set_track_blend(t, int(blend)))
 
     def track_blend(self, track) -> Optional[int]:
         t = self._track(track)
@@ -876,7 +852,6 @@ class SSInternalPlayer:
         """``sync`` is ``ssruntime.TRACK_SYNC_FREE`` or ``_START``. It decides
         where the next animation laid on the track starts, so set it first."""
         t = self._track(track)
-        # Not a change to the pose, so it does not mark the stack in use.
         return t >= 0 and self._rt is not None and self._rt.set_track_sync(
             t, int(sync))
 
@@ -886,8 +861,8 @@ class SSInternalPlayer:
 
     def set_track_frame(self, track, frame: float) -> bool:
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.set_track_frame(t, float(frame)))
+        return (t >= 0 and self._rt is not None
+                and self._rt.set_track_frame(t, float(frame)))
 
     def track_frame(self, track) -> Optional[float]:
         t = self._track(track)
@@ -1006,8 +981,9 @@ class SSInternalPlayer:
         """Fade the track's alpha to ``target_alpha`` -- how much the track
         takes effect, not what it plays (that is :meth:`crossfade`)."""
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.fade_track(t, float(target_alpha), float(duration_ms)))
+        return (t >= 0 and self._rt is not None
+                and self._rt.fade_track(t, float(target_alpha),
+                                        float(duration_ms)))
 
     def track_fade_progress(self, track) -> Optional[float]:
         """``0..1`` through the fade in flight on ``track``; None when it is
@@ -1017,8 +993,8 @@ class SSInternalPlayer:
 
     def cancel_track_fade(self, track) -> bool:
         t = self._track(track)
-        return t >= 0 and self._rt is not None and self._mixed(
-            self._rt.cancel_track_fade(t))
+        return (t >= 0 and self._rt is not None
+                and self._rt.cancel_track_fade(t))
 
     def track_main_source(self, track) -> Optional[int]:
         """Handle of the source carrying the track's animation. A source the
@@ -1034,14 +1010,12 @@ class SSInternalPlayer:
         t = self._track(track)
         if t < 0 or not name or self._rt is None:
             return None
-        handle = self._rt.add_track_source(t, name, float(weight))
-        self._mixed(handle is not None)
-        return handle
+        return self._rt.add_track_source(t, name, float(weight))
 
     def set_source_weight(self, source, weight: float) -> bool:
         s = self._track(source)
-        return s >= 0 and self._rt is not None and self._mixed(
-            self._rt.set_source_weight(s, float(weight)))
+        return (s >= 0 and self._rt is not None
+                and self._rt.set_source_weight(s, float(weight)))
 
     def source_weight(self, source) -> Optional[float]:
         s = self._track(source)
@@ -1049,8 +1023,8 @@ class SSInternalPlayer:
 
     def set_source_frame(self, source, frame: float) -> bool:
         s = self._track(source)
-        return s >= 0 and self._rt is not None and self._mixed(
-            self._rt.set_source_frame(s, float(frame)))
+        return (s >= 0 and self._rt is not None
+                and self._rt.set_source_frame(s, float(frame)))
 
     def source_frame(self, source) -> Optional[float]:
         s = self._track(source)

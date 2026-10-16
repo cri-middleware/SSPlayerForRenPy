@@ -366,6 +366,7 @@ _REQUIRED = (
     ("ss_runtime_is_pausing", [_P], _b),
     ("ss_runtime_is_clock_playing", [_P], _b),
     ("ss_runtime_is_clock_pausing", [_P], _b),
+    ("ss_runtime_is_stack_in_motion", [_P], _b),
     ("ss_runtime_is_finished", [_P], _b),
     ("ss_runtime_is_playing_forward", [_P], _b),
     ("ss_runtime_get_start_frame", [_P], _i32),
@@ -800,6 +801,15 @@ class _NativeRuntime:
         """Whether pause holds the character's clock; implies
         :attr:`is_clock_playing`."""
         return bool(self._lib.ss_runtime_is_clock_pausing(self._ctx))
+
+    @property
+    def is_stack_in_motion(self) -> bool:
+        """Whether the track stack moves the pose on a running clock for a
+        reason other than track 0's own animation: a fade on any track, or a
+        source other than track 0's main one playing at a speed and weight
+        above 0 on a track that is heard. Does not read the clock; combine it
+        with :attr:`is_clock_playing` and :attr:`is_clock_pausing`."""
+        return bool(self._lib.ss_runtime_is_stack_in_motion(self._ctx))
 
     @property
     def is_finished(self) -> bool:
