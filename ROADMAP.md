@@ -48,7 +48,7 @@ These need no new SDK API — the runtime already provides everything required. 
 - [ ] **Stretch a NineSlice part to a screen's box** — The runtime evaluates a NineSlice
   part's size from keyframes and hands over finished vertices, and the Override Layer covers
   colour / cell / visibility only, so nothing can size the part to the box a screen gives it.
-  Waits for: Per-part size override (Phase 3).
+  Waits for: Per-part size override.
 
 ## Backlog
 
