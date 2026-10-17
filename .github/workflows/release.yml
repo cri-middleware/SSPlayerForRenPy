@@ -166,6 +166,8 @@ jobs:
 
       # The pre-release mark the draft carries: one once a full release is
       # tagged, none before (scripts/release-channel.sh).
+      # A patch to an earlier line also names the full release before it in that
+      # line, which the generated notes start from instead of the newest release.
       - name: Read the Release's channel
         id: channel
         if: steps.release.outputs.draft == 'true'
@@ -173,6 +175,11 @@ jobs:
           channel="$(./scripts/release-channel.sh "$GITHUB_REF_NAME")"
           echo "::notice::${GITHUB_REF_NAME} is a ${channel} release"
           echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+          if [ "$channel" = old ]; then
+            previous="$(git tag --list "${GITHUB_REF_NAME%.*}.*" --sort=v:refname |
+              awk -v tag="$GITHUB_REF_NAME" '$0 == tag { print previous; exit } $0 !~ /-|[0-9](a|b|rc)[0-9]+$/ { previous = $0 }')"
+            echo "previous=${previous}" >> "$GITHUB_OUTPUT"
+          fi
 
       # The Release is created as a draft: publishing is what triggers pages.yml
       # (docs + Web demo deploy), so the generated notes get a final review
@@ -184,6 +191,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: SpriteStudio Player for Ren'Py ${{ github.ref_name }}
           generate_release_notes: true
+          previous_tag: ${{ steps.channel.outputs.previous }}
           draft: true
           prerelease: ${{ steps.channel.outputs.channel == 'prerelease' }}
           # The version-pinned zips, their stable aliases (the Web demo one is
