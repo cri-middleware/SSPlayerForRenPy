@@ -350,7 +350,7 @@ gh run watch "${RUN:?}" --exit-status
 
 ### 6. 公開
 
-**この手順は人が行います。** リリースノートの中身は判断が要り、公開した Release は取り消せないためです。[Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) ページで下書きを開き、添付を確かめます。`SSPlayerForRenPy-X.Y.Z.zip` とそのエイリアス `SSPlayerForRenPy.zip`、`SSPlayerForRenPy-web-demo-X.Y.Z.zip` と `SSPlayerForRenPy-web-demo.zip`、`SHA256SUMS` の 5 つです。リリースノートを編集し、下書きの印のまま **Publish release** を押します。`scripts/release-channel.sh` が、正式版のタグがすでにあれば pre-release にし、なければ Latest になるようにしてあります。そのため、README と docs が案内する `releases/latest/download/SSPlayerForRenPy.zip` は最新の正式版を指し続けます（最初の正式版より前は最新のプレリリース）。サイトをデプロイするのは Latest になる Release だけです。
+**この手順は人が行います。** リリースノートの中身は判断が要り、公開した Release は取り消せないためです。[Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) ページで下書きを開き、添付を確かめます。`SSPlayerForRenPy-X.Y.Z.zip` とそのエイリアス `SSPlayerForRenPy.zip`、`SSPlayerForRenPy-web-demo-X.Y.Z.zip` と `SSPlayerForRenPy-web-demo.zip`、`SHA256SUMS` です。リリースノートを編集し、下書きの印のまま **Publish release** を押します。`scripts/release-channel.sh` が、正式版のタグがすでにあれば pre-release にし、なければ Latest になるようにしてあります。そのため、README と docs が案内する `releases/latest/download/SSPlayerForRenPy.zip` は最新の正式版を指し続けます（最初の正式版より前は最新のプレリリース）。サイトをデプロイするのは Latest になる Release だけです。
 
 公開すると `pages.yml` が動き、[ドキュメントサイト](https://cri-middleware.github.io/SSPlayerForRenPy/) と、この Release から取得する遊べる Web デモをデプロイします。run を最後まで見届けてから、サイトを開いて確かめます。run が失敗しても Release は公開されたままで、サイトは元のまま残ります。原因を直したら `gh run rerun "${RUN:?}"` で再実行します。再実行は同じタグをビルドします。
 
