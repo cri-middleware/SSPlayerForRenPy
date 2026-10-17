@@ -96,7 +96,7 @@ jobs:
       # build-pages.sh owns that order, and running it here is what keeps this workflow
       # and the local gate from drifting apart.
       #
-      # Both locale builds are --strict, so broken links / missing nav entries abort the
+      # Both locale builds are --strict, so broken links abort the
       # publish rather than deploying a site with a dead link.
       #
       # demo=download pulls the SSPlayerForRenPy-web-demo.zip asset release.yml attached
