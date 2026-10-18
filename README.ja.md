@@ -37,29 +37,49 @@
 
 ## 🚀 1. クイックスタート
 
-**ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 1 行書く。その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
+**ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 表示する。その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
 **Player 自体や、その下の Rust コアを変更する場合**は [2 章](#%EF%B8%8F-2-フル開発環境sdk--player-開発者)へ。
 
-### 導入方法
+**Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.5 以上**で作成したプロジェクトを用意してください。
 
-**Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.5 以上**で作成されたアニメーションが前提です。
+1. **導入**: [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（常に最新リリースを指す恒久リンク。すべての版は [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) にあります）をダウンロードして展開し、中の `spritestudio/` フォルダをプロジェクトの `game/` フォルダへコピーします。
+2. **変換**: プロジェクトのルート（`game/` と同じ階層）に `SpriteStudio_Source/` フォルダを作り、SpriteStudio のプロジェクトを `.sspj` だけでなくフォルダごとコピーします。Ren'Py ランチャーからプロジェクトを起動すると、ゲームが始まる前にプロジェクトが `game/ss_assets/<プロジェクト名>/` へ変換されます（ランチャーは開発者モードでゲームを起動し、変換には開発者モードが必要です。配布したゲームが変換することはありません）。
 
-ビルド済みのパッケージを利用し、負担なく手軽に導入できる方法です。
+   ```
+   MyGame/
+   ├── game/
+   │   ├── spritestudio/          ← ZIP から
+   │   ├── ss_assets/
+   │   │   └── Ringo/             ← ゲームの起動時に変換される
+   │   │       ├── Ringo.ssab
+   │   │       └── Ringo.png
+   │   └── script.rpy
+   └── SpriteStudio_Source/
+       └── Ringo/                 ← プロジェクトのフォルダをそのまま
+           ├── Ringo.sspj
+           ├── Ringo.png
+           └── …
+   ```
 
-最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードし、展開してできる **`spritestudio/`** フォルダを、ご自身のRen'Pyプロジェクトの `game/` フォルダ内にそのままコピーしてください。これだけで導入は完了です。
+3. **表示**: 変換したパックは、そのまま画像として使えます。名前は `.ssab` のファイル名を小文字にしたもので、アニメーションが属性になります。`game/script.rpy` に次のように書きます。
 
-```renpy
-# ゲームプロジェクト内で呼び出す例
-screen demo():
-    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
-```
-※詳しくは [導入ガイド](docs/ja/setup.md) および [再生と制御](docs/ja/usage.md) をご覧ください。
+   ```renpy
+   label start:
+       show ringo wait1
+       "こんにちは！"
+   ```
 
-**自分のアニメーションも同じ流れで入ります。** SpriteStudio のプロジェクトを `SpriteStudio_Source/` に置けば、次のリロードで Auto Importer が変換します（[ホットリロード](docs/ja/import.md#ホットリロード)をオンにしていれば、そのリロードも自動です）。手動の書き出し手順はありません。Ren'Py を起動せずに変換する 2 つの経路（デスクトップの SSConverter GUI、CI 向けの `ssconverter-cli`）も [アセットの取り込み](docs/ja/import.md) にあります。
+   名前が分からないときは、ゲームの実行中に **Shift+B** を押してください。アセットブラウザがパックとアニメーションを一覧にして再生し、貼り付ける 1 行をコピーしてくれます。
+
+SpriteStudio で編集したら、ゲームの実行中に **Shift+R** を 1 回押してください。以後は保存するたびに変更が変換され、ゲームが自動で読み込み直されます。押すのは 1 回だけです。もう一度押すとオフになります（[ホットリロード](docs/ja/import.md#ホットリロード)）。
+
+SpriteStudio のデータが手元に無くても始められます。[公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) が手頃です。
+
+**次に読む:** [再生と制御](docs/ja/usage.md) · [アセットの取り込み](docs/ja/import.md)（Ren'Py を起動せずに変換する方法も含む） · [制約と適用範囲](docs/ja/limitations.md)
+
+## ⚙️ 2. フル開発環境（SDK / Player 開発者）
 
 ### チェックアウトから動かしてみる
-
-> これは上の導入手順の一部ではなくチェックアウトなので、パッケージを使うだけなら不要です。
 
 同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
 
@@ -88,7 +108,8 @@ scripts\run-demo.ps1
 ※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
 ※詳細は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
 
-## ⚙️ 2. フル開発環境（SDK / Player 開発者）
+### コアを自前でビルドする
+
 アニメーション計算のコア部分を担うRust製サブモジュール (`SpriteStudio-SDK`) も含めて開発・コントリビュートを行いたい方向けの手順です。
 
 **macOS / Linux:**

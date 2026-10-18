@@ -37,35 +37,63 @@ For detailed specifications, import procedures, and API references, please visit
 
 ## 🚀 1. Quick Start
 
-**Using it in your game?** Read on — drop the folder in, convert your `.sspj`, add one line.
+**Using it in your game?** Read on — drop the folder in, convert your `.sspj`, show it.
 Everything after that (events, per-part overrides, `SSCharacter`) is the same path further in,
 in the [documentation](./docs/en/index.md).
 **Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdk--player-developers).
 
-### Setup
+You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudio 7.5 or later**.
 
-Needs **Ren'Py 8.x** (the Python 3 line), and animations authored in **SpriteStudio 7.5 or later**.
+1. **Install**: Download [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)
+   (a stable link to the latest release; [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)
+   has every version), extract it, and copy the `spritestudio/` folder inside into your project's
+   `game/` folder.
+2. **Convert**: Make a `SpriteStudio_Source/` folder in your project's root, beside `game/`, and
+   copy your SpriteStudio project into it — the whole folder, not the `.sspj` alone. Launch the
+   project from the Ren'Py launcher: before the game starts, the project is converted into
+   `game/ss_assets/<project>/`. (The launcher starts games in developer mode, which the
+   converter needs; a game you ship never converts.)
 
-This is the easiest way to integrate the player using a pre-built package.
+   ```
+   MyGame/
+   ├── game/
+   │   ├── spritestudio/          ← from the ZIP
+   │   ├── ss_assets/
+   │   │   └── Ringo/             ← converted when the game launches
+   │   │       ├── Ringo.ssab
+   │   │       └── Ringo.png
+   │   └── script.rpy
+   └── SpriteStudio_Source/
+       └── Ringo/                 ← your project folder, copied whole
+           ├── Ringo.sspj
+           ├── Ringo.png
+           └── …
+   ```
 
-Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and simply copy the resulting **`spritestudio/`** folder directly into the `game/` folder of your Ren'Py project. That's it!
+3. **Show**: Every converted pack is already an image, named after its `.ssab` in lower case,
+   with its animations as attributes. In `game/script.rpy`:
 
-```renpy
-# Example usage in a Ren'Py script
-screen demo():
-    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
-```
-*For details, see the [Setup Guide](docs/en/setup.md) and [Usage & Control](docs/en/usage.md).*
+   ```renpy
+   label start:
+       show ringo wait1
+       "Hello!"
+   ```
 
-**Your own animation gets in the same way.** Drop the SpriteStudio project into `SpriteStudio_Source/`
-and the Auto Importer converts it on the next reload — which, with [hot reload](docs/en/import.md#hot-reload)
-armed (one **Shift+R**), happens by itself. There is no manual export step.
-[Asset Import](docs/en/import.md) also covers the two routes that do not need Ren'Py running:
-SSConverter GUI on the desktop, and `ssconverter-cli` in CI.
+   Not sure of a name? Press **Shift+B** in the running game: the Asset Browser lists every pack
+   and animation, plays them, and copies a line to paste.
+
+After editing in SpriteStudio, press **Shift+R** once in the running game; from then on every save
+converts the change and reloads the game by itself. Press it only once — a second press turns it
+off ([hot reload](docs/en/import.md#hot-reload)).
+
+No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with.
+
+**Read next:** [Usage & Control](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
+the converters that work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
+
+## ⚙️ 2. Full Build Environment (For SDK / Player Developers)
 
 ### See it running from a checkout
-
-> This is a checkout, not part of the setup above — you do not need it to use the package.
 
 Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
 
@@ -94,7 +122,8 @@ scripts\run-demo.ps1
 *Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
 *For details, see the [Build Guide](docs/en/build.md).*
 
-## ⚙️ 2. Full Build Environment (For SDK / Player Developers)
+### Building the core yourself
+
 If you want to develop and contribute to the core animation module (`SpriteStudio-SDK`), follow these steps.
 
 **macOS / Linux:**
