@@ -69,3 +69,9 @@ These need no new SDK API — the runtime already provides everything required. 
   Player-side draw path; the SDK roadmap has no entry for it.
 - [ ] **Timeline events of Instance / Effect parts** — Only the root animation's UserData /
   Signal / Audio events are surfaced. The SDK roadmap has no entry for them.
+- [ ] **Built into Ren'Py** — SpriteStudio support that ships with Ren'Py, as Live2D's does, so a
+  project plays `.ssab` without `spritestudio/` copied into its `game/`. A wish, not scheduled: it
+  rests on Ren'Py's maintainers taking it in, and on Ren'Py's own build producing the native cores
+  for every platform it targets. Being BSD-3-Clause, the cores could come inside the Ren'Py SDK
+  rather than as a separate download installed through the launcher, which is how the Cubism SDK
+  arrives.
