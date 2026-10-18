@@ -6,6 +6,11 @@ In SpriteStudio Player for Ren'Py, you have very flexible control over SpriteStu
 > **Placement of `.ssab` files**
 > The converted `.ssab` file, its textures (`.png`), and any referenced external instance packs must **reside in the same folder** (the auto importer outputs them to `game/ss_assets/<ProjectName>/`). Because the player resolves related resources from the same directory as the `.ssab`, you do not need to specify a separate folder for textures.
 
+> [!TIP]
+> **The quickest way to show one:** every converted pack is already an image, so
+> `show ringo wait1` in a `label` shows `ss_assets/Ringo/Ringo.ssab` playing `wait1`, with no
+> `image` statement. Section 2 below has the details.
+
 ---
 
 ## 1. The Simplest Playback (Calling from a Screen)
