@@ -48,7 +48,11 @@
    ```
    MyGame/
    ├── game/
-   │   ├── spritestudio/          ← ZIP から
+   │   ├── spritestudio/          ← ZIP の中のフォルダをそのまま
+   │   │   ├── spritestudio.rpy
+   │   │   ├── libs/
+   │   │   ├── python/
+   │   │   └── …
    │   ├── ss_assets/
    │   │   └── Ringo/             ← ゲームの起動時に変換される
    │   │       ├── Ringo.ssab
