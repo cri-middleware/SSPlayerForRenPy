@@ -34,7 +34,8 @@ the engine-independent core, and the `SSPlayer` displayable (`spritestudio.rpy`)
 
 | Question | File |
 |---|---|
-| Use | [README.md](./README.md), the [docs site](./docs/en/) |
+| Using it: every API | the [docs site](./docs/en/) |
+| Install, convert, first frame, where to read next | [README.md](./README.md), per `SpriteStudio-SDK/MAINTAINING_PLAYERS.md` |
 | What is and is not supported | [docs/en/limitations.md](./docs/en/limitations.md), the canonical list |
 | Constraints, setup, the demo, tests, the docs site | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | Versions and releases, maintainers only | [RELEASING.md](./RELEASING.md) |
