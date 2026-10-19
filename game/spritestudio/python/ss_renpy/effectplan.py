@@ -36,16 +36,16 @@ from dataclasses import dataclass
 
 from ss.runtime.EffectDrawCommand import EffectDrawCommand
 from ss.runtime.EffectDrawPlan import EffectDrawPlan
+from ss_renpy.framedata import _I32, _U8, _U16, _vector
 
 # EmitterState.blend_type values carried on EffectDrawCommand.blend.
 FX_BLEND_MIX, FX_BLEND_ADD = 0, 1
 FX_BLEND_NAMES = {0: "Mix", 1: "Add"}
 
-# FlatBuffers vtable slot offsets for EffectDrawPlan's flat vectors (from the
-# generated accessors: Commands=4, VertStride=6, Verts=8, Uvs=10, Colors=12,
-# Indices=14). We read the scalar vectors in bulk via struct rather than the
-# per-element accessors, which are heavy.
-_OFF_VERTS, _OFF_UVS, _OFF_COLORS, _OFF_INDICES = 8, 10, 12, 14
+# EffectDrawPlan's vtable slots, from the generated EffectDrawPlan.py. _decode
+# checks them against the generated accessors before trusting them.
+_EP_COMMANDS, _EP_VERT_STRIDE = 4, 6
+_EP_VERTS, _EP_UVS, _EP_COLORS, _EP_INDICES = 8, 10, 12, 14
 
 
 @dataclass
@@ -80,49 +80,68 @@ _FX_CMD = struct.Struct('<IIIB3x')
 _fx_fastpath = None   # None = unvalidated, True = OK, False = disabled
 
 
-def _bulk_commands(plan):
-    """All EffectDrawCommands as ``[(cellmap_hash, quad_count, particle_offset,
-    blend), ...]``, or ``None`` (caller falls back to ``plan.Commands(c)``)."""
+def _decode(plan: EffectDrawPlan) -> tuple:
+    """``(commands, vert_stride, verts, uvs, colors, indices)`` of ``plan``:
+    the commands as ``(cellmap_hash, quad_count, particle_offset, blend)``
+    tuples, the four vectors as flat lists.
+
+    Read with one struct call per vector, from where the vtable says each
+    starts. Until a plan holding all of them has read the same through the
+    generated accessors, each plan is checked against them; one that differs
+    turns the generated accessors on for good.
+    """
     global _fx_fastpath
     if _fx_fastpath is False:
-        return None
-    n = plan.CommandsLength()
-    if n == 0 or EffectDrawCommand.SizeOf() != _FX_CMD_SIZE:
-        return None
-    c0 = plan.Commands(0)
-    if c0 is None:
-        return None
-    base = c0._tab.Pos
-    cmds = list(_FX_CMD.iter_unpack(c0._tab.Bytes[base:base + n * _FX_CMD_SIZE]))
-    if _fx_fastpath is None:
-        ch, qc, po, bl = cmds[0]
-        if (ch != c0.CellmapHash() or qc != c0.QuadCount()
-                or po != c0.ParticleOffset() or bl != c0.Blend()):
-            _fx_fastpath = False
-            return None
-        _fx_fastpath = True
-    return cmds
+        return _decode_accessors(plan)
+    tab = plan._tab
+    buf, pos = tab.Bytes, tab.Pos
+    vt = pos - _I32(buf, pos)[0]
+    o = (_U16(buf, vt + _EP_VERT_STRIDE)[0]
+         if _EP_VERT_STRIDE < _U16(buf, vt)[0] else 0)
+    stride = _U8(buf, pos + o)[0] if o else 0
+    cs, cn = _vector(tab, _EP_COMMANDS)
+    vs, vn = _vector(tab, _EP_VERTS)
+    us, un = _vector(tab, _EP_UVS)
+    ks, kn = _vector(tab, _EP_COLORS)
+    js, jn = _vector(tab, _EP_INDICES)
+    if _fx_fastpath is None and (
+            EffectDrawCommand.SizeOf() != _FX_CMD_SIZE
+            or (cn, stride, vn, un, kn, jn) != (
+                plan.CommandsLength(), plan.VertStride(), plan.VertsLength(),
+                plan.UvsLength(), plan.ColorsLength(), plan.IndicesLength())):
+        _fx_fastpath = False
+        return _decode_accessors(plan)
+    cmds = list(_FX_CMD.iter_unpack(buf[cs:cs + cn * _FX_CMD_SIZE]))
+    verts = list(struct.unpack_from("<%df" % vn, buf, vs)) if vn else []
+    uvs = list(struct.unpack_from("<%df" % un, buf, us)) if un else []
+    colors = list(struct.unpack_from("<%df" % kn, buf, ks)) if kn else []
+    indices = list(struct.unpack_from("<%di" % jn, buf, js)) if jn else []
+    if _fx_fastpath is None and cn and vn and un and kn and jn:
+        c0 = plan.Commands(0)
+        _fx_fastpath = (
+            cs == c0._tab.Pos
+            and cmds[0] == (c0.CellmapHash(), c0.QuadCount(),
+                            c0.ParticleOffset(), c0.Blend())
+            and verts[0] == plan.Verts(0) and uvs[0] == plan.Uvs(0)
+            and colors[0] == plan.Colors(0) and indices[0] == plan.Indices(0))
+        if not _fx_fastpath:
+            return _decode_accessors(plan)
+    return cmds, stride, verts, uvs, colors, indices
 
 
-def _bulk_floats(plan: EffectDrawPlan, vtable_off: int, n: int) -> list:
-    """Read ``n`` floats of a plan vector in one ``struct`` call (no numpy)."""
-    if n <= 0:
-        return []
-    o = plan._tab.Offset(vtable_off)
-    if o == 0:
-        return []
-    a = plan._tab.Vector(o)
-    return list(struct.unpack_from("<%df" % n, plan._tab.Bytes, a))
-
-
-def _bulk_ints(plan: EffectDrawPlan, vtable_off: int, n: int) -> list:
-    if n <= 0:
-        return []
-    o = plan._tab.Offset(vtable_off)
-    if o == 0:
-        return []
-    a = plan._tab.Vector(o)
-    return list(struct.unpack_from("<%di" % n, plan._tab.Bytes, a))
+def _decode_accessors(plan: EffectDrawPlan) -> tuple:
+    """:func:`_decode` through the generated accessors, element by element."""
+    cmds = []
+    for c in range(plan.CommandsLength()):
+        cmd = plan.Commands(c)
+        if cmd is not None:
+            cmds.append((cmd.CellmapHash(), cmd.QuadCount(),
+                         cmd.ParticleOffset(), cmd.Blend()))
+    return (cmds, plan.VertStride(),
+            [plan.Verts(j) for j in range(plan.VertsLength())],
+            [plan.Uvs(j) for j in range(plan.UvsLength())],
+            [plan.Colors(j) for j in range(plan.ColorsLength())],
+            [plan.Indices(j) for j in range(plan.IndicesLength())])
 
 
 def _apply(m, x, y):
@@ -148,29 +167,14 @@ def build_effect_batches(buf, matrix=None, alpha: float = 1.0,
     """
     if not buf:
         return []
-    plan = parse(buf)
-    ncmd = plan.CommandsLength()
-    if ncmd == 0:
+    cmds, stride, verts, uvs, colors, indices = _decode(parse(buf))
+    if not cmds:
         return []
-    stride = plan.VertStride() or 2
-
-    verts = _bulk_floats(plan, _OFF_VERTS, plan.VertsLength())
-    uvs = _bulk_floats(plan, _OFF_UVS, plan.UvsLength())
-    colors = _bulk_floats(plan, _OFF_COLORS, plan.ColorsLength())
-    indices = _bulk_ints(plan, _OFF_INDICES, plan.IndicesLength())
+    stride = stride or 2
     a_mul = max(0.0, min(1.0, alpha))
-    cmds = _bulk_commands(plan)   # one struct decode for all commands (or None)
 
     batches: list[EffectBatch] = []
-    for c in range(ncmd):
-        if cmds is not None:
-            cellmap_hash, quad_count, poff, blend = cmds[c]
-        else:
-            cmd = plan.Commands(c)
-            if cmd is None:
-                continue
-            cellmap_hash, quad_count = cmd.CellmapHash(), cmd.QuadCount()
-            poff, blend = cmd.ParticleOffset(), cmd.Blend()
+    for cellmap_hash, quad_count, poff, blend in cmds:
         if quad_count == 0:
             continue
         nverts = quad_count * 4

@@ -101,6 +101,35 @@ def parse(fb) -> FrameData:
     return FrameData.GetRootAs(fb, 0)
 
 
+# FrameData's vtable slots, from the generated FrameData.py. Each reader below
+# checks its slot against the generated accessor before trusting it.
+_FD_PARTS, _FD_PARTS_COLOR, _FD_DRAW_ORDER, _FD_DRAW_BATCHES = 4, 8, 16, 18
+_U8 = struct.Struct('<B').unpack_from
+_U16 = struct.Struct('<H').unpack_from
+_U32 = struct.Struct('<I').unpack_from
+_I32 = struct.Struct('<i').unpack_from
+
+
+def _vector(tab, slot):
+    """``(start, length)`` of the vector field at vtable ``slot`` of the
+    FlatBuffers table ``tab``, or ``(0, 0)`` when it is absent: the generated
+    accessors' Offset / Vector / VectorLen, in a few struct reads. A field that
+    does not lead to a vector inside the buffer reads ``(0, -1)``, a length no
+    accessor returns."""
+    buf, pos = tab.Bytes, tab.Pos
+    vt = pos - _I32(buf, pos)[0]
+    if slot >= _U16(buf, vt)[0]:
+        return 0, 0
+    o = _U16(buf, vt + slot)[0]
+    if not o:
+        return 0, 0
+    a = pos + o
+    a += _U32(buf, a)[0]
+    if a + 4 > len(buf):
+        return 0, -1
+    return a + 4, _U32(buf, a)[0]
+
+
 # --- Bulk struct reads (mirror SSPlayerForUnity's RawPartState* / command casts)
 # PartState and EffectDrawCommand are fixed-layout FlatBuffers *structs* stored in
 # contiguous vectors, so the whole array decodes in ONE struct call instead of
@@ -158,19 +187,20 @@ def bulk_part_states(fd: FrameData):
     global _ps_fastpath
     if _ps_fastpath is False:
         return None
-    n = fd.PartsLength()
+    base, n = _vector(fd._tab, _FD_PARTS)
+    if _ps_fastpath is None and n != fd.PartsLength():
+        _ps_fastpath = False
+        return None
     if n == 0 or PartState.SizeOf() != _PS_SIZE:
         return None
-    p0 = fd.Parts(0)
-    if p0 is None:
-        return None
-    base = p0._tab.Pos
-    blob = p0._tab.Bytes[base:base + n * _PS_SIZE]
+    blob = fd._tab.Bytes[base:base + n * _PS_SIZE]
     lite = [_PartLite(uf, a, prio, mask, pc, shader, hide)
             for (uf, a, prio, mask, pc, shader, hide) in _PS_REC.iter_unpack(blob)]
     if _ps_fastpath is None:
+        p0 = fd.Parts(0)
         l0 = lite[0]
-        if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
+        if (p0 is None or base != p0._tab.Pos
+                or l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
                 or l0._pc != p0.PartColor() or l0._shader != p0.Shader()
                 or l0._prio != p0.Priority()
                 or abs(l0._a - p0.Alpha()) > 1e-6
@@ -710,16 +740,19 @@ def bulk_part_colors(fd: FrameData):
     global _pc_fastpath
     if _pc_fastpath is False:
         return None
-    n = fd.PartsColorLength()
+    base, n = _vector(fd._tab, _FD_PARTS_COLOR)
+    if _pc_fastpath is None and n != fd.PartsColorLength():
+        _pc_fastpath = False
+        return None
     if n == 0 or PartAttributePartColor.SizeOf() != _PC_SIZE:
         return None
-    p0 = fd.PartsColor(0)
-    if p0 is None:
-        return None
-    base = p0._tab.Pos
-    blob = p0._tab.Bytes[base:base + n * _PC_SIZE]
+    blob = fd._tab.Bytes[base:base + n * _PC_SIZE]
     out = [_decode_pc_record(rec) for rec in _PC_REC.iter_unpack(blob)]
     if _pc_fastpath is None:
+        p0 = fd.PartsColor(0)
+        if p0 is None or base != p0._tab.Pos:
+            _pc_fastpath = False
+            return None
         # Validate the WHOLE record against the accessor path, not just the LT
         # corner: SizeOf() cannot catch a same-size field reorder, so a partial
         # check could let RT/LB/RB decode wrong while the fast path still
@@ -966,19 +999,27 @@ class _ZeroSeq:
 _ZERO_SEQ = _ZeroSeq()
 
 
+_do_fastpath = None
+
+
 def _draw_order_array(fd: FrameData):
     """The whole DrawOrder Uint16 vector as a tuple (one struct read), or a
     zero sequence when absent. Hoists the per-call offset/base recompute out of
     the hot draw walk (``fd.DrawOrder(j)`` is read once per part per batch)."""
-    tab = fd._tab
-    o = tab.Offset(16)
-    if o == 0:
-        return _ZERO_SEQ
-    a = tab.Vector(o)
-    n = tab.VectorLen(o)
-    if n == 0:
-        return _ZERO_SEQ
-    return struct.unpack_from('<%dH' % n, tab.Bytes, a)
+    global _do_fastpath
+    if _do_fastpath is not False:
+        a, n = _vector(fd._tab, _FD_DRAW_ORDER)
+        if _do_fastpath is None:
+            if n != fd.DrawOrderLength():
+                _do_fastpath = False
+            elif n:
+                _do_fastpath = _U16(fd._tab.Bytes, a)[0] == fd.DrawOrder(0)
+        if _do_fastpath is not False:
+            if n == 0:
+                return _ZERO_SEQ
+            return struct.unpack_from('<%dH' % n, fd._tab.Bytes, a)
+    n = fd.DrawOrderLength()
+    return tuple(fd.DrawOrder(j) for j in range(n)) if n else _ZERO_SEQ
 
 
 # --- Bulk DrawBatch decode (same idea as bulk_part_states) ------------------
@@ -999,31 +1040,32 @@ def _draw_batch_list(fd: FrameData):
     flags)`` tuples — one struct pass (or the accessor path on drift). Never
     ``None`` so the two draw-walk loops can iterate it directly."""
     global _db_fastpath
-    n = fd.DrawBatchesLength()
-    if n == 0:
-        return []
     if _db_fastpath is not False and DrawBatch.SizeOf() == _DB_SIZE:
-        b0 = fd.DrawBatches(0)
-        if b0 is not None:
-            base = b0._tab.Pos
+        base, n = _vector(fd._tab, _FD_DRAW_BATCHES)
+        if _db_fastpath is None and n != fd.DrawBatchesLength():
+            _db_fastpath = False
+        elif n == 0:
+            return []
+        else:
             out = list(_DB_REC.iter_unpack(
-                b0._tab.Bytes[base:base + n * _DB_SIZE]))
+                fd._tab.Bytes[base:base + n * _DB_SIZE]))
             if _db_fastpath is None:
                 # Validate all 8 fields (incl. VertexCount@8 / IndexCount@10)
                 # against the accessor: SizeOf() cannot catch a same-size field
                 # reorder, so every decoded field is checked even though the
                 # walk itself ignores vcount/icount.
+                b0 = fd.DrawBatches(0)
                 r = out[0]
-                if (r[0] == b0.StartRank() and r[1] == b0.Count()
-                        and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
-                        and r[4] == b0.IndexCount() and r[5] == b0.BlendType()
-                        and r[6] == b0.Kind() and r[7] == b0.Flags()):
-                    _db_fastpath = True
-                else:
-                    _db_fastpath = False
+                _db_fastpath = bool(
+                    base == b0._tab.Pos
+                    and r[0] == b0.StartRank() and r[1] == b0.Count()
+                    and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
+                    and r[4] == b0.IndexCount() and r[5] == b0.BlendType()
+                    and r[6] == b0.Kind() and r[7] == b0.Flags())
             if _db_fastpath:
                 return out
     # Fallback: accessor path, same tuple shape.
+    n = fd.DrawBatchesLength()
     out = []
     for b in range(n):
         db = fd.DrawBatches(b)
