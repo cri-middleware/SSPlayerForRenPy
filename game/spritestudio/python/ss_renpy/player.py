@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from ss_renpy import framedata, mask, ssruntime
 from ss_renpy.effect import EffectRig
@@ -60,7 +60,7 @@ class FramePlan:
     looped: bool = False
     finished: bool = False
     events: list = field(default_factory=list)
-    world_matrices: list = field(default_factory=list)
+    world_matrices: Sequence[float] = field(default_factory=list)
     hidden_parts: Optional[set] = None
     # The frame's mask coverage (a ``ss_renpy.mask.FrameMask``) for the whole
     # instance tree, or None when nothing in it masks. It can hold no writer
@@ -245,7 +245,7 @@ class SSInternalPlayer:
         self._was_finished = False
 
         # part-query snapshots (last rendered frame)
-        self._last_world: list = []
+        self._last_world: Sequence[float] = []
         self._last_hidden: Optional[set] = None
 
         # Everything a *pack* implies is done here, at load: textures, and the
@@ -1054,9 +1054,10 @@ class SSInternalPlayer:
         and calls ``set_animation`` itself).
 
         Never raises: a draw-plan failure falls back to Normal/Mesh-only, and a
-        native/parse failure (update_ms, world_matrices, get_frame_data_view,
-        parse) degrades to an empty FramePlan instead of crashing the host's
-        render() — the previous frame stays on screen and the next tick retries.
+        native/parse failure (update_ms, get_frame_data_view,
+        world_matrices_snapshot, parse) degrades to an empty FramePlan instead
+        of crashing the host's render() — the previous frame stays on screen and
+        the next tick retries.
         """
         if self._parent_driven:
             # An Instance child is seeked by its parent via render_at(); its own
@@ -1098,8 +1099,7 @@ class SSInternalPlayer:
         # --- draw plan (sub-frame off floors the *display* frame only)
         disp = frame_no if self._sub_frame else math.floor(frame_no)
         fb = rt.get_frame_data_view(disp)
-        wm, wn = rt.world_matrices()
-        self._last_world = wm[0:wn] if (wm and wn) else []
+        self._last_world = rt.world_matrices_snapshot()
         items: list = []
         hidden: Optional[set] = None
         frame_mask = None

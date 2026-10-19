@@ -800,6 +800,12 @@ class _WebRuntime:
     def world_matrices(self):
         return self._soa_at(0)
 
+    def world_matrices_snapshot(self):
+        """This frame's world matrices as an ``array('f')`` the caller owns;
+        the buffer behind :meth:`world_matrices` is reused every frame."""
+        wm, n = self._soa_at(0)
+        return wm[:n] if n else array.array("f")
+
     def local_vertices(self):
         return self._soa_at(1)
 

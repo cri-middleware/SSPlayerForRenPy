@@ -101,6 +101,35 @@ def parse(fb) -> FrameData:
     return FrameData.GetRootAs(fb, 0)
 
 
+# FrameData's vtable slots, from the generated FrameData.py. Each reader below
+# checks its slot against the generated accessor before trusting it.
+_FD_PARTS, _FD_PARTS_COLOR, _FD_DRAW_ORDER, _FD_DRAW_BATCHES = 4, 8, 16, 18
+_U8 = struct.Struct('<B').unpack_from
+_U16 = struct.Struct('<H').unpack_from
+_U32 = struct.Struct('<I').unpack_from
+_I32 = struct.Struct('<i').unpack_from
+
+
+def _vector(tab, slot):
+    """``(start, length)`` of the vector field at vtable ``slot`` of the
+    FlatBuffers table ``tab``, or ``(0, 0)`` when it is absent: the generated
+    accessors' Offset / Vector / VectorLen, in a few struct reads. A field that
+    does not lead to a vector inside the buffer reads ``(0, -1)``, a length no
+    accessor returns."""
+    buf, pos = tab.Bytes, tab.Pos
+    vt = pos - _I32(buf, pos)[0]
+    if slot >= _U16(buf, vt)[0]:
+        return 0, 0
+    o = _U16(buf, vt + slot)[0]
+    if not o:
+        return 0, 0
+    a = pos + o
+    a += _U32(buf, a)[0]
+    if a + 4 > len(buf):
+        return 0, -1
+    return a + 4, _U32(buf, a)[0]
+
+
 # --- Bulk struct reads (mirror SSPlayerForUnity's RawPartState* / command casts)
 # PartState and EffectDrawCommand are fixed-layout FlatBuffers *structs* stored in
 # contiguous vectors, so the whole array decodes in ONE struct call instead of
@@ -158,19 +187,20 @@ def bulk_part_states(fd: FrameData):
     global _ps_fastpath
     if _ps_fastpath is False:
         return None
-    n = fd.PartsLength()
+    base, n = _vector(fd._tab, _FD_PARTS)
+    if _ps_fastpath is None and n != fd.PartsLength():
+        _ps_fastpath = False
+        return None
     if n == 0 or PartState.SizeOf() != _PS_SIZE:
         return None
-    p0 = fd.Parts(0)
-    if p0 is None:
-        return None
-    base = p0._tab.Pos
-    blob = p0._tab.Bytes[base:base + n * _PS_SIZE]
+    blob = fd._tab.Bytes[base:base + n * _PS_SIZE]
     lite = [_PartLite(uf, a, prio, mask, pc, shader, hide)
             for (uf, a, prio, mask, pc, shader, hide) in _PS_REC.iter_unpack(blob)]
     if _ps_fastpath is None:
+        p0 = fd.Parts(0)
         l0 = lite[0]
-        if (l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
+        if (p0 is None or base != p0._tab.Pos
+                or l0._hide != p0.Hide() or l0._uf != p0.UpdateFlag()
                 or l0._pc != p0.PartColor() or l0._shader != p0.Shader()
                 or l0._prio != p0.Priority()
                 or abs(l0._a - p0.Alpha()) > 1e-6
@@ -401,12 +431,12 @@ def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
     if i1 <= i0 or (i1 - i0) % 3 != 0 or i1 > ni:
         return None
     n = v1 - v0
-    # Bulk-slice the ctypes SoA pointers once (one C-level copy each) rather than
-    # indexing per element — per-element ctypes access dominated this function.
-    xs = mvx[v0:v1]
-    ys = mvy[v0:v1]
-    us = muv[v0 * 2:v1 * 2]                       # interleaved u, v
-    idx = midx[i0:i1]
+    # One list per buffer: the loops below index each element, and indexing a
+    # list is cheaper than indexing the SoA view.
+    xs = mvx[v0:v1].tolist()
+    ys = mvy[v0:v1].tolist()
+    us = muv[v0 * 2:v1 * 2].tolist()              # interleaved u, v
+    idx = midx[i0:i1].tolist()
     positions = [(xs[k], ys[k]) for k in range(n)]                  # world
     uvs = [(us[k * 2], us[k * 2 + 1]) for k in range(n)]            # tex px
     alpha = max(0.0, min(1.0, ps.Alpha()))
@@ -446,10 +476,9 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     if mo + MATRIX_STRIDE > wn or so + count * 2 > nsv or so + count * 2 > nsb:
         return None
     mat = wm[mo:mo + MATRIX_STRIDE]
-    # Bulk-slice the ctypes SoA pointers once (mirrors _read_mesh_part) rather
-    # than indexing per element — per-element ctypes access is the hot cost.
-    lv = sv[so:so + count * 2]
-    bc = sb[so:so + count * 2]
+    # One list per buffer, as in _read_mesh_part.
+    lv = sv[so:so + count * 2].tolist()
+    bc = sb[so:so + count * 2].tolist()
     positions = [_transform(mat, lv[j * 2], lv[j * 2 + 1]) for j in range(count)]
 
     # Per-vertex colour: bilinear-interpolate the four PartColor corners across
@@ -711,16 +740,19 @@ def bulk_part_colors(fd: FrameData):
     global _pc_fastpath
     if _pc_fastpath is False:
         return None
-    n = fd.PartsColorLength()
+    base, n = _vector(fd._tab, _FD_PARTS_COLOR)
+    if _pc_fastpath is None and n != fd.PartsColorLength():
+        _pc_fastpath = False
+        return None
     if n == 0 or PartAttributePartColor.SizeOf() != _PC_SIZE:
         return None
-    p0 = fd.PartsColor(0)
-    if p0 is None:
-        return None
-    base = p0._tab.Pos
-    blob = p0._tab.Bytes[base:base + n * _PC_SIZE]
+    blob = fd._tab.Bytes[base:base + n * _PC_SIZE]
     out = [_decode_pc_record(rec) for rec in _PC_REC.iter_unpack(blob)]
     if _pc_fastpath is None:
+        p0 = fd.PartsColor(0)
+        if p0 is None or base != p0._tab.Pos:
+            _pc_fastpath = False
+            return None
         # Validate the WHOLE record against the accessor path, not just the LT
         # corner: SizeOf() cannot catch a same-size field reorder, so a partial
         # check could let RT/LB/RB decode wrong while the fast path still
@@ -866,8 +898,7 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
     vo = p * VERT_STRIDE
     uo = p * UV_STRIDE
     co = p * CELL_STRIDE
-    mat = wm[mo:mo + MATRIX_STRIDE]
-    m0, m1, m4, m5, tx, ty = mat[0], mat[1], mat[4], mat[5], mat[12], mat[13]
+    m0, m1, _, _, m4, m5, _, _, _, _, _, _, tx, ty, _, _ = wm[mo:mo + MATRIX_STRIDE]
 
     use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
     colors = [c.rgba for c in corners]
@@ -875,20 +906,14 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
     has_pc = any(r > 0.0 for r in rates)
 
     if use_center:
-        positions = [
-            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
-            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
-            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
-            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
-            (m0 * lv[vo + 8] + m4 * lv[vo + 9] + tx, m1 * lv[vo + 8] + m5 * lv[vo + 9] + ty),
-        ]
-        uvs = [
-            (uv[uo], uv[uo + 1]),
-            (uv[uo + 2], uv[uo + 3]),
-            (uv[uo + 4], uv[uo + 5]),
-            (uv[uo + 6], uv[uo + 7]),
-            (uv[uo + 8], uv[uo + 9]),
-        ]
+        x0, y0, x1, y1, x2, y2, x3, y3, x4, y4 = lv[vo:vo + 10]
+        u0, v0, u1, v1, u2, v2, u3, v3, u4, v4 = uv[uo:uo + 10]
+        positions = [(m0 * x0 + m4 * y0 + tx, m1 * x0 + m5 * y0 + ty),
+                     (m0 * x1 + m4 * y1 + tx, m1 * x1 + m5 * y1 + ty),
+                     (m0 * x2 + m4 * y2 + tx, m1 * x2 + m5 * y2 + ty),
+                     (m0 * x3 + m4 * y3 + tx, m1 * x3 + m5 * y3 + ty),
+                     (m0 * x4 + m4 * y4 + tx, m1 * x4 + m5 * y4 + ty)]
+        uvs = [(u0, v0), (u1, v1), (u2, v2), (u3, v3), (u4, v4)]
         c0, c1, c2, c3 = colors
         colors.append(((c0[0] + c1[0] + c2[0] + c3[0]) * 0.25,
                        (c0[1] + c1[1] + c2[1] + c3[1]) * 0.25,
@@ -898,25 +923,20 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
         rates.append((r0 + r1 + r2 + r3) * 0.25)
         tris = _TRIS_FAN
     else:
-        positions = [
-            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
-            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
-            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
-            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
-        ]
-        uvs = [
-            (uv[uo], uv[uo + 1]),
-            (uv[uo + 2], uv[uo + 3]),
-            (uv[uo + 4], uv[uo + 5]),
-            (uv[uo + 6], uv[uo + 7]),
-        ]
+        x0, y0, x1, y1, x2, y2, x3, y3 = lv[vo:vo + 8]
+        u0, v0, u1, v1, u2, v2, u3, v3 = uv[uo:uo + 8]
+        positions = [(m0 * x0 + m4 * y0 + tx, m1 * x0 + m5 * y0 + ty),
+                     (m0 * x1 + m4 * y1 + tx, m1 * x1 + m5 * y1 + ty),
+                     (m0 * x2 + m4 * y2 + tx, m1 * x2 + m5 * y2 + ty),
+                     (m0 * x3 + m4 * y3 + tx, m1 * x3 + m5 * y3 + ty)]
+        uvs = [(u0, v0), (u1, v1), (u2, v2), (u3, v3)]
         tris = _TRIS_QUAD
 
-    src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
+    _, _, cw, ch, cl, ct = cm[co:co + CELL_STRIDE]
     return MeshPart(
         part_index=p, texture_hash=thash, blend_type=blend, color_blend=cblend,
         positions=positions, uvs=uvs, colors=colors, rates=rates, triangles=tris,
-        src_rect=src_rect, mask_influence=mask, use_center=use_center,
+        src_rect=(cl, ct, cw, ch), mask_influence=mask, use_center=use_center,
         has_partcolor=has_pc, shader_id_hash=shader_id, shader_params=shader_params)
 
 
@@ -979,19 +999,27 @@ class _ZeroSeq:
 _ZERO_SEQ = _ZeroSeq()
 
 
+_do_fastpath = None
+
+
 def _draw_order_array(fd: FrameData):
     """The whole DrawOrder Uint16 vector as a tuple (one struct read), or a
     zero sequence when absent. Hoists the per-call offset/base recompute out of
     the hot draw walk (``fd.DrawOrder(j)`` is read once per part per batch)."""
-    tab = fd._tab
-    o = tab.Offset(16)
-    if o == 0:
-        return _ZERO_SEQ
-    a = tab.Vector(o)
-    n = tab.VectorLen(o)
-    if n == 0:
-        return _ZERO_SEQ
-    return struct.unpack_from('<%dH' % n, tab.Bytes, a)
+    global _do_fastpath
+    if _do_fastpath is not False:
+        a, n = _vector(fd._tab, _FD_DRAW_ORDER)
+        if _do_fastpath is None:
+            if n != fd.DrawOrderLength():
+                _do_fastpath = False
+            elif n:
+                _do_fastpath = _U16(fd._tab.Bytes, a)[0] == fd.DrawOrder(0)
+        if _do_fastpath is not False:
+            if n == 0:
+                return _ZERO_SEQ
+            return struct.unpack_from('<%dH' % n, fd._tab.Bytes, a)
+    n = fd.DrawOrderLength()
+    return tuple(fd.DrawOrder(j) for j in range(n)) if n else _ZERO_SEQ
 
 
 # --- Bulk DrawBatch decode (same idea as bulk_part_states) ------------------
@@ -1012,31 +1040,32 @@ def _draw_batch_list(fd: FrameData):
     flags)`` tuples — one struct pass (or the accessor path on drift). Never
     ``None`` so the two draw-walk loops can iterate it directly."""
     global _db_fastpath
-    n = fd.DrawBatchesLength()
-    if n == 0:
-        return []
     if _db_fastpath is not False and DrawBatch.SizeOf() == _DB_SIZE:
-        b0 = fd.DrawBatches(0)
-        if b0 is not None:
-            base = b0._tab.Pos
+        base, n = _vector(fd._tab, _FD_DRAW_BATCHES)
+        if _db_fastpath is None and n != fd.DrawBatchesLength():
+            _db_fastpath = False
+        elif n == 0:
+            return []
+        else:
             out = list(_DB_REC.iter_unpack(
-                b0._tab.Bytes[base:base + n * _DB_SIZE]))
+                fd._tab.Bytes[base:base + n * _DB_SIZE]))
             if _db_fastpath is None:
                 # Validate all 8 fields (incl. VertexCount@8 / IndexCount@10)
                 # against the accessor: SizeOf() cannot catch a same-size field
                 # reorder, so every decoded field is checked even though the
                 # walk itself ignores vcount/icount.
+                b0 = fd.DrawBatches(0)
                 r = out[0]
-                if (r[0] == b0.StartRank() and r[1] == b0.Count()
-                        and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
-                        and r[4] == b0.IndexCount() and r[5] == b0.BlendType()
-                        and r[6] == b0.Kind() and r[7] == b0.Flags()):
-                    _db_fastpath = True
-                else:
-                    _db_fastpath = False
+                _db_fastpath = bool(
+                    base == b0._tab.Pos
+                    and r[0] == b0.StartRank() and r[1] == b0.Count()
+                    and r[2] == b0.TextureHash() and r[3] == b0.VertexCount()
+                    and r[4] == b0.IndexCount() and r[5] == b0.BlendType()
+                    and r[6] == b0.Kind() and r[7] == b0.Flags())
             if _db_fastpath:
                 return out
     # Fallback: accessor path, same tuple shape.
+    n = fd.DrawBatchesLength()
     out = []
     for b in range(n):
         db = fd.DrawBatches(b)
@@ -1059,6 +1088,21 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
     pcs = bulk_part_colors(fd)
     return [_mesh_part_from(fd, part, pcs)
             for part in _iter_visible_normal_parts(rt, fd)]
+
+
+def _mesh_soa(rt):
+    """The Mesh(deform) SoA: world x / y, interleaved UVs, part-local indices
+    and the two CSR offset arrays, as :func:`_read_mesh_part` takes them."""
+    return (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
+            rt.mesh_indices(), rt.mesh_vertex_offsets(),
+            rt.mesh_index_offsets())
+
+
+def _shape_soa(rt):
+    """The Shape SoA: 12 local vertices per part, their bbox coords and the
+    valid counts, as :func:`_read_shape_part` takes them."""
+    return (rt.shape_vertices(), rt.shape_vertex_box_coords(),
+            rt.shape_vertex_counts())
 
 
 def iter_draw_plan(rt, fd: FrameData, parts=None):
@@ -1090,16 +1134,7 @@ def iter_draw_plan(rt, fd: FrameData, parts=None):
     uv, _ = rt.local_uvs()
     cm, _ = rt.cell_meta()
     have_soa = bool(wm and lv)
-    # Mesh(deform) SoA — separate CSR buffers; cheap pointer fetch
-    # even when the pack has no Mesh parts (then ranges are empty / skipped).
-    mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
-                rt.mesh_indices(), rt.mesh_vertex_offsets(),
-                rt.mesh_index_offsets())
-    # Shape SoA — fixed 12-vert/part local positions + bbox coords + valid
-    # counts. Cheap pointer fetch even when the pack has no Shape parts (counts
-    # are then all zero / skipped).
-    shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
-                 rt.shape_vertex_counts())
+    mesh_soa = shape_soa = None
     if parts is None:
         parts = bulk_part_states(fd)
     pcs = bulk_part_colors(fd)   # pre-decoded per-corner colours (hot path)
@@ -1121,6 +1156,10 @@ def iter_draw_plan(rt, fd: FrameData, parts=None):
                 mask_only_parts.add(do[s + k])
     for (start, count, thash, _vc, _ic, blend, kind, flags) in batches:
         mask = bool(flags & MASK_INFLUENCE)
+        if kind == KIND_MESH and mesh_soa is None:
+            mesh_soa = _mesh_soa(rt)
+        elif kind == KIND_SHAPE and shape_soa is None:
+            shape_soa = _shape_soa(rt)
         for k in range(count):
             p = do[start + k]
             if mask_only_parts is not None and kind != KIND_MASK and p in mask_only_parts:

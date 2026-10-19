@@ -39,7 +39,6 @@ Field provenance is split across two tables:
 
 from __future__ import annotations
 
-from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -323,26 +322,35 @@ def settle(items, frame_mask: FrameMask) -> None:
             mp.mask = None
 
 
-# Every SoA buffer the three writer-geometry builders below can need. Each field
-# is one FFI call returning a pointer that is fixed for the frame, so they are
-# fetched ONCE per collect_writers instead of per writer (a quad writer needs
-# four of them, a mesh writer six).
-_WriterSoA = namedtuple(
-    "_WriterSoA", "world local_verts local_uvs cell shape mesh")
+class _WriterSoA:
+    """The transient SoA buffers the three writer-geometry builders below read.
 
+    Each is one FFI call returning a pointer that is fixed for the frame, so
+    each is fetched once per collect_writers instead of per writer; the Shape
+    and Mesh ones only when a writer of that kind reads them.
+    """
+    __slots__ = ("_rt", "world", "local_verts", "local_uvs", "cell",
+                 "_shape", "_mesh")
 
-def _writer_soa(rt) -> _WriterSoA:
-    """Snapshot the transient SoA pointers for one frame's writer geometry."""
-    return _WriterSoA(
-        world=rt.world_matrices(),
-        local_verts=rt.local_vertices(),
-        local_uvs=rt.local_uvs(),
-        cell=rt.cell_meta(),
-        shape=(rt.shape_vertices(), rt.shape_vertex_box_coords(),
-               rt.shape_vertex_counts()),
-        mesh=(rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
-              rt.mesh_indices(), rt.mesh_vertex_offsets(),
-              rt.mesh_index_offsets()))
+    def __init__(self, rt):
+        self._rt = rt
+        self.world = rt.world_matrices()
+        self.local_verts = rt.local_vertices()
+        self.local_uvs = rt.local_uvs()
+        self.cell = rt.cell_meta()
+        self._shape = self._mesh = None
+
+    @property
+    def shape(self):
+        if self._shape is None:
+            self._shape = framedata._shape_soa(self._rt)
+        return self._shape
+
+    @property
+    def mesh(self):
+        if self._mesh is None:
+            self._mesh = framedata._mesh_soa(self._rt)
+        return self._mesh
 
 
 def _quad_writer_geom(soa, fd, p, thash):
@@ -449,7 +457,7 @@ def collect_writers(rt, fd, part_infos, parts=None,
             if not mask_val:                       # mask == 0 → no write
                 continue
             if soa is None:
-                soa = _writer_soa(rt)
+                soa = _WriterSoA(rt)
             if kind == framedata.KIND_MESH:
                 geom = _mesh_writer_geom(soa, fd, p, thash)
             else:
