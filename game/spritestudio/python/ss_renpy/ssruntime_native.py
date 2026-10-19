@@ -42,6 +42,7 @@ import ctypes as C
 import os
 import platform
 import sys
+from array import array
 
 from ss.format.SsAnimeBinary import SsAnimeBinary
 
@@ -1108,6 +1109,13 @@ class _NativeRuntime:
     def world_matrices(self):
         """(ptr, count_floats) for the world-matrix SoA buffer (16/part)."""
         return self._soa_float(self._lib.ss_runtime_get_world_matrices)
+
+    def world_matrices_snapshot(self):
+        """The world-matrix SoA buffer as an ``array('f')`` the caller owns,
+        still valid after the next Brain call: one copy of the buffer, where
+        slicing the pointer builds a Python float per element."""
+        ptr, n = self.world_matrices()
+        return array("f", C.string_at(ptr, n * 4)) if ptr and n else array("f")
 
     def local_vertices(self):
         return self._soa_float(self._lib.ss_runtime_get_local_vertices)
