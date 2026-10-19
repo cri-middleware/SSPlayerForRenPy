@@ -16,9 +16,10 @@ Lifetime rules:
     ssab bytes behind a *borrowed* resource, until the resource and every
     context bound to it are gone. We keep the Python wrapper conservative:
     ``close()`` destroys the context first, then the resource.
-  * SoA buffers (world matrices, local vertices, ...) are only valid until the
-    next Brain call. Never retain the raw pointers across frames; copy out
-    (or build a numpy view and consume it) within the same frame.
+  * SoA buffers (world matrices, local vertices, ...) come back as read-only
+    memoryviews over the Brain's memory, valid only until the next Brain call,
+    and a slice of one is a view too. Never retain one across frames; copy out
+    (``tolist()``, ``world_matrices_snapshot()``) within the frame.
   * The FrameData / EffectDrawPlan FlatBuffers can be consumed two ways:
     ``get_frame_data``/``effect_slot_step`` copy them into owned ``bytes`` (safe
     to retain), while ``get_frame_data_view``/``effect_slot_step_view`` return a
@@ -606,6 +607,34 @@ def _readonly_view(ptr, n):
         return mv
 
 
+class _SoaBuffer:
+    """One SoA getter, its out-parameters allocated once, and the read-only
+    ``memoryview`` over the buffer it returned, kept while the address and
+    length hold. Indexing and slicing the view run in C; a ctypes pointer
+    builds every element it reads through ctypes."""
+    __slots__ = ("_get", "_ctype", "_fmt", "_ptr", "_n", "_args", "_addr",
+                 "_view", "_view_addr", "_view_n")
+
+    def __init__(self, get, ctype, fmt):
+        self._get, self._ctype, self._fmt = get, ctype, fmt
+        self._ptr = C.POINTER(ctype)()
+        self._n = C.c_size_t()
+        self._args = (C.byref(self._ptr), C.byref(self._n))
+        self._addr = C.c_void_p.from_buffer(self._ptr)
+        self._view, self._view_addr, self._view_n = None, None, 0
+
+    def read(self, ctx):
+        self._get(ctx, *self._args)
+        addr, n = self._addr.value, self._n.value
+        if not addr or n <= 0:
+            return None, 0
+        if addr != self._view_addr or n != self._view_n:
+            arr = (self._ctype * n).from_address(addr)
+            self._view = memoryview(arr).cast("B").cast(self._fmt).toreadonly()
+            self._view_addr, self._view_n = addr, n
+        return self._view, n
+
+
 class _NativeRuntime:
     """One animation context bound to one resource (.ssab).
 
@@ -618,6 +647,7 @@ class _NativeRuntime:
         self._lib = lib or _LIB
         if self._lib is None:
             self._lib = load_library()
+        self._soa_bufs = {}
         self._ctx = self._lib.ss_runtime_create()
         if not self._ctx:
             raise RuntimeError("ss_runtime_create failed")
@@ -1088,43 +1118,43 @@ class _NativeRuntime:
         ptr, n = self._frame_data_ptr(frame_no)
         return _readonly_view(ptr, n)
 
-    def _soa_float(self, getter):
-        ptr = C.POINTER(C.c_float)()
-        n = C.c_size_t()
-        getter(self._ctx, C.byref(ptr), C.byref(n))
-        return ptr, n.value
+    def _soa(self, name, ctype, fmt):
+        buf = self._soa_bufs.get(name)
+        if buf is None:
+            buf = self._soa_bufs[name] = _SoaBuffer(
+                getattr(self._lib, name), ctype, fmt)
+        return buf.read(self._ctx)
 
-    def _soa_int32(self, getter):
-        ptr = C.POINTER(C.c_int32)()
-        n = C.c_size_t()
-        getter(self._ctx, C.byref(ptr), C.byref(n))
-        return ptr, n.value
+    def _soa_float(self, name):
+        return self._soa(name, C.c_float, "f")
 
-    def _soa_uint32(self, getter):
-        ptr = C.POINTER(C.c_uint32)()
-        n = C.c_size_t()
-        getter(self._ctx, C.byref(ptr), C.byref(n))
-        return ptr, n.value
+    def _soa_int32(self, name):
+        return self._soa(name, C.c_int32, "i")
+
+    def _soa_uint32(self, name):
+        return self._soa(name, C.c_uint32, "I")
 
     def world_matrices(self):
-        """(ptr, count_floats) for the world-matrix SoA buffer (16/part)."""
-        return self._soa_float(self._lib.ss_runtime_get_world_matrices)
+        """(view, count_floats) for the world-matrix SoA buffer (16/part)."""
+        return self._soa_float("ss_runtime_get_world_matrices")
 
     def world_matrices_snapshot(self):
         """The world-matrix SoA buffer as an ``array('f')`` the caller owns,
-        still valid after the next Brain call: one copy of the buffer, where
-        slicing the pointer builds a Python float per element."""
-        ptr, n = self.world_matrices()
-        return array("f", C.string_at(ptr, n * 4)) if ptr and n else array("f")
+        still valid after the next Brain call."""
+        wm, _ = self.world_matrices()
+        out = array("f")
+        if wm is not None:
+            out.frombytes(wm.cast("B"))
+        return out
 
     def local_vertices(self):
-        return self._soa_float(self._lib.ss_runtime_get_local_vertices)
+        return self._soa_float("ss_runtime_get_local_vertices")
 
     def local_uvs(self):
-        return self._soa_float(self._lib.ss_runtime_get_local_uvs)
+        return self._soa_float("ss_runtime_get_local_uvs")
 
     def cell_meta(self):
-        return self._soa_float(self._lib.ss_runtime_get_cell_meta)
+        return self._soa_float("ss_runtime_get_cell_meta")
 
     # -- Mesh(deform) SoA buffers -----------------------------------------
     # Pre-computed WORLD vertices (coordinate system already applied), part-
@@ -1132,22 +1162,22 @@ class _NativeRuntime:
     # are interleaved [u, v, ...] at offset vertex_offset*2. Empty (len 0) under
     # RenderMode::SceneGraph — this Player uses Direct, so they are populated.
     def mesh_vertices_x(self):
-        return self._soa_float(self._lib.ss_runtime_get_mesh_vertices_x)
+        return self._soa_float("ss_runtime_get_mesh_vertices_x")
 
     def mesh_vertices_y(self):
-        return self._soa_float(self._lib.ss_runtime_get_mesh_vertices_y)
+        return self._soa_float("ss_runtime_get_mesh_vertices_y")
 
     def mesh_uvs(self):
-        return self._soa_float(self._lib.ss_runtime_get_mesh_uvs)
+        return self._soa_float("ss_runtime_get_mesh_uvs")
 
     def mesh_indices(self):
-        return self._soa_int32(self._lib.ss_runtime_get_mesh_indices)
+        return self._soa_int32("ss_runtime_get_mesh_indices")
 
     def mesh_vertex_offsets(self):
-        return self._soa_uint32(self._lib.ss_runtime_get_mesh_vertex_offsets)
+        return self._soa_uint32("ss_runtime_get_mesh_vertex_offsets")
 
     def mesh_index_offsets(self):
-        return self._soa_uint32(self._lib.ss_runtime_get_mesh_index_offsets)
+        return self._soa_uint32("ss_runtime_get_mesh_index_offsets")
 
     # -- Shape SoA buffers (Shape-kind parts) -----------------------------
     # Procedural shape geometry (Rectangle/Triangle/Star/Arrow). Fixed stride
@@ -1158,13 +1188,13 @@ class _NativeRuntime:
     # first ``shape_vertex_counts()[part]`` slots are valid (0 for non-shape
     # parts). Shape parts carry no texture — the fill is the PartColor.
     def shape_vertices(self):
-        return self._soa_float(self._lib.ss_runtime_get_shape_vertices)
+        return self._soa_float("ss_runtime_get_shape_vertices")
 
     def shape_vertex_box_coords(self):
-        return self._soa_float(self._lib.ss_runtime_get_shape_vertex_box_coords)
+        return self._soa_float("ss_runtime_get_shape_vertex_box_coords")
 
     def shape_vertex_counts(self):
-        return self._soa_int32(self._lib.ss_runtime_get_shape_vertex_counts)
+        return self._soa_int32("ss_runtime_get_shape_vertex_counts")
 
     # -- Override Layer (per-part runtime overrides) ----------------------
     # Thin wrappers over the ``ss_runtime_*_override`` C-API. The Brain applies
@@ -1377,6 +1407,7 @@ class _NativeRuntime:
         if self._res:
             self._lib.ss_resource_destroy(self._res)
             self._res = None
+        self._soa_bufs = {}
         # Release the borrow's backing bytes only after the context and resource
         # that borrow it are gone (Unity frees the pin last, in its `finally`).
         self._ssab_bytes = None

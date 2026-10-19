@@ -401,12 +401,12 @@ def _read_mesh_part(mesh_soa, ps, p, blend, thash, mask):
     if i1 <= i0 or (i1 - i0) % 3 != 0 or i1 > ni:
         return None
     n = v1 - v0
-    # Bulk-slice the ctypes SoA pointers once (one C-level copy each) rather than
-    # indexing per element — per-element ctypes access dominated this function.
-    xs = mvx[v0:v1]
-    ys = mvy[v0:v1]
-    us = muv[v0 * 2:v1 * 2]                       # interleaved u, v
-    idx = midx[i0:i1]
+    # One list per buffer: the loops below index each element, and indexing a
+    # list is cheaper than indexing the SoA view.
+    xs = mvx[v0:v1].tolist()
+    ys = mvy[v0:v1].tolist()
+    us = muv[v0 * 2:v1 * 2].tolist()              # interleaved u, v
+    idx = midx[i0:i1].tolist()
     positions = [(xs[k], ys[k]) for k in range(n)]                  # world
     uvs = [(us[k * 2], us[k * 2 + 1]) for k in range(n)]            # tex px
     alpha = max(0.0, min(1.0, ps.Alpha()))
@@ -446,10 +446,9 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     if mo + MATRIX_STRIDE > wn or so + count * 2 > nsv or so + count * 2 > nsb:
         return None
     mat = wm[mo:mo + MATRIX_STRIDE]
-    # Bulk-slice the ctypes SoA pointers once (mirrors _read_mesh_part) rather
-    # than indexing per element — per-element ctypes access is the hot cost.
-    lv = sv[so:so + count * 2]
-    bc = sb[so:so + count * 2]
+    # One list per buffer, as in _read_mesh_part.
+    lv = sv[so:so + count * 2].tolist()
+    bc = sb[so:so + count * 2].tolist()
     positions = [_transform(mat, lv[j * 2], lv[j * 2 + 1]) for j in range(count)]
 
     # Per-vertex colour: bilinear-interpolate the four PartColor corners across
@@ -866,8 +865,7 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
     vo = p * VERT_STRIDE
     uo = p * UV_STRIDE
     co = p * CELL_STRIDE
-    mat = wm[mo:mo + MATRIX_STRIDE]
-    m0, m1, m4, m5, tx, ty = mat[0], mat[1], mat[4], mat[5], mat[12], mat[13]
+    m0, m1, _, _, m4, m5, _, _, _, _, _, _, tx, ty, _, _ = wm[mo:mo + MATRIX_STRIDE]
 
     use_center = bool(ps.UpdateFlag() & _CENTER_FLAGS)
     colors = [c.rgba for c in corners]
@@ -875,20 +873,14 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
     has_pc = any(r > 0.0 for r in rates)
 
     if use_center:
-        positions = [
-            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
-            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
-            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
-            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
-            (m0 * lv[vo + 8] + m4 * lv[vo + 9] + tx, m1 * lv[vo + 8] + m5 * lv[vo + 9] + ty),
-        ]
-        uvs = [
-            (uv[uo], uv[uo + 1]),
-            (uv[uo + 2], uv[uo + 3]),
-            (uv[uo + 4], uv[uo + 5]),
-            (uv[uo + 6], uv[uo + 7]),
-            (uv[uo + 8], uv[uo + 9]),
-        ]
+        x0, y0, x1, y1, x2, y2, x3, y3, x4, y4 = lv[vo:vo + 10]
+        u0, v0, u1, v1, u2, v2, u3, v3, u4, v4 = uv[uo:uo + 10]
+        positions = [(m0 * x0 + m4 * y0 + tx, m1 * x0 + m5 * y0 + ty),
+                     (m0 * x1 + m4 * y1 + tx, m1 * x1 + m5 * y1 + ty),
+                     (m0 * x2 + m4 * y2 + tx, m1 * x2 + m5 * y2 + ty),
+                     (m0 * x3 + m4 * y3 + tx, m1 * x3 + m5 * y3 + ty),
+                     (m0 * x4 + m4 * y4 + tx, m1 * x4 + m5 * y4 + ty)]
+        uvs = [(u0, v0), (u1, v1), (u2, v2), (u3, v3), (u4, v4)]
         c0, c1, c2, c3 = colors
         colors.append(((c0[0] + c1[0] + c2[0] + c3[0]) * 0.25,
                        (c0[1] + c1[1] + c2[1] + c3[1]) * 0.25,
@@ -898,25 +890,20 @@ def _read_normal_mesh_part(wm, lv, uv, cm, fd: FrameData, ps, p: int,
         rates.append((r0 + r1 + r2 + r3) * 0.25)
         tris = _TRIS_FAN
     else:
-        positions = [
-            (m0 * lv[vo] + m4 * lv[vo + 1] + tx, m1 * lv[vo] + m5 * lv[vo + 1] + ty),
-            (m0 * lv[vo + 2] + m4 * lv[vo + 3] + tx, m1 * lv[vo + 2] + m5 * lv[vo + 3] + ty),
-            (m0 * lv[vo + 4] + m4 * lv[vo + 5] + tx, m1 * lv[vo + 4] + m5 * lv[vo + 5] + ty),
-            (m0 * lv[vo + 6] + m4 * lv[vo + 7] + tx, m1 * lv[vo + 6] + m5 * lv[vo + 7] + ty),
-        ]
-        uvs = [
-            (uv[uo], uv[uo + 1]),
-            (uv[uo + 2], uv[uo + 3]),
-            (uv[uo + 4], uv[uo + 5]),
-            (uv[uo + 6], uv[uo + 7]),
-        ]
+        x0, y0, x1, y1, x2, y2, x3, y3 = lv[vo:vo + 8]
+        u0, v0, u1, v1, u2, v2, u3, v3 = uv[uo:uo + 8]
+        positions = [(m0 * x0 + m4 * y0 + tx, m1 * x0 + m5 * y0 + ty),
+                     (m0 * x1 + m4 * y1 + tx, m1 * x1 + m5 * y1 + ty),
+                     (m0 * x2 + m4 * y2 + tx, m1 * x2 + m5 * y2 + ty),
+                     (m0 * x3 + m4 * y3 + tx, m1 * x3 + m5 * y3 + ty)]
+        uvs = [(u0, v0), (u1, v1), (u2, v2), (u3, v3)]
         tris = _TRIS_QUAD
 
-    src_rect = (cm[co + 4], cm[co + 5], cm[co + 2], cm[co + 3])
+    _, _, cw, ch, cl, ct = cm[co:co + CELL_STRIDE]
     return MeshPart(
         part_index=p, texture_hash=thash, blend_type=blend, color_blend=cblend,
         positions=positions, uvs=uvs, colors=colors, rates=rates, triangles=tris,
-        src_rect=src_rect, mask_influence=mask, use_center=use_center,
+        src_rect=(cl, ct, cw, ch), mask_influence=mask, use_center=use_center,
         has_partcolor=has_pc, shader_id_hash=shader_id, shader_params=shader_params)
 
 
