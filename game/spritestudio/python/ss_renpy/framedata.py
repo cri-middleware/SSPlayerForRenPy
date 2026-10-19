@@ -1061,6 +1061,21 @@ def build_mesh_parts(rt, fd: FrameData) -> list:
             for part in _iter_visible_normal_parts(rt, fd)]
 
 
+def _mesh_soa(rt):
+    """The Mesh(deform) SoA: world x / y, interleaved UVs, part-local indices
+    and the two CSR offset arrays, as :func:`_read_mesh_part` takes them."""
+    return (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
+            rt.mesh_indices(), rt.mesh_vertex_offsets(),
+            rt.mesh_index_offsets())
+
+
+def _shape_soa(rt):
+    """The Shape SoA: 12 local vertices per part, their bbox coords and the
+    valid counts, as :func:`_read_shape_part` takes them."""
+    return (rt.shape_vertices(), rt.shape_vertex_box_coords(),
+            rt.shape_vertex_counts())
+
+
 def iter_draw_plan(rt, fd: FrameData, parts=None):
     """Walk the draw plan in z-order, yielding tagged, SoA-resolved items.
 
@@ -1090,16 +1105,7 @@ def iter_draw_plan(rt, fd: FrameData, parts=None):
     uv, _ = rt.local_uvs()
     cm, _ = rt.cell_meta()
     have_soa = bool(wm and lv)
-    # Mesh(deform) SoA — separate CSR buffers; cheap pointer fetch
-    # even when the pack has no Mesh parts (then ranges are empty / skipped).
-    mesh_soa = (rt.mesh_vertices_x(), rt.mesh_vertices_y(), rt.mesh_uvs(),
-                rt.mesh_indices(), rt.mesh_vertex_offsets(),
-                rt.mesh_index_offsets())
-    # Shape SoA — fixed 12-vert/part local positions + bbox coords + valid
-    # counts. Cheap pointer fetch even when the pack has no Shape parts (counts
-    # are then all zero / skipped).
-    shape_soa = (rt.shape_vertices(), rt.shape_vertex_box_coords(),
-                 rt.shape_vertex_counts())
+    mesh_soa = shape_soa = None
     if parts is None:
         parts = bulk_part_states(fd)
     pcs = bulk_part_colors(fd)   # pre-decoded per-corner colours (hot path)
@@ -1121,6 +1127,10 @@ def iter_draw_plan(rt, fd: FrameData, parts=None):
                 mask_only_parts.add(do[s + k])
     for (start, count, thash, _vc, _ic, blend, kind, flags) in batches:
         mask = bool(flags & MASK_INFLUENCE)
+        if kind == KIND_MESH and mesh_soa is None:
+            mesh_soa = _mesh_soa(rt)
+        elif kind == KIND_SHAPE and shape_soa is None:
+            shape_soa = _shape_soa(rt)
         for k in range(count):
             p = do[start + k]
             if mask_only_parts is not None and kind != KIND_MASK and p in mask_only_parts:
