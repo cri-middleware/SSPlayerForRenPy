@@ -341,6 +341,9 @@ if ($opts.demo -ne "skip") {
 }
 
 # --- serve ----------------------------------------------------------------
+# Bound to loopback, in the command it suggests as well. On every interface,
+# http.server announces http://[::]:PORT/, which is not a secure context, so
+# Copy as Markdown cannot copy there.
 $PYTHON_CMD = $null
 foreach ($candidate in "py", "python", "python3") {
     if (Get-Command $candidate -ErrorAction SilentlyContinue) { $PYTHON_CMD = $candidate; break }
@@ -356,10 +359,10 @@ if ($opts.serve -eq "yes") {
     Write-Host ""
     # Python's http.server already serves .js as text/javascript and .wasm as
     # application/wasm, which is all the demo needs; any static server will do.
-    & $PYTHON_CMD -m http.server $opts.port -d $SITE_DIR
+    & $PYTHON_CMD -m http.server $opts.port --bind 127.0.0.1 -d $SITE_DIR
 } else {
     $hint = if ($PYTHON_CMD) { $PYTHON_CMD } else { "py" }
     Write-Host "${APP}: serve it (the demo needs HTTP, not file://):"
     Write-Host "${APP}:   $APP serve=yes"
-    Write-Host "${APP}:   $hint -m http.server $($opts.port) -d site"
+    Write-Host "${APP}:   $hint -m http.server $($opts.port) --bind 127.0.0.1 -d site"
 }
