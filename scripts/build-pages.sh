@@ -347,6 +347,9 @@ if [ "$DEMO" != "skip" ]; then
 fi
 
 # --- serve ----------------------------------------------------------------
+# Bound to loopback, in the command it suggests as well. On every interface,
+# http.server announces http://[::]:PORT/, which is not a secure context, so
+# Copy as Markdown cannot copy there.
 PYTHON_CMD="python3"
 command -v "$PYTHON_CMD" > /dev/null 2>&1 || PYTHON_CMD="python"
 
@@ -363,9 +366,9 @@ if [ "$SERVE" = "yes" ]; then
   echo ""
   # Python's http.server already serves .js as text/javascript and .wasm as
   # application/wasm, which is all the demo needs; any static server will do.
-  exec "$PYTHON_CMD" -m http.server "$PORT" -d site
+  exec "$PYTHON_CMD" -m http.server "$PORT" --bind 127.0.0.1 -d site
 else
   echo "$APP: serve it (the demo needs HTTP, not file://):"
   echo "$APP:   $APP serve=yes"
-  echo "$APP:   $PYTHON_CMD -m http.server $PORT -d site"
+  echo "$APP:   $PYTHON_CMD -m http.server $PORT --bind 127.0.0.1 -d site"
 fi
