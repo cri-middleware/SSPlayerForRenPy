@@ -463,6 +463,7 @@ _REQUIRED = (
      [_P, ss_event_instance_info, _P, _f32, _f32, _b],
      ss_instance_step_result),
     ("ss_instance_slot_is_independent", [_P], _b),
+    ("ss_instance_slot_get_speed", [_P], _f32),
     ("ss_runtime_get_active_event_instance", [_P, _u32], ss_event_instance_info),
     ("ss_runtime_get_active_effect_event", [_P, _u32], ss_effect_event_info),
 )
@@ -1318,6 +1319,13 @@ class _NativeRuntime:
 
     def instance_slot_is_independent(self, slot):
         return bool(self._lib.ss_instance_slot_is_independent(slot))
+
+    def instance_slot_get_speed(self, slot):
+        """Speed the slot's last step drove its child at (``1.0`` before the
+        first). Read it after the step: the event's own ``speed`` says ``1.0``
+        while the slot keeps an independent child running past the implicit
+        frame-0 key, so the child's sub-tree would run at the wrong rate."""
+        return self._lib.ss_instance_slot_get_speed(slot)
 
     def effect_slot_create(self, effect_name_hash, seed=0):
         """Create an Effect slot bound to this runtime's resource.

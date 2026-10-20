@@ -150,8 +150,11 @@ _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
         ev.free();
         // The getter's name varies by wasm-bindgen version.
         var independent = s.independent ? s.independent() : s.is_independent();
+        // The speed rides along so reading it costs no eval of its own; a
+        // build without the getter reads 1, the speed before any step.
         return (visible ? 1 : 0) + ',' + (s.transitioned() ? 1 : 0) + ',' +
-            (independent ? 1 : 0) + ',' + s.child_frame_no() + ',' + (s.child_looped() ? 1 : 0);
+            (independent ? 1 : 0) + ',' + s.child_frame_no() + ',' + (s.child_looped() ? 1 : 0) +
+            ',' + (s.get_speed ? s.get_speed() : 1);
     };
 
     // The draw plan's length once copied, 0 for none, or -length when the
@@ -294,6 +297,8 @@ class _WebRuntime:
         """)
         self._res = None
         self._frame_rate = None
+        # Instance slot -> the speed its last step drove the child at.
+        self._slot_speed = {}
 
         # Where every per-frame copy lands. Each buffer starts empty and is
         # replaced, never resized, when a frame needs more: a view handed out
@@ -959,6 +964,7 @@ class _WebRuntime:
 
     def instance_slot_destroy(self, slot):
         if slot is not None:
+            self._slot_speed.pop(slot, None)
             emscripten.run_script("window.ss_instances[%d].free(); delete window.ss_instances[%d];"
                                   % (slot, slot))
 
@@ -975,8 +981,14 @@ class _WebRuntime:
             "window.ss_instance_step(%d, %d, %d, %d, %d)"
             % (self._ctx_id, ev, slot, c_ctx_id, 1 if parent_looped else 0)
         ).split(",")
+        self._slot_speed[slot] = float(r[5])
         return _InstanceStepResult(r[0] == "1", r[1] == "1", r[2] == "1",
                                    float(r[3]), r[4] == "1")
+
+    def instance_slot_get_speed(self, slot):
+        """See :meth:`ss_renpy.ssruntime_native.SSRuntime.instance_slot_get_speed`.
+        Kept from the last :meth:`instance_slot_step`, which reads it."""
+        return self._slot_speed.get(slot, 1.0)
 
     def instance_slot_is_independent(self, slot):
         # Guard the getter name (it varies by wasm-bindgen version, like step()

@@ -317,15 +317,24 @@ class InstanceRig:
             self._independent.discard(part_index)
         if r.transitioned:
             ch.sub.play()
+        child_dt = self._child_dt(ch, dt)
         if not r.visible:
             # Not drawn this frame, but the child's own Instance/Effect slots
             # must still advance (see the docstring); render_at would build
             # renderables nobody uses, so step only.
-            ch.sub.step_slots_only(r.child_frame_no, r.child_looped, dt,
+            ch.sub.step_slots_only(r.child_frame_no, r.child_looped, child_dt,
                                    sub_frame)
             return []
-        return ch.sub.render_at(r.child_frame_no, r.child_looped, dt, sub_frame,
-                                inherited)
+        return ch.sub.render_at(r.child_frame_no, r.child_looped, child_dt,
+                                sub_frame, inherited)
+
+    def _child_dt(self, ch, dt):
+        """Elapsed time for the child's own Instance/Effect slots: the child
+        runs at its key's speed, so its sub-tree must too. Read off the slot
+        after its step, not off the event: while the slot ignores the implicit
+        frame-0 key of an independent child, the event says 1.0 but the child
+        keeps the last real key's speed."""
+        return dt * abs(self._rt.instance_slot_get_speed(ch.slot))
 
     def mask_uses(self):
         """``(writes, draws_inside)`` over every sub-animation below, recursively
@@ -366,7 +375,8 @@ class InstanceRig:
             self._independent.discard(part_index)
         if r.transitioned:
             ch.sub.play()
-        ch.sub.step_slots_only(r.child_frame_no, r.child_looped, dt, sub_frame)
+        ch.sub.step_slots_only(r.child_frame_no, r.child_looped,
+                               self._child_dt(ch, dt), sub_frame)
 
     def close(self):
         for ch in self._children.values():

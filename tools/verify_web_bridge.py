@@ -99,9 +99,9 @@ class FakeEmscripten(types.ModuleType):
 
 _FAKE = FakeEmscripten()
 # The reads the bridge parses: a frame's lengths (frame + 13 SoA buffers) and
-# an Instance step's five fields.
+# an Instance step's five fields and the slot's speed.
 _FAKE.answers["window.ss_frame("] = ",".join(["0"] * 14)
-_FAKE.answers["window.ss_instance_step("] = "0,0,0,0,0"
+_FAKE.answers["window.ss_instance_step("] = "0,0,0,0,0,1"
 sys.modules["emscripten"] = _FAKE
 
 from ss_renpy import ssruntime_native, ssruntime_web  # noqa: E402
@@ -277,6 +277,7 @@ _CALLS = {
     "instance_slot_step": dict(slot=_H, ev=_H, child_ctx=_H, parent_frame=_F,
                                delta_seconds=_F, parent_looped=_B),
     "instance_slot_is_independent": dict(slot=_H),
+    "instance_slot_get_speed": dict(slot=_H),
     "effect_slot_create": dict(effect_name_hash=_I, seed=_I),
     "effect_slot_destroy": dict(slot=_H),
     "effect_slot_reset": dict(slot=_H),
