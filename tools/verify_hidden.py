@@ -147,6 +147,9 @@ class _StubRT:
     def instance_slot_step(self, slot, ev, ctx, pf, dt, pl):
         return _StepResult(self._visible)
 
+    def instance_slot_get_speed(self, slot):
+        return 1.0
+
 
 class _StubSub:
     """Stands in for the child SSInternalPlayer."""
