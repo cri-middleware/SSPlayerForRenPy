@@ -388,7 +388,7 @@ Part Color and cell overrides conflict with the animation, so they take a `prior
 - **Color** applies to normal parts, **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
 - Colors are interpreted in the same 8-bit sRGB space as the authored Part Color, and alpha is pre-multiplied by the runtime — pass the color as authored, without converting it yourself.
 - A cell override is resolved when you set it, so an unknown cellmap / cell name fails immediately (returns `False`).
-- Overrides live on the runtime, which owns their lifecycle. Do not re-apply them after an animation change; choose the priority mode that expresses what you want instead.
+- Overrides live on the runtime, which owns their lifecycle: an override lasts across animation changes as its priority mode says, so pick the mode that expresses what you want.
 - Overrides are restored when a saved game is loaded, so a costume change survives save / load. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
 - Overrides do not reach parts **inside** an instance part (the child animation runs as a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
 

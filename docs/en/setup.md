@@ -24,9 +24,9 @@ The setup is now complete. For how to actually call it in your game, please see 
 
 ## 4. Updating / Removing the Library
 
-**When you update, delete the whole `game/spritestudio/` folder first — never copy a new version over an old one.**
+**To update, replace the whole `game/spritestudio/` folder: delete it, then copy the new one in.**
 
-Ren'Py compiles each `.rpy` into a `.rpyc` beside it and keeps running that `.rpyc` even after the `.rpy` is gone. Copying over an old install therefore leaves the previous version's scripts alive next to the new ones, and mixes old native libraries and old generated Python under `python/` with the new ones — the resulting errors are hard to trace back to the update.
+Ren'Py compiles each `.rpy` into a `.rpyc` beside it and keeps running that `.rpyc` even after the `.rpy` is gone, so deleting the old folder first is what leaves only the new version's scripts and libraries.
 
 1. Delete `game/spritestudio/` from your project.
 2. Extract the new `SSPlayerForRenPy.zip` and copy its `spritestudio/` folder into `game/`.
