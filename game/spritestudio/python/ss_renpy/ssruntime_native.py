@@ -250,8 +250,8 @@ def library_filename() -> str:
         # symlinks don't survive Ren'Py's .app packaging. dlopen by absolute path
         # ignores the framework's @rpath install_name, so no rpath setup needed.
         return os.path.join("libssruntime.framework", "Versions", "A", "libssruntime")
-    # Linux and Android ship ``libssruntime.so``; iOS ships an ``.xcframework``
-    # that is normally static-linked into the app (handled in load_library).
+    # Linux and Android ship ``libssruntime.so``; iOS ships a dynamic
+    # ``.xcframework`` the app embeds, loaded through the process (load_library).
     return "libssruntime.so"
 
 
@@ -511,10 +511,11 @@ def load_library(path: str | None = None, base_dir: str | None = None,
     Platform notes (see the bundle layout in :func:`platform_subdir`):
       * **Web (WASM)** cannot be loaded through ctypes at all — that target needs
         a separate integration, so we fail fast with a clear message.
-      * **iOS** ships the runtime as an ``.xcframework`` that is normally
-        static-linked into the app, so its symbols live in the main image; when
-        no standalone library file is present we load the process itself
-        (``CDLL(None)``) instead of a path.
+      * **iOS** ships the runtime as a *dynamic* ``.xcframework`` that the app
+        target embeds (Embed & Sign), so dyld has loaded it at launch and its
+        symbols resolve through the process: when no standalone library file is
+        present we load the process itself (``CDLL(None)``) instead of a path. A
+        static xcframework would link and be dead-stripped, leaving nothing.
     """
     global _LIB
     load_target = path
@@ -529,14 +530,14 @@ def load_library(path: str | None = None, base_dir: str | None = None,
         else:
             resolved = default_library_path(base_dir)
             if _is_ios() and not os.path.exists(resolved):
-                load_target = None      # CDLL(None) -> statically-linked symbols
+                load_target = None      # CDLL(None) -> the embedded framework's symbols
             else:
                 load_target = resolved
     lib = C.CDLL(load_target)
     missing = _missing_symbols(lib)
     if missing:
         raise RuntimeError(_mismatch_message(
-            load_target or "the app's own image (statically linked)", missing))
+            load_target or "the app's own process (the embedded framework)", missing))
     _declare(lib)
     if log:
         _install_log_callback(lib)

@@ -371,7 +371,7 @@ class SSInternalPlayer:
 
         A **pulse**, not a state: the runtime clears it at the top of every
         update, so it only reads true inside the tick that crossed — which is
-        why it is not called ``just_looped``, here or in the Brain. Reading it a tick late reads False.
+        why it is not called ``is_looped``, here or in the Brain. Reading it a tick late reads False.
         """
         return bool(self._rt.just_looped) if self._rt else False
 

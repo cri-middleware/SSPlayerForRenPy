@@ -122,8 +122,8 @@ init -10 python:
     # engine-independent runtime can't tell it apart from desktop macOS on its
     # own — it would try to dlopen the macOS .dylib and fail. Only the host knows
     # the real target: Ren'Py sets renpy.ios there. Flip the SS_IOS marker that
-    # ssruntime_native._is_ios() already honors so it routes to the static
-    # xcframework (loaded via CDLL(None)) instead of libs/macos/.
+    # ssruntime_native._is_ios() already honors so it routes to the embedded
+    # dynamic xcframework (loaded via CDLL(None)) instead of libs/macos/.
     if getattr(renpy, "ios", False):
         os.environ["SS_IOS"] = "1"
 
@@ -2219,6 +2219,8 @@ init -10 python:
             # never break the frame. Children are few, so a Transform wrap only
             # happens when the part is actually rotated/scaled — the common
             # translation-only case stays allocation-free. See ss_attach.
+            # Compositing here, in the pass that computed this frame's pose, is
+            # what keeps a child from lagging the animation by a frame.
             _recs = self._attach_list()
             if _recs:
                 for _i, _rec in enumerate(_recs):
