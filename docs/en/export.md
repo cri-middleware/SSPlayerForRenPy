@@ -43,7 +43,7 @@ first-match-wins); the demo's `options.rpy` shows this with a
 
 Standard Ren'Py [RAPT](https://www.renpy.org/doc/html/android.html). Set up RAPT
 and run **Install SDK**, **Configure** (sets the package name), and **Generate
-Keys** once from the launcher GUI (→ Android), per Ren'Py's docs.
+Keys** once from the launcher's **Android** screen, per Ren'Py's docs.
 
 > **⚠️ The Brain must be a native library in the APK's `lib/<abi>/` (jniLibs).**
 > Android's linker only `dlopen()`s native libs the installer extracted to the
@@ -76,8 +76,8 @@ Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates 
 > runtime, so use the dynamic one. Its slices are `.framework` bundles (not bare
 > dylibs), so Embed & Sign passes App Store bundle-structure validation.
 
-1. **Generate the Xcode project** — from Ren'Py's launcher (→ iOS → create the
-   Xcode project), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
+1. **Generate the Xcode project** — from Ren'Py's launcher (**iOS** → **Create Xcode
+   Project**), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
    CLI command.
 2. **Embed the Brain, once** — in Xcode: app target → **General** → **Frameworks,
    Libraries, and Embedded Content** → **+** → *Add Files…* →

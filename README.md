@@ -49,8 +49,8 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    has every version), extract it, and copy the `spritestudio/` folder inside into your project's
    `game/` folder.
 2. **Convert**: Make a `SpriteStudio_Source/` folder in your project's root, beside `game/`, and
-   copy your SpriteStudio project into it — the whole folder, not the `.sspj` alone. Launch the
-   project from the Ren'Py launcher: before the game starts, the project is converted into
+   copy your SpriteStudio project into it — the whole folder, not the `.sspj` alone. Select the
+   project in the Ren'Py launcher and press **Launch Project**: before the game starts, the project is converted into
    `game/ss_assets/<project>/`. (The launcher starts games in developer mode, which the
    converter needs; a game you ship never converts.)
 

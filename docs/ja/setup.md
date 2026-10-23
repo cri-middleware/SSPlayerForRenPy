@@ -14,7 +14,7 @@
 SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) は、Ren'Py向けにコンバートしたデータ (`.ssab`) として配置する必要があります。
 
 コンバート方法には以下の 4 通りがあります。プロジェクトの開発スタイルに合わせて選んでください。
-- **自動インポート (Auto Importer):** `game/` と同じ階層の `SpriteStudio_Source/` にプロジェクトを置き、Ren'Py ランチャーからゲームを起動すると、`game/ss_assets/<プロジェクト名>/` に変換されます。
+- **自動インポート (Auto Importer):** `game/` と同じ階層の `SpriteStudio_Source/` にプロジェクトを置き、Ren'Py ランチャーで **プロジェクトの起動** を押すと、`game/ss_assets/<プロジェクト名>/` に変換されます。
 - **SSConverter GUI:** プロジェクトをドロップして変換するデスクトップアプリ
 - **`ssconverter-cli`:** バッチスクリプトや CI 向け
 - **`ssconverter-web`:** ブラウザ上で、インストール不要

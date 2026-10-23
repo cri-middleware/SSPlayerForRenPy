@@ -61,13 +61,13 @@ graph LR
 This feature automatically detects updates to `.sspj` files when Ren'Py starts, runs the conversion behind the scenes, and imports them into your game. It is recommended for quick iterations (adjustments and verification) as it eliminates the hassle of manual conversion.
 
 > [!WARNING]
-> This feature only works **when Ren'Py is launched in developer mode (`config.developer = True`)**. The conversion process will not run in release builds meant for players.
+> This feature only works **in developer mode**, which is how the Ren'Py launcher starts your game. A release build for players never converts.
 
 ### Basic Usage
 
 1. Create a folder named **`SpriteStudio_Source`** in the root directory of your game project (at the same level as the `game/` folder).
 2. Inside the created `SpriteStudio_Source` folder, place the entire project dataset (`.sspj`, `.ssae`, images, etc.) created in SpriteStudio.
-3. Launch your Ren'Py project, or press `Shift + R` in one that is already running.
+3. Press **Launch Project** in the Ren'Py launcher. A game that is already running picks the project up when you turn hot reload on with `Shift + R` (see below).
 
 **Result:**
 If a file update is detected during the startup initialization phase, the conversion will run automatically, and a folder with the same name as the project will be generated under **`game/ss_assets/`**.

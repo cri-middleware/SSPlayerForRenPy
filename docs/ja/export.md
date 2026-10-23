@@ -10,7 +10,7 @@ SS Audio タイムラインイベントを使う場合は非圧縮の `.wav` ま
 
 ## デスクトップ向けエクスポート (Windows / macOS / Linux)
 
-Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html) をそのまま使います。SSPlayer 固有の後処理はありません。
+Ren'Py 標準の [配布物のビルド](https://www.renpy.org/doc/html/build.html) をそのまま使います。SSPlayer 固有の後処理はありません。
 
 > **⚠️ 各プラットフォームごとに専用のネイティブライブラリが必要です。**
 > `game/spritestudio/libs/` 以下に `macos/libssruntime.framework`、
@@ -27,8 +27,8 @@ Ren'Py 標準の [Build Distributions](https://www.renpy.org/doc/html/build.html
 ## Android 向けエクスポート
 
 Ren'Py 標準の [RAPT](https://www.renpy.org/doc/html/android.html) を使います。
-launcher GUI（→ Android）から **Install SDK**、**Configure**（パッケージ名を設定）、
-**Generate Keys** を一度だけ実施してください（Ren'Py のドキュメント参照）。
+ランチャーの **Android** から **SDKのインストール**、**構成の設定**（パッケージ名を設定）、
+**キーの生成** を一度だけ実施してください（Ren'Py のドキュメント参照）。
 
 > **⚠️ Brain は APK の `lib/<abi>/`（jniLibs）にネイティブライブラリとして入れる必要があります。** Android のリンカは、インストーラが読み取り専用の `nativeLibraryDir` に展開したネイティブライブラリしか `dlopen()` しません（API 29 以降の W^X 制約）。ゲームアセット内や書き込み可能領域の `.so` はロードされません。`ssruntime.py` は実行時に
 > soname（`libssruntime.so`）でロードします。**NDK の ABI 名**で ABI ごとに 1 つ配置:
@@ -52,7 +52,7 @@ Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使いま�
 > `CDLL(None)` が実行時に失敗するので、動的版を使います。スライスは（素の
 > dylib ではなく）`.framework` バンドルなので、Embed & Sign が App Store のバンドル構造検証を通ります。
 
-1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（→ iOS → Xcode プロジェクトを作成）、または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
+1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（**iOS** → **Xcode プロジェクト作成**）、または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
 2. **Brain を一度だけ埋め込む** — Xcode で app ターゲット → **General** → **Frameworks,
    Libraries, and Embedded Content** → **+** → *Add Files…* →
    `game/spritestudio/libs/ios/libssruntime.xcframework` → **Embed & Sign**。Ren'Py にはサードパーティのネイティブコードを自動リンクする仕組みがないため、この 1 手だけは手動です（以降の `ios_populate` 再実行でも維持されます）。
