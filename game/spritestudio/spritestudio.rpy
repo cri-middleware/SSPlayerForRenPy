@@ -122,8 +122,8 @@ init -10 python:
     # engine-independent runtime can't tell it apart from desktop macOS on its
     # own — it would try to dlopen the macOS .dylib and fail. Only the host knows
     # the real target: Ren'Py sets renpy.ios there. Flip the SS_IOS marker that
-    # ssruntime_native._is_ios() already honors so it routes to the static
-    # xcframework (loaded via CDLL(None)) instead of libs/macos/.
+    # ssruntime_native._is_ios() already honors so it routes to the embedded
+    # dynamic xcframework (loaded via CDLL(None)) instead of libs/macos/.
     if getattr(renpy, "ios", False):
         os.environ["SS_IOS"] = "1"
 
