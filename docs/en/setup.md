@@ -1,7 +1,7 @@
 # 🚀 Setup Guide
 
 This document provides instructions for **Users**. It explains how to integrate the package directly into your game project.
-If you want to customize the player, please refer to the [Build Guide](build.md).
+If you want to customize the player, please refer to the [Build Guide](development/build.md).
 
 ## 1. Requirements
 - **Ren'Py**: Version 8.x series (Python 3 based) is required.

@@ -30,5 +30,7 @@ nav:
   - 🗂️ Asset Import: import.md
   - ▶️ Usage Guide: usage.md
   - 📦 Exporting your Game: export.md
-  - 🛠️ Build Guide (Dev): build.md
+  - 🛠️ For Player & SDK Developers:
+      - Build Guide: development/build.md
+      - How the Player Is Put Together: development/architecture.md
   - ⚠️ Limitations & Scope: limitations.md

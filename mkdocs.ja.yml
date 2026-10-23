@@ -30,5 +30,7 @@ nav:
   - 🗂️ アセットの取り込み: import.md
   - ▶️ 再生と制御: usage.md
   - 📦 ゲームのエクスポート: export.md
-  - 🛠️ ビルドガイド（開発者向け）: build.md
+  - 🛠️ Player・SDK 開発者向けガイド:
+      - ビルドガイド: development/build.md
+      - プレイヤーの構成: development/architecture.md
   - ⚠️ 制約と適用範囲: limitations.md

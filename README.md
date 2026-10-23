@@ -124,7 +124,7 @@ scripts\run-demo.ps1
 ```
 
 *Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
-*For details — and for how the player is put together, using your changed copy in a game, and checking it in Ren'Py — see the [Build Guide](docs/en/build.md).*
+*For details — and for using your changed copy in a game and checking it in Ren'Py — see the [Build Guide](docs/en/development/build.md); how the player is put together, and why, is in [How the Player Is Put Together](docs/en/development/architecture.md).*
 
 ### Building the core yourself
 
