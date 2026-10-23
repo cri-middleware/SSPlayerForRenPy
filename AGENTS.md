@@ -38,13 +38,14 @@ the engine-independent core, and the `SSPlayer` displayable (`spritestudio.rpy`)
 | Install, convert, first frame, where to read next | [README.md](./README.md), per `SpriteStudio-SDK/MAINTAINING_PLAYERS.md` |
 | What is and is not supported | [docs/en/limitations.md](./docs/en/limitations.md), the canonical list |
 | Constraints, setup, the demo, tests, the docs site | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| How the player is put together, using a changed copy, checking in Ren'Py, reasons that span files | the Build Guide, [docs/en/build.md](./docs/en/build.md) §4–7 |
 | Versions and releases, maintainers only | [RELEASING.md](./RELEASING.md) |
 | Plans and non-goals | [ROADMAP.md](./ROADMAP.md) |
 | What a script takes | its `--help` |
 
 ## Invariants
 
-*   **`docs/` is for creators**: it never cites a development script.
+*   **`docs/` is for creators**: it never cites a development script, except `build.md`, the developer shelf.
 *   **Policy lives in `SSPlayer`, not the core** (sequence chaining, for one); `SSInternalPlayer` reports
     `finished` / `looped` as observations only, and UV normalization lives in the render layer.
 *   **Every `python/` module imports in plain CPython, with no `renpy`**; the headless checks depend on it.

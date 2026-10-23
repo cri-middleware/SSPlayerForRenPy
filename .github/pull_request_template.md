@@ -34,7 +34,7 @@ that is useful information, not a problem.
 - [ ] Every module under `game/spritestudio/python/` still imports in plain CPython, with no `renpy`.
 - [ ] `game/spritestudio/python/ss/` regenerated with `scripts/generate-fbs-code.sh`, never hand-edited.
 - [ ] Core logic goes to SpriteStudio-SDK, and nothing is committed inside the submodule.
-- [ ] `docs/` stays user-facing: it never cites a development script.
+- [ ] `docs/` stays user-facing: it never cites a development script (`build.md`, the developer shelf, excepted).
 
 ## Anything reviewers should know? / レビュー時の注意点
 
