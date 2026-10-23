@@ -1,4 +1,4 @@
-# 🗂️ アニメーションデータのコンバート (Import)
+# 🗂️ アセットの取り込み (Import)
 
 `.sspj` は **開発中に** `.ssab` へ変換し、ゲームの実行中には変換しません。**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけなので、元の `.sspj` 等は配布するゲームに入りません。
 
@@ -9,7 +9,7 @@ graph LR
     SS[" .sspj / 画像<br>(ソースアセット) "]
 
     subgraph Convert ["① 開発中"]
-        AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
+        AUTO[[" Auto Importer<br>(Ren'Py起動時) "]]
         GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
         WEB[[" ssconverter-web<br>(Webブラウザ) "]]
@@ -89,7 +89,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > [!TIP]
 > **出力パスのカスタマイズ**ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。
 > ```renpy
-> # 例: options.rpy 等でオートインポーター（init -10）より先に定義する
+> # 例: options.rpy 等で Auto Importer（init -10）より先に定義する
 > define -15 ss_source_dir = "my_custom_source_folder"
 > define -15 ss_output_dir = "game/my_converted_assets"
 > ```

@@ -30,7 +30,7 @@ For detailed specifications, import procedures, and API references, please visit
 ### Quick Links
 - [Setup Guide](docs/en/setup.md)
 - [Asset Import](docs/en/import.md)
-- [Usage & Control](docs/en/usage.md)
+- [Usage Guide](docs/en/usage.md)
 - [Limitations & Scope](docs/en/limitations.md)
 
 ---
@@ -92,7 +92,7 @@ off ([hot reload](docs/en/import.md#hot-reload)).
 
 No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with.
 
-**Read next:** [Usage & Control](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
+**Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
 the converters that work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
 
 ## ⚙️ 2. Full Build Environment (For SDK / Player Developers)

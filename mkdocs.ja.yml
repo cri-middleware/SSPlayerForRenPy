@@ -27,7 +27,7 @@ extra:
 nav:
   - 🏠 ホーム: index.md
   - 🚀 導入ガイド: setup.md
-  - 🗂️ アセットのコンバート: import.md
+  - 🗂️ アセットの取り込み: import.md
   - ▶️ 再生と制御: usage.md
   - 📦 ゲームのエクスポート: export.md
   - 🛠️ ビルドガイド（開発者向け）: build.md

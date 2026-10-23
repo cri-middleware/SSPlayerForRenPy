@@ -5,6 +5,7 @@ If you want to customize the player, please refer to the [Build Guide](build.md)
 
 ## 1. Requirements
 - **Ren'Py**: Version 8.x series (Python 3 based) is required.
+- **SpriteStudio**: projects made in SpriteStudio 7.5 or later.
 
 ## 2. Placing the Library
 Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip) (stable link, always the latest release; to pick a specific version, see [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)). Extract it, and copy the **`spritestudio/`** folder inside it directly into your project's `game/` directory.
@@ -20,7 +21,7 @@ To convert without Ren'Py running, use **SSConverter GUI** (a desktop app you dr
 
 For more details, please refer to **[Asset Import](import.md)**.
 
-The setup is now complete. For how to actually call it in your game, please see [usage.md](usage.md).
+The setup is now complete. For how to actually call it in your game, please see [Usage Guide](usage.md).
 
 ## 4. Updating / Removing the Library
 
@@ -30,8 +31,8 @@ Ren'Py compiles each `.rpy` into a `.rpyc` beside it and keeps running that `.rp
 
 1. Delete `game/spritestudio/` from your project.
 2. Extract the new `SSPlayerForRenPy.zip` and copy its `spritestudio/` folder into `game/`.
-3. Launch your game in developer mode and check the startup log line (or call `ss_diagnostics()` from the console, **Shift+O**) — see [Usage & Control](usage.md).
+3. Launch your game in developer mode and check the startup log line (or call `ss_diagnostics()` from the console, **Shift+O**) — see [Usage Guide](usage.md).
 
 Your content is untouched by this: converted `.ssab` data (e.g. `game/ss_assets/`) and your `SpriteStudio_Source/` projects live outside this folder.
 
-**To remove the player**, delete `game/spritestudio/` — the folder carries its own packaging rules, so nothing is left behind inside it. Anything you added yourself stays and can be removed when you no longer need it: the `.ssab` classification lines in your `options.rpy` (see [Exporting your Game](export.md)), your converted data, and your `SSPlayer(...)` calls.
+**To remove the player**, delete `game/spritestudio/` — the folder carries its own packaging rules, so nothing is left behind inside it. Anything you added yourself stays and can be removed when you no longer need it: the `.ssab` classification lines in your `options.rpy` (see [Exporting your Game](export.md)), your converted data, and the `show` lines and `SSPlayer(...)` calls in your scripts.

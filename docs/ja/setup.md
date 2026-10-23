@@ -4,6 +4,7 @@
 
 ## 1. 必要環境
 - **Ren'Py**: バージョン 8.x 系 (Python 3 ベース) が必要です。
+- **SpriteStudio**: SpriteStudio 7.5 以上で作成したプロジェクト。
 
 ## 2. ライブラリの配置
 最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードして展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
@@ -17,9 +18,9 @@ SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) �
 
 Ren'Py を起動せずに変換するには、**SSConverter GUI**（プロジェクトをドロップして変換するデスクトップアプリ）、**`ssconverter-cli`**（バッチスクリプトや CI 向け）、**`ssconverter-web`**（ブラウザ上で、インストール不要）を使います。
 
-詳しくは **[アニメーションデータのコンバート (import.md)](import.md)** をご参照ください。
+詳しくは **[アセットの取り込み](import.md)** をご参照ください。
 
-これで導入は完了です。実際の呼び出し方については [usage.md](usage.md) をご参照ください。
+これで導入は完了です。実際の呼び出し方については [再生と制御](usage.md) をご参照ください。
 
 ## 4. アップデートとアンインストール
 
@@ -33,4 +34,4 @@ Ren'Py は `.rpy` を同じ場所の `.rpyc` にコンパイルし、`.rpy` が�
 
 この操作でご自身のデータが失われることはありません。コンバート済みの `.ssab` データ（例: `game/ss_assets/`）や `SpriteStudio_Source/` のプロジェクトは、このフォルダの外にあります。
 
-**アンインストール**する場合は `game/spritestudio/` を削除してください。パッケージング設定はフォルダ自身が持っているため、フォルダ内に残るものはありません。ご自身で追加したもの — `options.rpy` の `.ssab` 分類設定（[ゲームの書き出し](export.md) 参照）、コンバート済みデータ、`SSPlayer(...)` の呼び出し — はそのまま残るので、不要になった時点で削除してください。
+**アンインストール**する場合は `game/spritestudio/` を削除してください。パッケージング設定はフォルダ自身が持っているため、フォルダ内に残るものはありません。ご自身で追加したもの — `options.rpy` の `.ssab` 分類設定（[ゲームのエクスポート](export.md) 参照）、コンバート済みデータ、スクリプトの `show` 行や `SSPlayer(...)` の呼び出し — はそのまま残るので、不要になった時点で削除してください。
