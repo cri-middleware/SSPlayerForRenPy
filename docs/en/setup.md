@@ -12,13 +12,11 @@ Download the latest package — [`SSPlayerForRenPy.zip`](https://github.com/cri-
 > **Internal Structure**: This folder contains all the Python scripts (e.g., `spritestudio.rpy`) and native libraries for each platform (Windows / macOS / Linux, Android, iOS and Web), plus this documentation as Markdown (`README.md`, `docs/`) for the release it came from, readable offline. `spritestudio.rpy` leaves the documentation out of the games you build.
 
 ## 3. Placing Playback Data (`.ssab`)
-Animation projects (`.sspj`) created in SpriteStudio must be converted to Ren'Py format (`.ssab`) before placement.
+Animation projects (`.sspj`) created in SpriteStudio are played as `.ssab`, the runtime format every SpriteStudio Player reads.
 
-There are four ways to convert them. Choose according to your project's development style:
-- **Auto Importer:** Put the project in `SpriteStudio_Source/`, beside `game/`, and press **Launch Project** in the Ren'Py launcher; it is converted into `game/ss_assets/<project>/`.
-- **SSConverter GUI:** A desktop app you drop the project onto.
-- **`ssconverter-cli`:** For batch scripts and CI.
-- **`ssconverter-web`:** In the browser, with nothing to install.
+Put the project in `SpriteStudio_Source/`, beside `game/`, and press **Launch Project** in the Ren'Py launcher: the Auto Importer converts it into `game/ss_assets/<project>/` before the game starts.
+
+To convert without Ren'Py running, use **SSConverter GUI** (a desktop app you drop the project onto), **`ssconverter-cli`** (for batch scripts and CI) or **`ssconverter-web`** (in the browser, with nothing to install).
 
 For more details, please refer to **[Asset Import](import.md)**.
 

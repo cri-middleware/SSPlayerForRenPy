@@ -1,14 +1,14 @@
 # 🗂️ アニメーションデータのコンバート (Import)
 
-`.sspj` は **開発時に一度だけ** `.ssab` へ変換し、**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけです。プレイヤーに配布するゲーム本体に元の `.sspj` 等を含める必要はありません。
+`.sspj` は **開発中に** `.ssab` へ変換し、ゲームの実行中には変換しません。**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけなので、元の `.sspj` 等は配布するゲームに入りません。
 
-プロジェクトの規模やワークフローに合わせて、以下のコンバート方法を提供しています。
+Ren'Py ランチャーからゲームを起動すると変換するのが Auto Importer（方法 1）で、README の手順はこれです。方法 2〜4 は Ren'Py を起動せずに変換します（デスクトップの GUI、スクリプトや CI 向けの CLI、ブラウザのツール）。
 
 ```mermaid
 graph LR
     SS[" .sspj / 画像<br>(ソースアセット) "]
 
-    subgraph Convert ["① 開発時（変換・1回だけ）"]
+    subgraph Convert ["① 開発中"]
         AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
         GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
@@ -17,10 +17,8 @@ graph LR
 
     DEPLOY(("配置<br>(Deploy)"))
 
-    subgraph RenPy ["② 実行時（Ren'Pyプロジェクト内）"]
-        BIN[" .ssab + テクスチャ "]
-        NODE[[ SSPlayer ]]
-        RT(" libssruntime ")
+    subgraph RenPy ["② Ren'Py のプロジェクト"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + テクスチャ "]
     end
 
     SS -- "SpriteStudio_Source/ に配置" --> AUTO
@@ -34,8 +32,6 @@ graph LR
     WEB -. "解凍して配置" .-> DEPLOY
     
     DEPLOY --> BIN
-    BIN -- "スクリプトで指定" --> NODE
-    NODE -. "バイナリをロード" .-> RT
 
     classDef generated stroke-dasharray: 5 5;
     class BIN generated;

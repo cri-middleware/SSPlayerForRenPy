@@ -11,13 +11,11 @@
 > **内部構成**: このフォルダにはPythonスクリプト（`spritestudio.rpy` 等）と、各プラットフォーム向けのネイティブライブラリ（Windows / macOS / Linux、Android、iOS、Web）がすべて含まれています。同じリリースのこのドキュメント（英語の Markdown。`README.md` と `docs/`）も入っていて、オフラインで読めます。ビルドしたゲームからは、`spritestudio.rpy` がドキュメントを除外します。
 
 ## 3. 再生データ (`.ssab`) の配置
-SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) は、Ren'Py向けにコンバートしたデータ (`.ssab`) として配置する必要があります。
+SpriteStudio で作成したアニメーションプロジェクト (`.sspj`) は、どの SpriteStudio Player でも共通のランタイム形式 `.ssab` にして再生します。
 
-コンバート方法には以下の 4 通りがあります。プロジェクトの開発スタイルに合わせて選んでください。
-- **自動インポート (Auto Importer):** `game/` と同じ階層の `SpriteStudio_Source/` にプロジェクトを置き、Ren'Py ランチャーで **プロジェクトの起動** を押すと、`game/ss_assets/<プロジェクト名>/` に変換されます。
-- **SSConverter GUI:** プロジェクトをドロップして変換するデスクトップアプリ
-- **`ssconverter-cli`:** バッチスクリプトや CI 向け
-- **`ssconverter-web`:** ブラウザ上で、インストール不要
+`game/` と同じ階層の `SpriteStudio_Source/` にプロジェクトを置き、Ren'Py ランチャーで **プロジェクトの起動** を押すと、ゲームが始まる前に Auto Importer が `game/ss_assets/<プロジェクト名>/` へ変換します。
+
+Ren'Py を起動せずに変換するには、**SSConverter GUI**（プロジェクトをドロップして変換するデスクトップアプリ）、**`ssconverter-cli`**（バッチスクリプトや CI 向け）、**`ssconverter-web`**（ブラウザ上で、インストール不要）を使います。
 
 詳しくは **[アニメーションデータのコンバート (import.md)](import.md)** をご参照ください。
 

@@ -1,14 +1,14 @@
 # 🗂️ Asset Import
 
-The `.sspj` file is converted to `.ssab` **only once during development**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation. You do not need to include the original `.sspj` workspace files in your final distributed game.
+The `.sspj` file is converted to `.ssab` **during development, never while the game runs**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation, so the original `.sspj` workspace files stay out of your distributed game.
 
-We provide multiple conversion methods to suit your project's scale and workflow.
+The Auto Importer (Method 1) converts when you launch the game from the Ren'Py launcher — the route the README takes. Methods 2–4 convert without Ren'Py running: a desktop GUI, a CLI for scripts and CI, and a browser tool.
 
 ```mermaid
 graph LR
     SS[" .sspj / Images<br>(Source Assets) "]
 
-    subgraph Convert ["① Development Phase (Convert Once)"]
+    subgraph Convert ["① During development"]
         AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
         GUI[[" SSConverter GUI<br>(GUI App) "]]
         CLI[[" ssconverter-cli<br>(CLI Tool) "]]
@@ -17,10 +17,8 @@ graph LR
 
     DEPLOY(("Deploy"))
 
-    subgraph RenPy ["② Runtime (Inside Ren'Py Project)"]
-        BIN[" .ssab + Textures "]
-        NODE[[ SSPlayer ]]
-        RT(" libssruntime ")
+    subgraph RenPy ["② Your Ren'Py project"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + Textures "]
     end
 
     SS -- "Place in SpriteStudio_Source/" --> AUTO
@@ -34,8 +32,6 @@ graph LR
     WEB -. "Unzip & Deploy" .-> DEPLOY
     
     DEPLOY --> BIN
-    BIN -- "Specified in script" --> NODE
-    NODE -. "Load binary" .-> RT
 
     classDef generated stroke-dasharray: 5 5;
     class BIN generated;
