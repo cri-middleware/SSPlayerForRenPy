@@ -110,7 +110,7 @@ scripts\run-demo.ps1
 ```
 
 ※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
-※詳細と、プレイヤーの構成・変更した版をゲームで使う方法・Ren'Py での確かめ方は [ビルド・カスタマイズガイド](docs/ja/build.md) をご覧ください。
+※詳細と、変更した版をゲームで使う方法・Ren'Py での確かめ方は[ビルドガイド](docs/ja/development/build.md)を、プレイヤーの構成とその理由は[プレイヤーの構成](docs/ja/development/architecture.md)をご覧ください。
 
 ### コアを自前でビルドする
 
