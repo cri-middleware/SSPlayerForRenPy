@@ -101,7 +101,7 @@ label start:
 # 画像登録 + Character + 口パク連動をまとめて定義（タグは .ssab の stem = "ringo"）
 define ringo = SSCharacter(
     "ss_assets/Ringo/Ringo.ssab",
-    talk="talk",     # 喋っている間に再生するアニメ名
+    talk="joy",      # 喋っている間に再生するアニメ名（Ringo には talk が無いので joy）
     idle="wait1",    # 無音時のアニメ名
 )
 

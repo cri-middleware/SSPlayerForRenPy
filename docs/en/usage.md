@@ -104,7 +104,7 @@ Using `SSCharacter`, you can define a "living character" in one line that **auto
 # Register image + Character + lip-sync linked definition (tag is .ssab stem = "ringo")
 define ringo = SSCharacter(
     "ss_assets/Ringo/Ringo.ssab",
-    talk="talk",     # Animation name to play while speaking
+    talk="joy",      # Animation to play while speaking (Ringo has no "talk", so "joy" here)
     idle="wait1",    # Animation name when silent
 )
 
