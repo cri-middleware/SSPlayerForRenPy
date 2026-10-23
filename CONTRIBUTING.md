@@ -45,6 +45,8 @@ If you find a bug, please open a [GitHub Issue](https://github.com/cri-middlewar
 
 ## Development Environment
 
+How the player is put together — the layers and their files, where each platform loads the native library from — and the reasons that span files are in the [Build Guide](docs/en/build.md#4-how-the-player-is-put-together), with how to use a changed copy in a game.
+
 ### Prerequisites
 - Python 3
 - Rust (`rustup`) for building the core runtime
@@ -80,7 +82,7 @@ Every engine-independent layer has a headless check in `tools/`, in plain CPytho
 
 **Run them through the runner, never as a bare loop over the tools.** Both prerequisites are gitignored, so a fresh clone has neither — `game/spritestudio/libs/` and `game/ss_assets/` — and a tool that cannot find its pack prints `SKIP` and **exits 0**. The runner checks both up front, refuses to start a partial suite, and treats a surviving `SKIP` as a failure; sub-case skips are counted beside the passes. A pull request's CI runs it too, on Linux, but run it after touching anything under `game/spritestudio/python/`: it is the quicker way to find out. Renaming a property on `SSInternalPlayer` is the case to watch — no compiler catches the call sites, so it surfaces only as an `AttributeError` from whichever tool still reads the old name. Lint from the repository root with `renpy-sdk/renpy.sh . lint --error-code` — without the flag it exits 0 whatever it finds — and check that it left no `traceback.txt` or `errors.txt` behind, as CI does: an exception in init code exits 0 even with the flag. `scripts/fetch-renpy-sdk.sh` (`.ps1` on Windows) fetches `renpy-sdk/` first.
 
-**GL2 rendering has no headless check** (PMA, mesh, blend, mask, the `ss-*` GLSL) — sign it off in a GUI run, via `Shift+B` or `run-demo`.
+**GL2 rendering has no headless check** (PMA, mesh, blend, mask, the `ss-*` GLSL) — sign it off in a GUI run, via `Shift+B` or `run-demo`. A script can still take a pack from launch to a screenshot with no one at the keyboard; that, the Web build, Android and iOS, and timing the hot path are in the [Build Guide](docs/en/build.md#6-checking-against-renpy).
 
 Outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj` → `.ssab`), `ss_stamp_import.py` (stamp the auto-importer marker over an out-of-band pack), and `render_png.py` / `render_mask_png.py` (software raster, not GL2 — the only two needing Pillow).
 
@@ -160,6 +162,8 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 
 ## 開発環境のセットアップ
 
+プレイヤーの構成（層とそのファイル、各プラットフォームがネイティブライブラリを読み込む場所）と、ファイルをまたぐ設計の理由は[ビルドガイド](docs/ja/build.md#4-プレイヤーの構成)にあります。変更した版をゲームで使う方法もそこにあります。
+
 ### 前提条件
 - Python 3
 - RustランタイムをビルドするためのRust環境 (`rustup`)
@@ -195,7 +199,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 
 **必ずランナー経由で実行してください。ツールを素でループさせてはいけません。** 前提となる `game/spritestudio/libs/` と `game/ss_assets/` はどちらも git 管理外で、クリーンなクローンには存在しません。パックを見つけられなかったツールは `SKIP` と表示して **exit 0** します。ランナーは両方を先に確認し、欠けていれば部分実行を拒否し、それでも残った `SKIP` は失敗として扱います（サブケースのスキップは PASS と並べて数えます）。プルリクエストの CI も Linux でスイートを実行しますが、`game/spritestudio/python/` 配下を触ったら手元でも実行してください。そのほうが早く分かります。特に注意すべきは `SSInternalPlayer` のプロパティ改名で、呼び出し側を検出するコンパイラが無いため、古い名前を読んでいるツールの `AttributeError` としてしか現れません。lint はリポジトリのルートで `renpy-sdk/renpy.sh . lint --error-code` を実行します。このフラグが無いと、何を見つけても exit 0 です。CI と同じく、`traceback.txt` や `errors.txt` が残っていないかも確かめてください。init のコードで例外が出たときは、フラグがあっても exit 0 になります。`renpy-sdk/` は先に `scripts/fetch-renpy-sdk.sh`（Windows は `.ps1`）で取得してください。
 
-**GL2 の描画にはヘッドレスチェックがありません**（PMA、メッシュ、ブレンド、マスク、`ss-*` の GLSL）。`Shift+B` か `run-demo` の GUI 実行で確認してください。
+**GL2 の描画にはヘッドレスチェックがありません**（PMA、メッシュ、ブレンド、マスク、`ss-*` の GLSL）。`Shift+B` か `run-demo` の GUI 実行で確認してください。それでも、スクリプトで起動からスクリーンショットまでを人の操作なしに回せます。その方法と、Web 版・Android・iOS の確かめ方、ホットパスの計時は[ビルドガイド](docs/ja/build.md#6-renpy-で確かめる)にあります。
 
 スイートの外にあるもの: `tools/analyze.py`（DrawBatchKind の監査）、`cli_convert.py`（シェルからの `.sspj` → `.ssab` 変換）、`ss_stamp_import.py`（別経路で作ったパックに自動インポーターのマーカーを付ける）、`render_png.py` / `render_mask_png.py`（GL2 ではなくソフトウェアラスタ。Pillow が必要なのはこの 2 つだけ）。
 
