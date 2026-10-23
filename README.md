@@ -30,7 +30,7 @@ For detailed specifications, import procedures, and API references, please visit
 ### Quick Links
 - [Setup Guide](docs/en/setup.md)
 - [Asset Import](docs/en/import.md)
-- [Usage & Control](docs/en/usage.md)
+- [Usage Guide](docs/en/usage.md)
 - [Limitations & Scope](docs/en/limitations.md)
 
 ---
@@ -49,8 +49,8 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    has every version), extract it, and copy the `spritestudio/` folder inside into your project's
    `game/` folder.
 2. **Convert**: Make a `SpriteStudio_Source/` folder in your project's root, beside `game/`, and
-   copy your SpriteStudio project into it — the whole folder, not the `.sspj` alone. Launch the
-   project from the Ren'Py launcher: before the game starts, the project is converted into
+   copy your SpriteStudio project into it — the whole folder, not the `.sspj` alone. Select the
+   project in the Ren'Py launcher and press **Launch Project**: before the game starts, the project is converted into
    `game/ss_assets/<project>/`. (The launcher starts games in developer mode, which the
    converter needs; a game you ship never converts.)
 
@@ -83,8 +83,8 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
        "Hello!"
    ```
 
-   Not sure of a name? Press **Shift+B** in the running game: the Asset Browser lists every pack
-   and animation, plays them, and copies a line to paste.
+   Not sure of a name? Press **Shift+B** in the running game: the SpriteStudio Browser lists every pack
+   and animation, plays them, and copies a snippet to paste.
 
 After editing in SpriteStudio, press **Shift+R** once in the running game; from then on every save
 converts the change and reloads the game by itself. Press it only once — a second press turns it
@@ -92,7 +92,7 @@ off ([hot reload](docs/en/import.md#hot-reload)).
 
 No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with.
 
-**Read next:** [Usage & Control](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
+**Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
 the converters that work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
 
 ## ⚙️ 2. Full Build Environment (For SDK / Player Developers)

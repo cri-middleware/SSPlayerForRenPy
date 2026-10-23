@@ -11,7 +11,7 @@ It holds the Ren'Py scripts (`*.rpy`), the Python bridge in `python/`, the nativ
 | To find out | Read |
 | --- | --- |
 | Where this folder and the `.ssab` files go | [docs/setup.md](docs/setup.md) |
-| How to show an animation from a screen, as a standing image or as a talking character | [docs/usage.md](docs/usage.md) |
+| How to show an animation with `show ringo wait1`, as a standing image or talking character, or in a screen | [docs/usage.md](docs/usage.md) |
 | How to control playback from Python, follow or override a part, replace a texture, and react to events | [docs/usage.md](docs/usage.md), sections 4 to 8 |
 | How to turn `.sspj` projects into `.ssab` | [docs/import.md](docs/import.md) |
 | How to build the game for desktop, Android, iOS and the web | [docs/export.md](docs/export.md) |

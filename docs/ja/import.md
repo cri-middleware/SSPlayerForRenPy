@@ -1,15 +1,15 @@
-# 🗂️ アニメーションデータのコンバート (Import)
+# 🗂️ アセットの取り込み (Import)
 
-`.sspj` は **開発時に一度だけ** `.ssab` へ変換し、**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけです。プレイヤーに配布するゲーム本体に元の `.sspj` 等を含める必要はありません。
+`.sspj` は **開発中に** `.ssab` へ変換し、ゲームの実行中には変換しません。**実行時（ゲームプレイ中）** はその `.ssab` とテクスチャを読み込んで描画するだけなので、元の `.sspj` 等は配布するゲームに入りません。
 
-プロジェクトの規模やワークフローに合わせて、以下のコンバート方法を提供しています。
+Ren'Py ランチャーからゲームを起動すると変換するのが Auto Importer（方法 1）で、README の手順はこれです。方法 2〜4 は Ren'Py を起動せずに変換します（デスクトップの GUI、スクリプトや CI 向けの CLI、ブラウザのツール）。
 
 ```mermaid
 graph LR
     SS[" .sspj / 画像<br>(ソースアセット) "]
 
-    subgraph Convert ["① 開発時（変換・1回だけ）"]
-        AUTO[[" 自動インポート<br>(Ren'Py起動時) "]]
+    subgraph Convert ["① 開発中"]
+        AUTO[[" Auto Importer<br>(Ren'Py起動時) "]]
         GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
         CLI[[" ssconverter-cli<br>(CLIツール) "]]
         WEB[[" ssconverter-web<br>(Webブラウザ) "]]
@@ -17,10 +17,8 @@ graph LR
 
     DEPLOY(("配置<br>(Deploy)"))
 
-    subgraph RenPy ["② 実行時（Ren'Pyプロジェクト内）"]
-        BIN[" .ssab + テクスチャ "]
-        NODE[[ SSPlayer ]]
-        RT(" libssruntime ")
+    subgraph RenPy ["② Ren'Py のプロジェクト"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + テクスチャ "]
     end
 
     SS -- "SpriteStudio_Source/ に配置" --> AUTO
@@ -34,8 +32,6 @@ graph LR
     WEB -. "解凍して配置" .-> DEPLOY
     
     DEPLOY --> BIN
-    BIN -- "スクリプトで指定" --> NODE
-    NODE -. "バイナリをロード" .-> RT
 
     classDef generated stroke-dasharray: 5 5;
     class BIN generated;
@@ -57,30 +53,30 @@ graph LR
 Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏側でコンバートを実行してゲーム内に取り込む機能です。手動コンバートの手間を省き、素早くイテレーション（調整・確認）を回したい場合におすすめです。
 
 > [!WARNING]
-> この機能は **Ren'Pyが開発者モード (`config.developer = True`) で起動した場合のみ** 動作します。プレイヤー向けのリリースビルドではコンバート処理は走りません。
+> この機能は **開発者モードでのみ** 動作します。Ren'Py ランチャーから起動したゲームは開発者モードです。プレイヤー向けのリリースビルドでは変換しません。
 
 ### 基本的な使い方
 
 1. ゲームプロジェクトのルートディレクトリ（`game/` フォルダと同じ階層）に **`SpriteStudio_Source`** という名前のフォルダを作成します。
 2. 作成した `SpriteStudio_Source` フォルダの中に、SpriteStudioで作成したプロジェクト一式（`.sspj`, `.ssae`, 画像など）を配置します。
-3. Ren'Py のプロジェクトを起動します。起動中なら `Shift + R` を押します。
+3. Ren'Py ランチャーで **プロジェクトの起動** を押します。起動中のゲームでは、`Shift + R` でホットリロードをオンにすると取り込まれます（下記参照）。
 
 **実行結果:**
 起動時の初期化フェーズでファイルの更新が検知されると自動的にコンバートが走り、プロジェクト名と同名のフォルダが **`game/ss_assets/`** 以下に生成されます。（例: `SpriteStudio_Source/Ringo/Ringo.sspj` を配置した場合、`game/ss_assets/Ringo/` に変換データが出力されます）
 
 > [!NOTE]
-> **出力先はプロジェクト名ごとに 1 つです。** 出力フォルダは `.sspj` のファイル名で決まるので、`Enemies/Boss/Enemy.sspj` と `Enemies/Minion/Enemy.sspj` のように同じ名前のプロジェクトは、どちらも `game/ss_assets/Enemy/` に書き込むことになります。このときはパス順で最初の 1 つだけを変換し、残りはスキップして、ゲーム内の通知とコンソールにどれをスキップしたかを表示します。両方を取り込むには、どちらかの `.sspj` の名前を変えてください。大文字と小文字だけが違う名前も、Windows と macOS では同じフォルダになるので、同じ名前として扱います。
+> **出力先はプロジェクト名ごとに 1 つです。** 出力フォルダは `.sspj` のファイル名で決まるので、`Enemies/Boss/Enemy.sspj` と `Enemies/Minion/Enemy.sspj` のように同じ名前のプロジェクトは、どちらも `game/ss_assets/Enemy/` に書き込むことになります。このときはパス順で最初の 1 つだけを変換し、残りはスキップします。ゲーム内の通知にはスキップした数が、コンソールにはその名前が出ます。両方を取り込むには、どちらかの `.sspj` の名前を変えてください。大文字と小文字だけが違う名前も、Windows と macOS では同じフォルダになるので、同じ名前として扱います。
 >
 > **SpriteStudio Player for Ren'Py を更新すると、全プロジェクトをもう 1 回変換します。** 最後に変換したコンバーターと `game/spritestudio/` に入っているコンバーターが違えば変換し直すので、新しいリリースに差し替えた次の起動で、全プロジェクトが最新の変換結果になります。その起動は普段より時間がかかります。
 >
-> **インポーターは何も削除しません。** `.ssae` や画像、音声を消したり名前を変えたりしても、そこから変換されたファイルは `game/ss_assets/<project>/` に残り、読み込めて、アセットブラウザに並び、画像として登録され、ゲームにも同梱されます。インポーターは変換のたびにそうしたファイルをコンソールに書き出し、ゲーム内の通知にも件数を出すので、使っていないものは手で削除してください。
+> **インポーターは何も削除しません。** `.ssae` や画像、音声を消したり名前を変えたりしても、そこから変換されたファイルは `game/ss_assets/<project>/` に残り、読み込めて、SpriteStudio Browserに並び、画像として登録され、ゲームにも同梱されます。インポーターは変換のたびにそうしたファイルをコンソールに書き出し、ゲーム内の通知にも件数を出すので、使っていないものは手で削除してください。
 
 ### ホットリロード
 
-起動中のゲームで **`Shift + R`** を **1 回** 押せば、あとは押す必要がありません。Auto Importer が `SpriteStudio_Source/` のファイルを Ren'Py のオートリロードに登録するので、以降は **SpriteStudio で保存するだけで再インポートとリロードが自動で走ります**。更新日時で変更を検知し、変更のあったプロジェクトだけを再コンバートしてアセット索引を更新します。フォルダに新しいプロジェクトを丸ごと置いた場合も同じです。取り込みの結果は実行中のゲームに表示されます（`SpriteStudio: imported Ringo`、失敗時は失敗したプロジェクト名とコンソールを見るよう促す同じ行）。保存が反映されなかったときに無言にならないためです。
+起動中のゲームで **`Shift + R`** を **1 回** 押せば、あとは押す必要がありません。Auto Importer が `SpriteStudio_Source/` のファイルを Ren'Py のオートリロードに登録するので、以降は **SpriteStudio で保存するだけで再インポートとリロードが自動で走ります**。更新日時で変更を検知し、変更のあったプロジェクトだけを再コンバートしてアセット索引を更新します。フォルダに新しいプロジェクトを丸ごと置いた場合も同じです。取り込みの結果は実行中のゲームに表示されます（`SpriteStudio: imported Ringo`、失敗時は失敗したプロジェクト名とコンソールを見るよう促す同じ行）。
 
 > [!WARNING]
-> **`Shift + R` は Ren'Py のオートリロードの切り替えであって、更新ボタンではありません。** 1 回目の押下でオートリロードが **オン** になりリロードされますが、もう一度押すと **オフ** になり、リロードは起きません（2 回目が「何も起きない」ように見えるのはこのためです）。起動ごとに 1 回だけ押して、あとはそのままにしてください。どちらの状態かは起動時に Auto Importer が出力します（`Hot reload ON` / `Hot reload OFF`）。`Alt`（`Option`）`+ R` も同じ操作です。`Ctrl + R` は割り当てられていません（`Ctrl` は Ren'Py のスキップキーです）。
+> **`Shift + R` は Ren'Py のオートリロードの切り替えです。** 1 回目の押下でオートリロードが **オン** になってリロードされ、もう一度押すと **オフ** になり、リロードは起きません。起動ごとに 1 回押します。どちらの状態かは起動時に Auto Importer が出力します（`Hot reload ON` / `Hot reload OFF`）。`Alt`（`Option`）`+ R` も同じ操作です。
 
 > [!TIP]
 > **動作イメージ — 外部ツール連携によるライブイテレーション。** SpriteStudio でアニメーションを編集して保存すると、ホットリロードがオンなら、起動中の Ren'Py が変更のあったプロジェクトだけを再コンバートし、その場で結果を表示します（開発者モード限定）。
@@ -93,10 +89,13 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > [!TIP]
 > **出力パスのカスタマイズ**ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。
 > ```renpy
-> # 例: options.rpy 等でオートインポーター（init -10）より先に定義する
+> # 例: options.rpy 等で Auto Importer（init -10）より先に定義する
 > define -15 ss_source_dir = "my_custom_source_folder"
 > define -15 ss_output_dir = "game/my_converted_assets"
 > ```
+
+> [!IMPORTANT]
+> **方法 2〜4 は Ren'Py を起動せずに変換するので、出力は自分で置きます。** 変換したフォルダはそのまま `game/ss_assets/` に置いてください。`.ssab` とそのテクスチャ（`.png`）、参照する外部インスタンスパックは同じフォルダに置きます。プレイヤーはそれらを `.ssab` の隣から読み込みます。
 
 ---
 
@@ -160,12 +159,12 @@ ssconverter-cli SpriteStudio_Source/
 インストール不要で、手元のブラウザ上で手軽に変換を試したい場合は、姉妹プロジェクトである SpriteStudio Player for Web に付属する **`ssconverter-web`** を利用することもできます。
 
 - WebAssembly を利用してブラウザ内でローカル処理を行うため、ファイルが外部サーバーに送信されることはありません。
-- 変換したい `.sspj` と関連ファイル（画像など）をブラウザ画面にドラッグ＆ドロップすると変換処理が走り、結果が **`.zip` 形式でダウンロード** されます。
-- ダウンロードされた `.zip` を解凍し、生成された `.ssab` と画像を一緒にご自身の `game/` フォルダ内に配置してください。
+- `.sspj` の入ったフォルダをドロップする（または **Browse...** で選ぶ）と、**⚡ Convert & Download** で変換し、結果が **`.zip` 形式でダウンロード** されます。ZIP には `.sspj` の名前のフォルダが 1 つ入っています。
+- そのフォルダを `game/ss_assets/` に展開します。`.ssab` は `game/ss_assets/Ringo/Ringo.ssab` のように、画像と一緒に置かれます。
 
 SpriteStudio Player for Web のサイト内、[`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/) で公開されています。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
 
-詳しくは [SSPlayerForWeb リポジトリ](https://github.com/cri-middleware/SSPlayerForWeb) のドキュメントをご参照ください。
+詳しくは SpriteStudio Player for Web のドキュメントの [アセットの準備](https://cri-middleware.github.io/SSPlayerForWeb/ja/usage/assets) を参照してください。
 
 ---
 

@@ -50,9 +50,10 @@ plugins:
   - llmstxt:
       full_output: llms-full.txt
       markdown_description: |
-        Ren'Py player, code-first: `SSPlayer` is a standard Ren'Py Displayable. `setup`
-        installs it, `import` converts a `.sspj` into an `.ssab` once during development, and
-        `usage` is the guide to playing animations from a script. `export` covers shipping a
+        Ren'Py player for visual-novel authors: launching the game from the Ren'Py launcher
+        converts the SpriteStudio projects in `SpriteStudio_Source/`, and `show ringo wait1`
+        shows one. `setup` installs it, `import` covers the conversion routes, and `usage` is
+        the guide to showing and controlling animations from a script. `export` covers shipping a
         game, `build` is for changing the player itself, and `limitations` lists what is not
         supported.
       sections:

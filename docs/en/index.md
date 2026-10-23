@@ -1,6 +1,6 @@
 # 🎭 SpriteStudio Player for Ren'Py
 
-A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. The playback process is powered by `libssruntime` provided by the [SpriteStudio-SDK](https://github.com/cri-middleware/SpriteStudio-SDK).
+A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. Put a SpriteStudio project in your game, press **Launch Project** in the Ren'Py launcher, and show the animation with a `show` line.
 
 !!! tip "Try it in your browser"
     [▶️ Run the sample project](demo/) — a Ren'Py Web build published alongside this
@@ -21,9 +21,9 @@ This documentation is structured by user purpose.
     - [Asset Import](import.md): How to convert `.sspj` animation data.
     - [Usage Guide](usage.md): How to call and control animations from Ren'Py scripts.
     - [Exporting your Game](export.md): How to export to each platform (desktop / mobile / web) with the stock Ren'Py tooling.
+    - [Limitations](limitations.md): List of supported and unsupported features.
 - **Developer Guide**
     - [Build Guide](build.md): Setting up a custom environment and building the native library.
-    - [Limitations](limitations.md): List of supported and unsupported features.
 
 ## Key Features
 
@@ -31,7 +31,7 @@ This player is designed to bring the full expressive power of SpriteStudio to th
 
 *   **Eliminate Complex ATL:** You no longer need to write long, complex ATL (Animation and Transformation Language) blocks in Ren'Py. Animations crafted in the editor can be played with just a few lines of script.
 *   **Full Feature Support:** It fully supports advanced SpriteStudio features out of the box, including bone hierarchies, meshes & deformations, and particle effects.
-*   **High-Speed Native Processing:** Powered by `libssruntime` (Rust) and deeply integrated with Ren'Py's rendering pipeline, it renders animations lightweight and fast without relying on heavy video files.
+*   **A lightweight alternative to video:** Openings, living backgrounds and effect cut-ins run as animation instead of a `Movie`: they scale freely, loop seamlessly and change on your script's cue, and the file holds the artwork and the motion rather than every frame.
 *   **Transparency & Blending:** Supports seamless fading and additive blending for effects, enabling the rich visual presentation essential for modern visual novels.
 *   **Animation Blending:** Cross-fade from one animation into the next instead of cutting, and layer animations over each other — a wave over a walk, a blink over anything ([details](usage.md#mixing-animations)).
 *   **Dynamic Costume Changes:** Swap the texture an animation samples from at runtime, so a single asset can drive color variations, costume changes, and facial expressions from a line of script.

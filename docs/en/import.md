@@ -1,14 +1,14 @@
 # 🗂️ Asset Import
 
-The `.sspj` file is converted to `.ssab` **only once during development**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation. You do not need to include the original `.sspj` workspace files in your final distributed game.
+The `.sspj` file is converted to `.ssab` **during development, never while the game runs**. At **runtime (during gameplay)**, the game simply loads the converted `.ssab` and textures to render the animation, so the original `.sspj` workspace files stay out of your distributed game.
 
-We provide multiple conversion methods to suit your project's scale and workflow.
+The Auto Importer (Method 1) converts when you launch the game from the Ren'Py launcher — the route the README takes. Methods 2–4 convert without Ren'Py running: a desktop GUI, a CLI for scripts and CI, and a browser tool.
 
 ```mermaid
 graph LR
     SS[" .sspj / Images<br>(Source Assets) "]
 
-    subgraph Convert ["① Development Phase (Convert Once)"]
+    subgraph Convert ["① During development"]
         AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
         GUI[[" SSConverter GUI<br>(GUI App) "]]
         CLI[[" ssconverter-cli<br>(CLI Tool) "]]
@@ -17,10 +17,8 @@ graph LR
 
     DEPLOY(("Deploy"))
 
-    subgraph RenPy ["② Runtime (Inside Ren'Py Project)"]
-        BIN[" .ssab + Textures "]
-        NODE[[ SSPlayer ]]
-        RT(" libssruntime ")
+    subgraph RenPy ["② Your Ren'Py project"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + Textures "]
     end
 
     SS -- "Place in SpriteStudio_Source/" --> AUTO
@@ -34,8 +32,6 @@ graph LR
     WEB -. "Unzip & Deploy" .-> DEPLOY
     
     DEPLOY --> BIN
-    BIN -- "Specified in script" --> NODE
-    NODE -. "Load binary" .-> RT
 
     classDef generated stroke-dasharray: 5 5;
     class BIN generated;
@@ -61,31 +57,31 @@ graph LR
 This feature automatically detects updates to `.sspj` files when Ren'Py starts, runs the conversion behind the scenes, and imports them into your game. It is recommended for quick iterations (adjustments and verification) as it eliminates the hassle of manual conversion.
 
 > [!WARNING]
-> This feature only works **when Ren'Py is launched in developer mode (`config.developer = True`)**. The conversion process will not run in release builds meant for players.
+> This feature only works **in developer mode**, which is how the Ren'Py launcher starts your game. A release build for players never converts.
 
 ### Basic Usage
 
 1. Create a folder named **`SpriteStudio_Source`** in the root directory of your game project (at the same level as the `game/` folder).
 2. Inside the created `SpriteStudio_Source` folder, place the entire project dataset (`.sspj`, `.ssae`, images, etc.) created in SpriteStudio.
-3. Launch your Ren'Py project, or press `Shift + R` in one that is already running.
+3. Press **Launch Project** in the Ren'Py launcher. A game that is already running picks the project up when you turn hot reload on with `Shift + R` (see below).
 
 **Result:**
 If a file update is detected during the startup initialization phase, the conversion will run automatically, and a folder with the same name as the project will be generated under **`game/ss_assets/`**.
 (Example: If you placed `SpriteStudio_Source/Ringo/Ringo.sspj`, the converted data will be output to `game/ss_assets/Ringo/`.)
 
 > [!NOTE]
-> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped, and the in-game notice and the console say which. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
+> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped: the in-game notice says how many, and the console names them. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
 >
 > **Updating SpriteStudio Player for Ren'Py converts every project once more.** A project is converted again whenever the converter in `game/spritestudio/` differs from the one that last converted it, so after you replace that folder with a newer release, the next launch brings every project up to date. That launch takes longer than usual.
 >
-> **The importer deletes nothing.** Remove or rename an `.ssae`, an image or a sound, and the file converted from it stays in `game/ss_assets/<project>/`, where it still loads, lists in the Asset Browser, is registered as an image and ships with the game. After each conversion the importer names such files on the console and counts them in the in-game notice; delete the ones nothing uses.
+> **The importer deletes nothing.** Remove or rename an `.ssae`, an image or a sound, and the file converted from it stays in `game/ss_assets/<project>/`, where it still loads, lists in the SpriteStudio Browser, is registered as an image and ships with the game. After each conversion the importer names such files on the console and counts them in the in-game notice; delete the ones nothing uses.
 
 ### Hot reload
 
-Press **`Shift + R`** once in the running game and you are done pressing it: the Auto Importer hands your `SpriteStudio_Source/` files to Ren'Py's autoreload, so from then on **saving in SpriteStudio re-imports and reloads the game on its own**. The change is picked up by modification time, only the updated project is re-converted, and the asset index is refreshed. Dropping a whole new project into the folder works the same way. Each import reports itself in the running game — `SpriteStudio: imported Ringo`, or the same line naming what failed and pointing at the console — so a save that did not land is never silent.
+Press **`Shift + R`** once in the running game and you are done pressing it: the Auto Importer hands your `SpriteStudio_Source/` files to Ren'Py's autoreload, so from then on **saving in SpriteStudio re-imports and reloads the game on its own**. The change is picked up by modification time, only the updated project is re-converted, and the asset index is refreshed. Dropping a whole new project into the folder works the same way. Each import reports itself in the running game — `SpriteStudio: imported Ringo`, or the same line naming what failed and pointing at the console.
 
 > [!WARNING]
-> **`Shift + R` is Ren'Py's autoreload toggle, not a refresh button.** The first press turns autoreload **on** and reloads; press it again and it turns **off** without reloading — which is why the second press looks like it did nothing. Press it once per launch and leave it alone. The Auto Importer prints which side you are on at startup (`Hot reload ON` / `Hot reload OFF`). `Alt` (`Option`) `+ R` is the same command; `Ctrl + R` is not bound to it — `Ctrl` is Ren'Py's skip key.
+> **`Shift + R` is Ren'Py's autoreload toggle.** The first press turns autoreload **on** and reloads; a second press turns it **off** without reloading. Press it once per launch. The Auto Importer prints which side you are on at startup (`Hot reload ON` / `Hot reload OFF`). `Alt` (`Option`) `+ R` is the same command.
 
 > [!TIP]
 > **See it in action — live iteration with an external tool.** Edit the animation in SpriteStudio and save it: with hot reload on, the running Ren'Py re-converts only the updated project and shows the result on the spot (developer mode only).
@@ -103,6 +99,12 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 > define -15 ss_source_dir = "my_custom_source_folder"
 > define -15 ss_output_dir = "game/my_converted_assets"
 > ```
+
+> [!IMPORTANT]
+> **Methods 2–4 convert without Ren'Py running, so you place the output yourself.** Put the
+> converted folder in `game/ss_assets/` as it comes: the `.ssab`, its textures (`.png`) and any
+> external instance packs it references stay in the same folder, because the player finds them
+> beside the `.ssab`.
 
 ---
 
@@ -166,15 +168,15 @@ This is very convenient when you want to convert and update animation data for m
 If you want to try conversion quickly in your browser without installing any tools, you can use **`ssconverter-web`**, which is included in the sister project SpriteStudio Player for Web.
 
 - It uses WebAssembly to process files locally within the browser, meaning your files are never uploaded to an external server.
-- Simply drag and drop the `.sspj` and related files (like images) into the browser window. The converted result will be **downloaded as a `.zip` file**.
-- Unzip the downloaded `.zip` file, and place the generated `.ssab` and images together in your `game/` folder.
+- Drop the folder that holds your `.sspj` onto it (or pick it with **Browse...**), then press **⚡ Convert & Download**. The result is **downloaded as a `.zip` file** holding one folder named after the `.sspj`.
+- Extract that folder into `game/ss_assets/`, so the `.ssab` sits at `game/ss_assets/Ringo/Ringo.ssab` with its images beside it.
 
 It is hosted on the SpriteStudio Player for Web site at
 [`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/).
 Folder selection uses the **File System Access API**, so a **Chromium-based browser
 (Chrome / Edge)** is required.
 
-For details, please refer to the documentation in the [SSPlayerForWeb repository](https://github.com/cri-middleware/SSPlayerForWeb).
+For details, see [Preparing assets](https://cri-middleware.github.io/SSPlayerForWeb/usage/assets) in the SpriteStudio Player for Web documentation.
 
 ---
 
