@@ -74,11 +74,11 @@ If a file update is detected during the startup initialization phase, the conver
 (Example: If you placed `SpriteStudio_Source/Ringo/Ringo.sspj`, the converted data will be output to `game/ss_assets/Ringo/`.)
 
 > [!NOTE]
-> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped, and the in-game notice and the console say which. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
+> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped: the in-game notice says how many, and the console names them. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
 >
 > **Updating SpriteStudio Player for Ren'Py converts every project once more.** A project is converted again whenever the converter in `game/spritestudio/` differs from the one that last converted it, so after you replace that folder with a newer release, the next launch brings every project up to date. That launch takes longer than usual.
 >
-> **The importer deletes nothing.** Remove or rename an `.ssae`, an image or a sound, and the file converted from it stays in `game/ss_assets/<project>/`, where it still loads, lists in the Asset Browser, is registered as an image and ships with the game. After each conversion the importer names such files on the console and counts them in the in-game notice; delete the ones nothing uses.
+> **The importer deletes nothing.** Remove or rename an `.ssae`, an image or a sound, and the file converted from it stays in `game/ss_assets/<project>/`, where it still loads, lists in the SpriteStudio Browser, is registered as an image and ships with the game. After each conversion the importer names such files on the console and counts them in the in-game notice; delete the ones nothing uses.
 
 ### Hot reload
 
@@ -166,15 +166,15 @@ This is very convenient when you want to convert and update animation data for m
 If you want to try conversion quickly in your browser without installing any tools, you can use **`ssconverter-web`**, which is included in the sister project SpriteStudio Player for Web.
 
 - It uses WebAssembly to process files locally within the browser, meaning your files are never uploaded to an external server.
-- Simply drag and drop the `.sspj` and related files (like images) into the browser window. The converted result will be **downloaded as a `.zip` file**.
-- Unzip the downloaded `.zip` file, and place the generated `.ssab` and images together in your `game/` folder.
+- Drop the folder that holds your `.sspj` onto it (or pick it with **Browse...**), then press **⚡ Convert & Download**. The result is **downloaded as a `.zip` file** holding one folder named after the `.sspj`.
+- Extract that folder into `game/ss_assets/`, so the `.ssab` sits at `game/ss_assets/Ringo/Ringo.ssab` with its images beside it.
 
 It is hosted on the SpriteStudio Player for Web site at
 [`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/).
 Folder selection uses the **File System Access API**, so a **Chromium-based browser
 (Chrome / Edge)** is required.
 
-For details, please refer to the documentation in the [SSPlayerForWeb repository](https://github.com/cri-middleware/SSPlayerForWeb).
+For details, see [Preparing assets](https://cri-middleware.github.io/SSPlayerForWeb/usage/assets) in the SpriteStudio Player for Web documentation.
 
 ---
 

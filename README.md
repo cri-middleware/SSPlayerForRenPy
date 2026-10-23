@@ -83,8 +83,8 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
        "Hello!"
    ```
 
-   Not sure of a name? Press **Shift+B** in the running game: the Asset Browser lists every pack
-   and animation, plays them, and copies a line to paste.
+   Not sure of a name? Press **Shift+B** in the running game: the SpriteStudio Browser lists every pack
+   and animation, plays them, and copies a snippet to paste.
 
 After editing in SpriteStudio, press **Shift+R** once in the running game; from then on every save
 converts the change and reloads the game by itself. Press it only once — a second press turns it

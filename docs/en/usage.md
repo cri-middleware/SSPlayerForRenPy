@@ -44,14 +44,14 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xa
 ```
 
 > [!TIP]
-> Not sure which pack or animation to use? Open the **Asset Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **Asset Browser** section (§10) below.
+> Not sure which pack or animation to use? Open the **SpriteStudio Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **SpriteStudio Browser** section (§10) below.
 
 ---
 
 ## 2. Using as Standing Images (`image` statement and Character integration)
 Every converted pack is already an image, the way Ren'Py makes one of every file under `images/`: `ss_assets/Ringo/Ringo.ssab` shows with `show ringo`, and each of its animations is an attribute — `show ringo wait1`. The Interactive Director (**D** in developer mode) lists these images with their animations, and picking another animation there replaces the one shown.
 
-- The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the Asset Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
+- The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the SpriteStudio Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
 - A tag the game already defines — an `image` statement, an `SSCharacter`, a file under `images/` — is left alone, so the definitions below take over as soon as you write one. Of two packs that spell one tag, the first in path order has it.
 - `define ss_auto_images = False` turns this off.
 
@@ -231,7 +231,7 @@ image ringo = SSPlayer(
 
 | Setting | Description |
 |---|---|
-| **part** | The name of the part to follow (the PartData name in the `.ssab`). `ss_part_names()` lists them, and the Asset Browser (Shift+B) shows them per pack |
+| **part** | The name of the part to follow (the PartData name in the `.ssab`). `ss_part_names()` lists them, and the SpriteStudio Browser (Shift+B) shows them per pack |
 | **child** | The displayable to make follow |
 | **anchor** | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot |
 | **angle** | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part's local axis |
@@ -488,13 +488,13 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 `ss_duration("…/Ringo.ssab", "attack1")` returns the duration in seconds for one cycle of that animation, so a character's "play and wait" can be written as `show ringo attack` + `$ renpy.pause(ss_duration(...))`.
 
 ### Checking Behavior (Diagnostics)
-In developer mode, "runtime loaded / N pack(s)" is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).
+In developer mode, `[SSPlayer] native runtime loaded | N pack(s): …` is output to the log on startup. By calling `ss_diagnostics()` in the console (Shift+O), you can check the runtime status and a list of detected packs. If an `.ssab` cannot be read, you will get a clear error containing its path (relative to `game/`).
 
 ---
 
-## 10. Asset Browser (Shift+B): Discover, Preview, and Copy Snippets
+## 10. SpriteStudio Browser (Shift+B): Discover, Preview, and Copy Snippets
 
-Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
+Press **Shift+B** in developer mode to open the **SpriteStudio Browser** — a built-in inspector that turns "which pack do I play, and how?" into a two-click answer. It is developer-mode only (the hotkey is disabled in release builds) and overlays the running game, so you can call it up at any time.
 
 > [!TIP]
 >
@@ -505,11 +505,11 @@ Press **Shift+B** in developer mode to open the **Asset Browser** — a built-in
 
 The window has three panes:
 
-1. **Pack list (left).** Every `.ssab` the resolver can find under `ss_assets/` — including packs bundled inside an `.rpa` archive. Click one to select it.
+1. **Pack list (left).** Every `.ssab` under `ss_assets/` and the Auto Importer's `ss_output_dir` — including packs bundled inside an `.rpa` archive. Click one to select it.
 2. **Live preview (center).** The selected animation plays for real (not a static thumbnail), alongside a metadata line — number of `animations`, `fps`, whether it has `effects`, and any external instance packs. Click any animation in the list to preview it instantly. A pack opens with the whole canvas it was authored on fitted into the preview and centred, however big or small that canvas is; that fit is what the zoom readout calls 100%. **1:1** shows the canvas at its own pixels instead — 100% is then its own size — and **Fit** goes back; the choice holds as you pick other packs. **Drag** the sprite to move it and **scroll the wheel** (or press `+` / `-`) to scale it, up to 16 times; **Reset view** (or `0`) puts it back as it opened. Scaling never interrupts playback, and the zoom is kept while you click through the animations of one pack.
 3. **Snippet (right).** Pick a **role** — Character / One-shot / UI — and a ready-to-paste `.rpy` snippet is generated for that pack. The default role is inferred from the pack's contents (an effect-only pack defaults to One-shot, for example), so you choose the role while watching the animation instead of guessing.
 
-Exporting the snippet appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.
+Pressing **Save snippet -> ss_snippets.txt** appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.
 
 Because the browser reads through the same zero-config resolver as `SSPlayer`, anything it lists is guaranteed to load by the exact path shown — including packs the [Auto Importer](import.md) just generated, since the asset index is refreshed on import.
 

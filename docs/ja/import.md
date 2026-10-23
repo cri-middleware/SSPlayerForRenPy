@@ -69,11 +69,11 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 起動時の初期化フェーズでファイルの更新が検知されると自動的にコンバートが走り、プロジェクト名と同名のフォルダが **`game/ss_assets/`** 以下に生成されます。（例: `SpriteStudio_Source/Ringo/Ringo.sspj` を配置した場合、`game/ss_assets/Ringo/` に変換データが出力されます）
 
 > [!NOTE]
-> **出力先はプロジェクト名ごとに 1 つです。** 出力フォルダは `.sspj` のファイル名で決まるので、`Enemies/Boss/Enemy.sspj` と `Enemies/Minion/Enemy.sspj` のように同じ名前のプロジェクトは、どちらも `game/ss_assets/Enemy/` に書き込むことになります。このときはパス順で最初の 1 つだけを変換し、残りはスキップして、ゲーム内の通知とコンソールにどれをスキップしたかを表示します。両方を取り込むには、どちらかの `.sspj` の名前を変えてください。大文字と小文字だけが違う名前も、Windows と macOS では同じフォルダになるので、同じ名前として扱います。
+> **出力先はプロジェクト名ごとに 1 つです。** 出力フォルダは `.sspj` のファイル名で決まるので、`Enemies/Boss/Enemy.sspj` と `Enemies/Minion/Enemy.sspj` のように同じ名前のプロジェクトは、どちらも `game/ss_assets/Enemy/` に書き込むことになります。このときはパス順で最初の 1 つだけを変換し、残りはスキップします。ゲーム内の通知にはスキップした数が、コンソールにはその名前が出ます。両方を取り込むには、どちらかの `.sspj` の名前を変えてください。大文字と小文字だけが違う名前も、Windows と macOS では同じフォルダになるので、同じ名前として扱います。
 >
 > **SpriteStudio Player for Ren'Py を更新すると、全プロジェクトをもう 1 回変換します。** 最後に変換したコンバーターと `game/spritestudio/` に入っているコンバーターが違えば変換し直すので、新しいリリースに差し替えた次の起動で、全プロジェクトが最新の変換結果になります。その起動は普段より時間がかかります。
 >
-> **インポーターは何も削除しません。** `.ssae` や画像、音声を消したり名前を変えたりしても、そこから変換されたファイルは `game/ss_assets/<project>/` に残り、読み込めて、アセットブラウザに並び、画像として登録され、ゲームにも同梱されます。インポーターは変換のたびにそうしたファイルをコンソールに書き出し、ゲーム内の通知にも件数を出すので、使っていないものは手で削除してください。
+> **インポーターは何も削除しません。** `.ssae` や画像、音声を消したり名前を変えたりしても、そこから変換されたファイルは `game/ss_assets/<project>/` に残り、読み込めて、SpriteStudio Browserに並び、画像として登録され、ゲームにも同梱されます。インポーターは変換のたびにそうしたファイルをコンソールに書き出し、ゲーム内の通知にも件数を出すので、使っていないものは手で削除してください。
 
 ### ホットリロード
 
@@ -160,12 +160,12 @@ ssconverter-cli SpriteStudio_Source/
 インストール不要で、手元のブラウザ上で手軽に変換を試したい場合は、姉妹プロジェクトである SpriteStudio Player for Web に付属する **`ssconverter-web`** を利用することもできます。
 
 - WebAssembly を利用してブラウザ内でローカル処理を行うため、ファイルが外部サーバーに送信されることはありません。
-- 変換したい `.sspj` と関連ファイル（画像など）をブラウザ画面にドラッグ＆ドロップすると変換処理が走り、結果が **`.zip` 形式でダウンロード** されます。
-- ダウンロードされた `.zip` を解凍し、生成された `.ssab` と画像を一緒にご自身の `game/` フォルダ内に配置してください。
+- `.sspj` の入ったフォルダをドロップする（または **Browse...** で選ぶ）と、**⚡ Convert & Download** で変換し、結果が **`.zip` 形式でダウンロード** されます。ZIP には `.sspj` の名前のフォルダが 1 つ入っています。
+- そのフォルダを `game/ss_assets/` に展開します。`.ssab` は `game/ss_assets/Ringo/Ringo.ssab` のように、画像と一緒に置かれます。
 
 SpriteStudio Player for Web のサイト内、[`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/) で公開されています。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
 
-詳しくは [SSPlayerForWeb リポジトリ](https://github.com/cri-middleware/SSPlayerForWeb) のドキュメントをご参照ください。
+詳しくは SpriteStudio Player for Web のドキュメントの [アセットの準備](https://cri-middleware.github.io/SSPlayerForWeb/ja/usage/assets) を参照してください。
 
 ---
 
