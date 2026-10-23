@@ -35,11 +35,11 @@ This page covers what is specific to **this** player. The constraints that come 
 ## Performance & Platform
 
 > [!NOTE]
-> **Performance** — Because rendering is routed through `ctypes` and Creator-Defined Displayables, your frame rate may be affected by animations with an extremely high mesh vertex count, or by many particle effects overlapping at once.
+> **Performance** — Your frame rate may be affected by animations with an extremely high mesh vertex count, or by many particle effects overlapping at once.
 
 > [!WARNING]
 > **Platform** — All targets are supported: Desktop (Windows / macOS / Linux), Android, iOS, and Web. See the [export guide](export.md) for how to export to each; the platform-specific constraints to be aware of are:
 >
-> - **Android** ships the Brain as a native library in the APK's `lib/<abi>/`; Android only loads native code from there, not from the packaged game data, so the `.so` must be placed in the app's jniLibs — a step the SSPlayer Android export flow handles, but a plain launcher build needs done once by hand.
-> - **iOS** requires macOS + Xcode, and the Brain library must be embedded into the app target once by hand — Ren'Py has no hook to auto-link third-party native code.
-> - **Web** needs a browser with **WebAssembly SIMD** (Chrome / Edge 91+, Firefox 89+, Safari 16.4+): the Brain's WebAssembly build is compiled with SIMD instructions and will **not run on browsers without it**. Treat SIMD support as a browser requirement for your distribution.
+> - **Android** loads native code only from the app's own library folder, so the player's `.so` is copied into RAPT once by hand before the first Android build ([Android Export](export.md#android-export)).
+> - **iOS** requires macOS + Xcode, and the player's library is embedded into the app target once by hand ([iOS Export](export.md#ios-export)).
+> - **Web** needs a browser with **WebAssembly SIMD** (Chrome / Edge 91+, Firefox 89+, Safari 16.4+): the player's WebAssembly build is compiled with SIMD instructions and will **not run on browsers without it**. Treat SIMD support as a browser requirement for your distribution.

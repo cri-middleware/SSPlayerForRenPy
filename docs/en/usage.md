@@ -159,8 +159,8 @@ $ player.ss_play("run")
 - **Switching is cheap**: everything the `.ssab` needs — textures included — is loaded in one go when the sprite is first shown, so `ss_set_animation()` is light enough to call every frame (there is no per-animation loading).
 - **Playback Control**: `ss_pause()` / `ss_resume()` / `ss_stop()` (the playhead **stays where it stands** — `ss_stop()` does not rewind; `ss_play()` is what returns to the head), frame control `ss_set_frame_no()` / `ss_get_frame_no()`, speed `ss_set_speed_scale()`, and looping `ss_set_loop_count()` are available. The loop count is the player's setting, like the speed: it stays across `ss_set_animation()`, so the animation you switch to plays that many times too (until then it is the constructor's `loop`). Only a pending sequence is the exception — switching drops it, and the count goes back to the constructor's `loop`.
 - **Playback finished**: `ss_is_finished()` reports whether every configured loop has played. A **state**, not a pulse — it latches on completion and stays true until the next `ss_play()` / `ss_set_animation()`, so a screen can ask about a completion it did not witness. It is not `not ss_is_playing()`: `ss_stop()` also stops playing but is not a completion, and this is what tells the two apart. Never true under an infinite loop count. The rising edge is the `on_animation_finished` callback; with a sequence, both describe the sequence being spent rather than each clip in it.
-- **Playback Direction**: `ss_set_playback_direction(direction, style)` takes the two enumerators `ssruntime` exports — `DIRECTION_FORWARD` / `DIRECTION_BACKWARD` and `STYLE_NORMAL` / `STYLE_PINGPONG` — so reverse is `ss_set_playback_direction(ssruntime.DIRECTION_BACKWARD, ssruntime.STYLE_NORMAL)` and ping-pong is `STYLE_PINGPONG`. They are the Brain's own names, shared with every sibling Player; prefer them to the bare `0` / `1`. Read the current setting back with `ss_get_playback_direction()` / `ss_get_playback_style()` — these report the *setting*, not the instantaneous heading, so a ping-pong return leg still reads forward. `ss_is_playing_forward()` is the actual heading — **gate audio on it**: SpriteStudio has no reverse audio, so a sound key crossed on a backward leg is not meant to sound, and it is the test this player applies itself.
-- **Loop boundary**: `ss_just_looped()` reports whether the last update crossed one. A **pulse**, not a state — true only inside the tick that crossed, which is why it is not `ss_is_looped`, and why reading it a tick late reads false.
+- **Playback Direction**: `ss_set_playback_direction(direction, style)` takes the two enumerators `ssruntime` exports — `DIRECTION_FORWARD` / `DIRECTION_BACKWARD` and `STYLE_NORMAL` / `STYLE_PINGPONG` — so reverse is `ss_set_playback_direction(ssruntime.DIRECTION_BACKWARD, ssruntime.STYLE_NORMAL)` and ping-pong is `STYLE_PINGPONG`. Prefer them to the bare `0` / `1`. Read the current setting back with `ss_get_playback_direction()` / `ss_get_playback_style()` — these report the *setting*, not the instantaneous heading, so a ping-pong return leg still reads forward. `ss_is_playing_forward()` is the actual heading — **gate audio on it**: SpriteStudio has no reverse audio, so a sound key crossed on a backward leg is not meant to sound.
+- **Loop boundary**: `ss_just_looped()` reports whether the last update crossed one. A **pulse**, not a state — true only inside the tick that crossed, so reading it a tick late reads false.
 - **Frame Skip**: on by default, so playback follows the clock — after a stall it catches up by skipping ahead, and a 2-second animation always takes 2 seconds. `ss_set_frame_skip_enabled(False)` advances exactly one frame per rendered frame instead: nothing is skipped, and a stall stretches the animation. Use it when every frame must be seen (a short effect, a frame-counted cutscene). Also available as the constructor argument `frame_skip=False`.
 - **Part Query**: `ss_part_transform("part_name")` retrieves the local transform (x/y/rotation/scale) of the part for the most recent frame. For the whole part-query set, and for making a displayable follow a part, see the **Part Tracking** section (§5) below.
 
@@ -213,7 +213,7 @@ The settings read back through the matching `ss_get_*` (`ss_is_track_frame_skip_
 
 ## 5. Part Tracking (Following a Specified Part)
 
-A feature that makes a displayable you provide (a weapon, an effect, a hit marker) follow a specified part every frame. This player has no scene tree to place the follower into, so the child is **composited into the player's own render** at the part's position. You own the child and its contents; the player only draws it — and because it rides inside the player's render, any `at` clause, `Transform`, or `zoom` applied to the player carries the child along with it.
+A feature that makes a displayable you provide (a weapon, an effect, a hit marker) follow a specified part every frame. The child is **composited into the player's own render** at the part's position. You own the child and its contents; the player only draws it — and because it rides inside the player's render, any `at` clause, `Transform`, or `zoom` applied to the player carries the child along with it.
 
 > The child can be any Ren'Py displayable: an image name, a `"file.png"`, a `Text(...)`, a `Solid(...)`, a `Transform(...)` — even another `SSPlayer`.
 
@@ -271,7 +271,7 @@ $ ringo.ss_clear_attachments()
 
 ### Timing and Accuracy
 
-Attachments are composited inside the player's own `render()`, in the same pass that computes the frame's pose, so **a child never lags the animation** — there is no separate drive step that could run at the wrong moment.
+Attachments are composited inside the player's own `render()`, in the same pass that computes the frame's pose, so **a child never lags the animation**.
 
 `ss_part_transform()` returns the pose the compositing itself uses, in player-local pixels with the animation's origin at the center of the player's box.
 
@@ -293,7 +293,7 @@ A part's pose can be a **reflection**, not merely a rotation and a scale. That h
 
 One consequence is worth knowing, because it does not look like a scale problem. A reflection is described as a rotation plus a flip of the Y axis, so a part that is *purely* mirrored left-to-right, with no rotation of its own, reports `rotation` as `±180` rather than `0`, with `xscale` and `yscale` both still positive. Take the Y flip away and a half-turn is what remains: the child is drawn **upside-down rather than mirrored**. That triple is **exactly what a part genuinely rotated by half a turn reports**, so these three values cannot tell the two apart.
 
-This follows from describing a pose as a rotation and a scale at all, so it is something to design around rather than a defect to wait on:
+Design around it like this:
 
 - A **symmetric** child is unaffected. It looks the same mirrored, and its position and angle are exact.
 - For an **asymmetric** child on a mirrored part, supply the mirrored artwork yourself, or pin it to a part that is not mirrored.
@@ -508,7 +508,7 @@ The window has three panes:
 
 Pressing **Save snippet -> ss_snippets.txt** appends it to **`ss_snippets.txt`** in your project root and copies it to the clipboard, ready to paste straight into your script. Press **Esc** to close.
 
-Because the browser reads through the same zero-config resolver as `SSPlayer`, anything it lists is guaranteed to load by the exact path shown — including packs the [Auto Importer](import.md) just generated, since the asset index is refreshed on import.
+Anything it lists loads by the exact path shown — including packs the [Auto Importer](import.md) just generated, since the asset index is refreshed on import.
 
 ### Stays in sync with the Auto Importer
 

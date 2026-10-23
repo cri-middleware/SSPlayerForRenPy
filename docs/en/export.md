@@ -1,7 +1,7 @@
 # 📦 Exporting your Game
 
 How to export a game that uses the SpriteStudio Player for Ren'Py. This covers
-only what is **SSPlayer-specific**; for the generic build mechanics it links to
+only the steps this player adds; for the generic build mechanics it links to
 Ren'Py's own documentation.
 
 > This page is for **game authors** exporting their own project with the stock
@@ -9,92 +9,70 @@ Ren'Py's own documentation.
 > or the native libraries), the developer helper scripts that automate each
 > export below are documented in the [Build Guide](build.md).
 
-Common to every platform: the native "Brain" library must be present under
-`game/spritestudio/libs/<platform-arch>/` for the platform you build — Ren'Py
-bundles it into the package and `ssruntime.py` resolves it at runtime. Shipping
-your **assets** is your game's responsibility (they are your content, not the
-library's): classify your `.ssab` packs (and `.ssqb` sequence packs, if any) —
-and, for SS Audio timeline events, the uncompressed `.wav` or `.mp3` — in your own
-`options.rpy`. The Web export in particular drops unknown extensions unless you
-do. Add `build.classify('**.ssab', 'all')` and `'**.ssqb'` (plus `'**.wav'` /
-`'**.mp3'` if you use audio); the demo does this in `game/options.rpy`.
+Common to every platform: `game/spritestudio/libs/` already holds the player's
+native library for every platform, and Ren'Py packages it with your game. Your
+**assets** are your game's own content, so classify them in your own
+`options.rpy`: `build.classify('**.ssab', 'all')`, `build.classify('**.ssqb', 'all')`
+for sequence packs, and `'**.wav'` / `'**.mp3'` if your animations play SS Audio
+events. The Web export in particular drops unknown extensions unless you do.
 
 ## Desktop Export (Windows / macOS / Linux)
 
 Standard Ren'Py [Build Distributions](https://www.renpy.org/doc/html/build.html) —
-no SSPlayer-specific post-steps.
-
-> **⚠️ Each platform needs its own native library** under `game/spritestudio/libs/`:
-> `macos/libssruntime.framework`, `windows/x86_64/ssruntime.dll`,
-> `linux/x86_64/libssruntime.so`. Ren'Py bundles it and `ssruntime.py` resolves it
-> at runtime. Without the library for the platform you build, the package builds
-> but SSPlayer throws at load.
-
-`build.name` must be set in your `options.rpy` (the demo does), or the `.app`
-won't launch. For distribution, code-sign / notarize per Ren'Py's docs (unsigned
-`.dylib`s are Gatekeeper-blocked).
+nothing to add for this player. For distribution, code-sign and notarize per
+Ren'Py's docs (unsigned `.dylib`s are blocked by Gatekeeper).
 
 **Optional — pack assets into a `.rpa`:** register the archive *before* your
-`**.ssab` / audio classify rules so those assets route into it (build.classify is
-first-match-wins); the demo's `options.rpy` shows this with a
-`ss_pack_assets_into_rpa` toggle you can follow.
+`**.ssab` / audio classify rules, since `build.classify` uses the first rule that
+matches:
+
+```renpy
+init python:
+    build.archive("ssdata", "all")
+    build.classify("game/ss_assets/**", "ssdata")
+    build.classify('**.ssab', 'all')
+    build.classify('**.ssqb', 'all')
+```
 
 ## Android Export
 
 Standard Ren'Py [RAPT](https://www.renpy.org/doc/html/android.html). Set up RAPT
 and run **Install SDK**, **Configure** (sets the package name), and **Generate
-Keys** once from the launcher's **Android** screen, per Ren'Py's docs.
+Keys** once from the launcher's **Android** screen, per Ren'Py's docs. Then:
 
-> **⚠️ The Brain must be a native library in the APK's `lib/<abi>/` (jniLibs).**
-> Android's linker only `dlopen()`s native libs the installer extracted to the
-> app's read-only `nativeLibraryDir` (W^X since API 29) — a `.so` under the game
-> assets or in app-writable storage will NOT load. `ssruntime.py` loads it by
-> soname (`libssruntime.so`) at runtime. Ship one per ABI, under the **NDK ABI
-> names**: `libs/android/arm64-v8a/libssruntime.so` (most 64-bit devices),
-> `armeabi-v7a/` (old phones), `x86_64/` (emulators).
->
-> RAPT has no game-tree hook for native code, so copy each `.so` once, by
-> hand, into your Ren'Py SDK's RAPT jniLibs (the same kind of one-time manual
-> step iOS needs):
->
-> ```
-> <renpy-sdk>/rapt/prototype/renpyandroid/src/main/jniLibs/<abi>/libssruntime.so
-> ```
+1. **Copy the native library into RAPT, once.** Android loads native libraries
+   only from the app's own library folder, so copy each ABI's `.so` from
+   `game/spritestudio/libs/android/<abi>/libssruntime.so` into your Ren'Py SDK:
 
-You can build either an `.aab` (for Play upload) or an `.apk`.
+   ```
+   <renpy-sdk>/rapt/prototype/renpyandroid/src/main/jniLibs/<abi>/libssruntime.so
+   ```
+
+   The ABIs are `arm64-v8a` (most 64-bit devices), `armeabi-v7a` (older phones)
+   and `x86_64` (emulators).
+2. **Build** an `.aab` (for Play upload) or an `.apk`.
 
 ## iOS Export
 
 Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates an
 **Xcode project** (the `.ipa` is built from Xcode). **macOS + Xcode required.**
 
-> **⚠️ The Brain is a *dynamic* `libssruntime.xcframework`, added to the app target
-> as "Embed & Sign".** `ssruntime.py` loads it via ctypes `CDLL(None)`, so it must
-> be a loaded image; Embed & Sign links it (dyld loads it at launch) and signs it
-> into the bundle — the same treatment renios gives `MetalANGLE.xcframework`. A
-> *static* xcframework links but gets dead-stripped → `CDLL(None)` fails at
-> runtime, so use the dynamic one. Its slices are `.framework` bundles (not bare
-> dylibs), so Embed & Sign passes App Store bundle-structure validation.
-
 1. **Generate the Xcode project** — from Ren'Py's launcher (**iOS** → **Create Xcode
    Project**), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
    CLI command.
-2. **Embed the Brain, once** — in Xcode: app target → **General** → **Frameworks,
-   Libraries, and Embedded Content** → **+** → *Add Files…* →
-   `game/spritestudio/libs/ios/libssruntime.xcframework` → **Embed & Sign**. Ren'Py
-   has no hook to auto-link third-party native code, so this one manual step is
-   unavoidable; it persists across `ios_populate` re-runs.
+2. **Embed the native library, once** — in Xcode: app target → **General** →
+   **Frameworks, Libraries, and Embedded Content** → **+** → *Add Files…* →
+   `game/spritestudio/libs/ios/libssruntime.xcframework` → **Embed & Sign**. It
+   stays through later `ios_populate` runs.
 3. **Build** — pick a **Simulator** and **Run** (no signing), or set your signing
    team and **Product > Archive** for a device `.ipa`.
 
 ## Web Export
 
-Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html) — no
-SSPlayer-specific post-steps. The Brain's WebAssembly build
-(`game/spritestudio/libs/web/`) ships inside `game.zip` with the rest of the
-folder, and SSPlayer loads it from there when the game starts, so the export plays
-as the launcher produces it. That build uses **WebAssembly SIMD**, so the target
-browser must support it — see [Limitations](limitations.md).
+Standard Ren'Py [Web export](https://www.renpy.org/doc/html/web.html) — nothing to
+add for this player: the WebAssembly build in `game/spritestudio/libs/web/` ships
+inside `game.zip` and loads when the game starts. It uses **WebAssembly SIMD**, so
+the target browser must support it — see [Limitations](limitations.md).
 
 **Testing:** serve over HTTP (not `file://`) — Ren'Py's own web server does. After
 re-exporting, **unregister the cached service worker / clear site data**, or the
