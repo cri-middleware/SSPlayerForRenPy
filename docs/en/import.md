@@ -104,6 +104,12 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 > define -15 ss_output_dir = "game/my_converted_assets"
 > ```
 
+> [!IMPORTANT]
+> **Methods 2–4 convert without Ren'Py running, so you place the output yourself.** Put the
+> converted folder in `game/ss_assets/` as it comes: the `.ssab`, its textures (`.png`) and any
+> external instance packs it references stay in the same folder, because the player finds them
+> beside the `.ssab`.
+
 ---
 
 ## Method 2: Manual Conversion via Standalone GUI Tool (SSConverter GUI)

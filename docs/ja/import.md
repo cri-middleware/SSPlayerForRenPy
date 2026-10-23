@@ -98,6 +98,9 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > define -15 ss_output_dir = "game/my_converted_assets"
 > ```
 
+> [!IMPORTANT]
+> **方法 2〜4 は Ren'Py を起動せずに変換するので、出力は自分で置きます。** 変換したフォルダはそのまま `game/ss_assets/` に置いてください。`.ssab` とそのテクスチャ（`.png`）、参照する外部インスタンスパックは同じフォルダに置きます。プレイヤーはそれらを `.ssab` の隣から読み込みます。
+
 ---
 
 ## 方法2: 専用GUIツール (SSConverter GUI) による手動変換

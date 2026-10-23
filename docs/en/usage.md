@@ -1,60 +1,25 @@
 # ▶️ Usage Guide
 
-In SpriteStudio Player for Ren'Py, you have very flexible control over SpriteStudio animations within Ren'Py. This guide explains how to use the player depending on your goals, ranging from simple rendering to integrating character standing images, and handling event callbacks.
-
-> [!IMPORTANT]
-> **Placement of `.ssab` files**
-> The converted `.ssab` file, its textures (`.png`), and any referenced external instance packs must **reside in the same folder** (the auto importer outputs them to `game/ss_assets/<ProjectName>/`). Because the player resolves related resources from the same directory as the `.ssab`, you do not need to specify a separate folder for textures.
-
-> [!TIP]
-> **The quickest way to show one:** every converted pack is already an image, so
-> `show ringo wait1` in a `label` shows `ss_assets/Ringo/Ringo.ssab` playing `wait1`, with no
-> `image` statement. Section 2 below has the details.
+This guide goes from showing an animation in a scene to standing images, talking characters, screens, effects and event callbacks.
 
 ---
 
-## 1. The Simplest Playback (Calling from a Screen)
-Because the `SSPlayer` class acts as a Ren'Py Displayable (drawing object), the simplest way to show an animation is by `add`ing it directly into a screen.
-
-```renpy
-screen demo():
-    # The first argument is the path to the .ssab (relative to game/)
-    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
-```
-
-A screen runs again on every interaction, and keeps the player it is showing for as long as the arguments stay the same, so the animation plays on from line to line. Change an argument — `animation=` from a screen variable, say — and the screen gets a new player that starts from the top.
-
-A player you keep in a variable is the one on screen: after `default ringo = SSPlayer(...)`, `add ringo` in a screen and `show expression ringo` both show that player, so `ringo.ss_*` calls — overrides, attachments, `ss_set_animation()` — reach what is drawn. Placed in several spots at once (two tags, or the particles of a `SnowBlossom`), it draws the same frame in each.
-
-### Basic Parameters
-- **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
-- **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display. Lint (`renpy.sh . lint`, or **Check Script (Lint)** in the launcher) reports it before that for a player in an `image` or a `define`, along with a `.ssab` path that does not load and an image attribute that names no animation.
-- **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays. `0` is a synonym for `-1` (infinite), not "do not play".
-- **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
-- **`size` (Optional)**: A `(w, h)` box (or a single number for a square) to use in place of the canvas, with the animation's origin at the box's centre. You rarely need it — see below.
-
-### Size and Placement
-Without `size`, a player is the size of the **canvas the animation was authored on** in SpriteStudio, with the animation's origin where the canvas's pivot puts it — the frame a PNG export of that animation would have. So it lays out like any image: `xalign` / `xpos`, `at left` / `at right` and Ren'Py's default bottom-centre placement all work, and a character authored standing on the bottom edge of its canvas stands wherever its `ypos` puts it.
-
-- The size comes from the animation the player **starts** on and stays when the animation changes — through `ss_set_animation()` or an image attribute such as `show ringo dead` — so a sprite does not move when you switch it, even to an animation authored on a wider canvas. Whatever an animation draws outside that box is still drawn.
-- To fit an animation into a box of your own, use Ren'Py's `fit` transform property. `scale-down` shrinks a canvas that is too big and leaves a smaller one alone:
-
-```renpy
-add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xalign 0.5 yalign 1.0
-```
-
-> [!TIP]
-> Not sure which pack or animation to use? Open the **SpriteStudio Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **SpriteStudio Browser** section (§10) below.
-
----
-
-## 2. Using as Standing Images (`image` statement and Character integration)
+## 1. Showing It in a Scene (`show`)
 Every converted pack is already an image, the way Ren'Py makes one of every file under `images/`: `ss_assets/Ringo/Ringo.ssab` shows with `show ringo`, and each of its animations is an attribute — `show ringo wait1`. The Interactive Director (**D** in developer mode) lists these images with their animations, and picking another animation there replaces the one shown.
+
+```renpy
+label start:
+    show ringo wait1
+```
 
 - The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the SpriteStudio Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
 - A tag the game already defines — an `image` statement, an `SSCharacter`, a file under `images/` — is left alone, so the definitions below take over as soon as you write one. Of two packs that spell one tag, the first in path order has it.
 - `define ss_auto_images = False` turns this off.
 
+> [!TIP]
+> Not sure which pack or animation to use? Open the **SpriteStudio Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **SpriteStudio Browser** section (§10) below.
+
+### Standing Images (`image` statement and Character integration)
 By combining it with Ren'Py's `image` statement, it functions powerfully as a **character standing image** (tachie) in visual novels. Using the `aliases` argument, you can link Ren'Py attribute names to SpriteStudio motion names.
 
 ```renpy
@@ -119,6 +84,38 @@ label start:
 
 > [!NOTE]
 > While a line is spoken, `talk` replaces the attribute the sprite was showing, so an emotion such as `show ringo happy` is not visible during the line; it comes back when the line ends. There is no per-emotion talk animation.
+
+---
+
+## 2. Placing It in a Screen (`SSPlayer`)
+In a screen, `add` an `SSPlayer` — the same object the images above are made of.
+
+```renpy
+screen demo():
+    # The first argument is the path to the .ssab (relative to game/)
+    add SSPlayer("ss_assets/Ringo/Ringo.ssab") xalign 0.5 yalign 0.5
+```
+
+A screen runs again on every interaction, and keeps the player it is showing for as long as the arguments stay the same, so the animation plays on from line to line. Change an argument — `animation=` from a screen variable, say — and the screen gets a new player that starts from the top.
+
+A player you keep in a variable is the one on screen: after `default ringo = SSPlayer(...)`, `add ringo` in a screen and `show expression ringo` both show that player, so `ringo.ss_*` calls — overrides, attachments, `ss_set_animation()` — reach what is drawn. Placed in several spots at once (two tags, or the particles of a `SnowBlossom`), it draws the same frame in each.
+
+### Basic Parameters
+- **1st Argument**: The path to the `.ssab` to play (relative to `game/`, e.g. `"ss_assets/Ringo/Ringo.ssab"`). Because the `.ssab` and its textures and external instance packs live together, this is enough to resolve the related resources. **You can also load an `.ssab` from an `.rpa` archive** (via the Ren'Py loader).
+- **`animation` (Optional)**: The name of the animation to play initially. If omitted, the first animation in the data is played. **If you pass a non-existent name, it will result in an error** (with a list of valid animation names) on the first display. Lint (`renpy.sh . lint`, or **Check Script (Lint)** in the launcher) reports it before that for a player in an `image` or a `define`, along with a `.ssab` path that does not load and an image attribute that names no animation.
+- **`loop` (Optional)**: Playback count. `-1` (default) for infinite loop, `1` for a single play, `N` for N plays. `0` is a synonym for `-1` (infinite), not "do not play".
+- **`speed` (Optional)**: Playback speed multiplier (default `1.0`).
+- **`size` (Optional)**: A `(w, h)` box (or a single number for a square) to use in place of the canvas, with the animation's origin at the box's centre. You rarely need it — see below.
+
+### Size and Placement
+Without `size`, a player is the size of the **canvas the animation was authored on** in SpriteStudio, with the animation's origin where the canvas's pivot puts it — the frame a PNG export of that animation would have. So it lays out like any image: `xalign` / `xpos`, `at left` / `at right` and Ren'Py's default bottom-centre placement all work, and a character authored standing on the bottom edge of its canvas stands wherever its `ypos` puts it.
+
+- The size comes from the animation the player **starts** on and stays when the animation changes — through `ss_set_animation()` or an image attribute such as `show ringo dead` — so a sprite does not move when you switch it, even to an animation authored on a wider canvas. Whatever an animation draws outside that box is still drawn.
+- To fit an animation into a box of your own, use Ren'Py's `fit` transform property. `scale-down` shrinks a canvas that is too big and leaves a smaller one alone:
+
+```renpy
+add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xalign 0.5 yalign 1.0
+```
 
 ---
 
