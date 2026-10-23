@@ -2219,6 +2219,8 @@ init -10 python:
             # never break the frame. Children are few, so a Transform wrap only
             # happens when the part is actually rotated/scaled — the common
             # translation-only case stays allocation-free. See ss_attach.
+            # Compositing here, in the pass that computed this frame's pose, is
+            # what keeps a child from lagging the animation by a frame.
             _recs = self._attach_list()
             if _recs:
                 for _i, _rec in enumerate(_recs):

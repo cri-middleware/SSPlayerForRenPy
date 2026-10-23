@@ -175,6 +175,193 @@ scripts\deploy-web.ps1     [dest_dir]
 - **Web**: the stock Web export, with nothing applied after it; serve the output over
   HTTP with the right MIME types.
 
-For the SSPlayer-specific requirements these scripts encode (per-ABI `.so`, the
-dynamic iOS xcframework, `.rpa` ordering), see the
-[Export Guide](export.md).
+Why each platform needs what these scripts do (the per-ABI `.so`, the dynamic iOS
+xcframework) is in [4.2](#42-where-the-native-library-loads-from); the `.rpa` ordering is in
+the [Export Guide](export.md).
+
+---
+
+## 4. How the Player Is Put Together
+
+Everything a game needs ships as `game/spritestudio/`: Ren'Py scripts at the top, a Python
+package under `python/`, the native libraries under `libs/`. This section is the map; the
+detail is in the files it names.
+
+### 4.1 Layers
+
+The **Brain** is `libssruntime`, the SpriteStudio-SDK's playback runtime, written in Rust. It
+advances the timeline, computes every part's pose, simulates particles and hands back each
+frame as a draw plan: FlatBuffers plus flat vertex buffers. The rest of the player turns that
+plan into Ren'Py renders.
+
+| Layer | Files | What it does |
+|---|---|---|
+| Bridge to the Brain | `python/ss_renpy/ssruntime.py`, which routes to `ssruntime_native.py` (ctypes) or `ssruntime_web.py` (the wasm build, through `renpy.emscripten`) | Loads the library and exposes its C API. `converter.py` does the same for `libssconverter`. |
+| Engine-independent core | `python/ss_renpy/player.py` (`SSInternalPlayer`), `framedata.py`, `effect.py`, `effectplan.py`, `instance.py`, `mask.py`, `events.py`, `ssab_meta.py`, `resource.py`, `host_state.py` | One pack's playback, and its draw plan turned into geometry. Nothing imports `renpy`, so `scripts/run-tests.sh` runs all of it in plain CPython. |
+| Generated and vendored | `python/ss/` (flatc output), `python/flatbuffers/` | The `.ssab` readers; regenerated, never edited ([2.5](#25-updating-flatbuffers-bindings-on-schema-change)) |
+| Ren'Py layer | `spritestudio.rpy` | Loads the Brain at `init -10`, holds the `SS_*` settings, and defines `SSPlayer`, the Creator-Defined Displayable: `render()` builds a `renpy.Render` from the plan (`_draw_items`: GL2 meshes and shaders), with masks, attachments, audio and save support around it |
+| Conveniences | `ss_images.rpy` (every pack an image), `ss_character.rpy` (`SSCharacter`), `ss_helpers.rpy`, `ss_browser.rpy` (Shift+B), `ss_diagnostics.rpy` | Each can be removed on its own |
+| Development only | `auto_importer.rpy` | Converts `SpriteStudio_Source/` into `game/ss_assets/` when `config.developer` is on |
+
+The Brain's work is native. What runs in Python is walking the plan and building Ren'Py's
+meshes, vertex by vertex, so a frame costs more as its vertex and particle counts grow. Run
+the game with `SS_PROFILE=1` to log how each frame splits between building the geometry and
+drawing it.
+
+### 4.2 Where the Native Library Loads From
+
+`load_library` in `ssruntime_native.py` finds the Brain under `game/spritestudio/libs/`, in the
+layout `platform_subdir` describes. Each platform loads it differently, which is why an export
+needs the steps the [Export Guide](export.md) lists:
+
+| Platform | File | How it loads, and why |
+|---|---|---|
+| macOS | `libs/macos/libssruntime.framework` | By the absolute path of `Versions/A/libssruntime`, so it resolves even when Ren'Py's `.app` packaging loses the framework's symlinks |
+| Windows | `libs/windows/<arch>/ssruntime.dll` | By path |
+| Linux | `libs/linux/<arch>/libssruntime.so` | By path |
+| Android | `libs/android/<abi>/libssruntime.so`, ABIs named as the NDK names them | By soname. Android's linker loads native code only from the app's read-only `nativeLibraryDir`, where the installer extracts the APK's `lib/<abi>/` (W^X since API 29), so a `.so` among the game files never loads. RAPT has no hook through which a game adds native code, so the library is copied into RAPT's `jniLibs` once, by hand. |
+| iOS | `libs/ios/libssruntime.xcframework`, the dynamic one | Through the process itself (`CDLL(None)`). Ren'Py has no hook that links third-party native code either, so the xcframework is added to the app target once with **Embed & Sign**, as renios does for `MetalANGLE.xcframework`; dyld then loads it at launch. A static xcframework would link and be dead-stripped, leaving `CDLL(None)` nothing to find. Its slices are `.framework` bundles, which App Store validation accepts. |
+| Web | `libs/web/` | The SDK's wasm-bindgen build, read out of `game.zip` when the game starts, so an export needs no edit to its `index.html` |
+
+The `build.classify` rules at the top of `spritestudio.rpy` keep the Android and iOS libraries
+out of the packaged game files, where they would ship a second time. A desktop library that is
+missing does not stop the build: the package is made, and the game stops at launch, because
+`load_library` runs at `init -10`.
+
+---
+
+## 5. Using Your Changed Player in a Game
+
+A game takes the player as one folder, so a checkout gets into a game the way a release does:
+
+1. Put the native libraries in place: `scripts/download-sdk.*` for the released ones, or
+   `scripts/build-runtime.*` after changing the SDK ([2.3](#23-building-the-native-library);
+   `platform=` builds Android, iOS and the Web).
+2. In the game, delete `game/spritestudio/`, then copy the checkout's `game/spritestudio/` in.
+   Delete first: Ren'Py keeps running a `.rpyc` whose `.rpy` is gone.
+
+To hand the change to someone else, build the zip a release publishes:
+`scripts/build-release.sh demo=skip` writes `release-dist/SSPlayerForRenPy-<version>.zip`
+from the checkout, with the libraries `sdk=` picks (`--help` lists them). It installs as the
+[Setup Guide](setup.md) describes.
+
+---
+
+## 6. Checking Against Ren'Py
+
+`scripts/run-tests.sh` covers the engine-independent core in plain CPython; CONTRIBUTING has
+its rules. What it cannot cover — drawing, the displayable, the launcher, the exports — is
+checked by running Ren'Py, and all of it can run from a script.
+
+### 6.1 Where Ren'Py's Labels Come From
+
+The guides name the launcher's screens and the in-game developer tools as Ren'Py shows them.
+The English strings are the `_("…")` calls in `renpy-sdk/launcher/game/*.rpy` (the launcher)
+and `renpy-sdk/renpy/common/` (the in-game tools); the Japanese ones are the `old` / `new`
+pairs in `renpy-sdk/launcher/game/tl/japanese/`. **Create Xcode Project**, for one, is
+`ios.rpy` in English and 「Xcode プロジェクト作成」 in `tl/japanese/launcher.rpy`.
+
+### 6.2 Drawing, Without a Person at the Keyboard
+
+GL2 drawing has no headless check. A throwaway script can still run it from launch to a
+screenshot. Save this as `game/zz_check.rpy`, and delete it and its `.rpyc` afterwards:
+
+```renpy
+init python:
+    import os as _check_os
+    if _check_os.environ.get("SS_CHECK_PACK"):
+        config.label_overrides["start"] = "zz_check"
+        config.log = "zz_check_log.txt"
+
+label zz_check:
+    scene expression Solid("#202020")
+    $ _p = SSPlayer(_check_os.environ["SS_CHECK_PACK"], size=(1280, 720))
+    show expression _p as check:
+        xalign 0.5 yalign 0.5
+    pause 1.5
+    python:
+        renpy.screenshot(_check_os.environ["SS_CHECK_SHOT"])
+        renpy.quit()
+```
+
+Run it with
+`RENPY_SKIP_MAIN_MENU=1 SS_CHECK_PACK=ss_assets/Ringo/Ringo.ssab SS_CHECK_SHOT=<png> renpy-sdk/renpy.sh .`.
+
+- Without `RENPY_SKIP_MAIN_MENU`, the main menu waits and `label_overrides` never applies.
+- An exception leaves Ren'Py on its error screen. Watch for `traceback.txt`, bound the run
+  (`perl -e 'alarm 60; exec @ARGV' renpy-sdk/renpy.sh .`), and write results to a file: a
+  killed process loses its buffered output.
+- `renpy.log` writes nothing unless `config.log` is set.
+- A `modal True` screen, such as the Shift+B browser, never returns from `renpy.pause`. Step
+  through it from a high-`zorder` screen's `timer … repeat True`, and wait in the label with
+  `$ ui.interact()`.
+- Cause interaction with real input: `renpy.test.testmouse`'s `move_mouse`, `press_mouse` and
+  `release_mouse`, at positions read from `renpy.display.focus.focus_list`. Rewriting a
+  displayable's state to imitate a drag skips the path Ren'Py really takes.
+- What needs init code but no drawing — `SSPlayer`'s constructor, `_duplicate`, loading, the
+  importer — runs under lint, which executes init blocks: an `init 999 python:` in a
+  throwaway `game/zz_*.rpy`, then `renpy-sdk/renpy.sh . lint --error-code`.
+- The demo's own scripts (`game/*.rpy` outside `spritestudio/`) are under no test and no lint
+  check. After renaming an `ss_*` method, search them by hand.
+
+### 6.3 The Web Build
+
+Build it with `scripts/deploy-web.sh <dir>`, serve it over HTTP (`python3 -m http.server <port>`)
+and open it in Chrome; in headless Chrome, drive it over the DevTools protocol.
+
+- Ren'Py Web is CPython compiled with emscripten, not Pyodide.
+- Use a new port for every build: `http.server` sends no `Cache-Control`, so an old build can
+  come back.
+- Startup takes a minute or two. `window.ss_runtime_state` reads `ready` once the bridge has
+  loaded the wasm, and `renpy_exec("…")` runs Python in the game from the page.
+- The first click on the canvas after each screen change goes to focus.
+- A JavaScript exception stops Ren'Py's loop without a word: `renpy_exec` stops returning and
+  the CPU goes idle. Read the exception from the protocol's `Runtime.exceptionThrown`.
+
+### 6.4 Android and iOS
+
+`scripts/deploy-android.*` builds through RAPT, which needs JDK 21: point `JAVA_HOME` at one,
+or `android_build` fails with "Java version is wrong". `scripts/deploy-ios.sh` generates the
+Xcode project and stages the xcframework; after the one **Embed & Sign**, a Simulator run
+needs no signing.
+
+### 6.5 Measuring the Hot Path
+
+Time `update()` on a headless `SSInternalPlayer` over the packs in `game/ss_assets/`. Compare
+inside one directory, swapping the `.py` under test round-robin for three rounds or more and
+taking each pack's minimum: the same code timed in another checkout of the repository can
+differ by about 13%. What pays off is moving work from the interpreter into C — one
+`struct.unpack` for a whole vector, `list.extend` instead of a loop of `append`, invariants
+hoisted out of vertex loops. When `.rpy` code is slow, check cProfile for
+`renpy/revertable.py` first: a list built in a `.rpy` file is a `RevertableList` (the
+docstring of `pack_pc_mesh` in `framedata.py` says what that costs).
+
+---
+
+## 7. Why It Is Built the Way It Is
+
+Each reason here spans files; the code it points at carries the detail.
+
+**Attachments are composited inside `SSPlayer.render()`,** in the pass that computes the
+frame's pose (`spritestudio.rpy`, reading `SSInternalPlayer.part_transform` in `player.py`).
+That is why a child never lags the animation: a separate drive step could run at the wrong
+moment and draw the child against the previous frame's pose.
+
+**A mirrored part reaches an attachment as a rotation.** `part_transform` describes a pose as
+a rotation and two scale magnitudes, so the sign that carries a reflection is dropped, and a
+part mirrored left to right reads as a half-turn. Carrying the reflection needs the pose as a
+matrix, which the compositing site in `spritestudio.rpy` marks as that later step; ROADMAP's
+**Flip and offset** item is where the root transform would reach `part_transform()`.
+
+**Masks are a coverage bitmap, not a stencil.** Ren'Py's GL2 model layer exposes no stencil
+buffer, so each frame rasterizes the mask writers into an offscreen bitmap, one bit per
+writer, and each masked part's shader replays the writers at its position to rebuild the
+stencil (`mask.py` for the engine-independent half, `SSPlayer._build_coverages` and the GLSL in
+`spritestudio.rpy` for the drawing, the `SS_MASK_*` settings for its size and quality).
+
+**The importer rides Ren'Py's autoreload.** `auto_importer.rpy` runs at `init -10`, so it runs
+at every launch and every reload. It claims the source folder in `config.autoreload_functions`
+ahead of Ren'Py's own image and audio rules, which would otherwise flush a cache and not reload
+for a saved `.png`. Freshness is a marker written only after a successful conversion
+(`import_marker.py`), because a failed one leaves fresh-looking files behind;
+`tools/ss_stamp_import.py` writes the same marker over a pack converted elsewhere.

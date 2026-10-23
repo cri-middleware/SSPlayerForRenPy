@@ -23,7 +23,7 @@ This documentation is structured by user purpose.
     - [Exporting your Game](export.md): How to export to each platform (desktop / mobile / web) with the stock Ren'Py tooling.
     - [Limitations](limitations.md): List of supported and unsupported features.
 - **Developer Guide**
-    - [Build Guide](build.md): Setting up a custom environment and building the native library.
+    - [Build Guide](build.md): Setting up a custom environment, building the native library, how the player is put together, and checking a change in Ren'Py.
 
 ## Key Features
 
