@@ -7,7 +7,7 @@ Ren'Py's own documentation.
 > This page is for **game authors** exporting their own project with the stock
 > Ren'Py launcher. If you are working inside this repository (building the demo
 > or the native libraries), the developer helper scripts that automate each
-> export below are documented in the [Build Guide](build.md).
+> export below are documented in the [Build Guide](development/build.md).
 
 Common to every platform: `game/spritestudio/libs/` already holds the player's
 native library for every platform, and Ren'Py packages it with your game. Your

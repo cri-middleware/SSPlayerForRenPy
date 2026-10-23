@@ -22,8 +22,9 @@ This documentation is structured by user purpose.
     - [Usage Guide](usage.md): How to call and control animations from Ren'Py scripts.
     - [Exporting your Game](export.md): How to export to each platform (desktop / mobile / web) with the stock Ren'Py tooling.
     - [Limitations](limitations.md): List of supported and unsupported features.
-- **Developer Guide**
-    - [Build Guide](build.md): Setting up a custom environment, building the native library, how the player is put together, and checking a change in Ren'Py.
+- **For Player & SDK Developers**
+    - [Build Guide](development/build.md): Setting up a custom environment, building the native library, using a changed copy in a game, and checking it in Ren'Py.
+    - [How the Player Is Put Together](development/architecture.md): The layers, where each platform loads the native library from, and why the player is built the way it is.
 
 ## Key Features
 

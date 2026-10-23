@@ -16,7 +16,8 @@ It holds the Ren'Py scripts (`*.rpy`), the Python bridge in `python/`, the nativ
 | How to turn `.sspj` projects into `.ssab` | [docs/import.md](docs/import.md) |
 | How to build the game for desktop, Android, iOS and the web | [docs/export.md](docs/export.md) |
 | What is not supported | [docs/limitations.md](docs/limitations.md) |
-| How to rebuild the native library or customise the player | [docs/build.md](docs/build.md) |
+| How to rebuild the native library or customise the player | [docs/development/build.md](docs/development/build.md) |
+| How the player is put together, and why | [docs/development/architecture.md](docs/development/architecture.md) |
 
 Links between the pages work offline. The screenshots and videos they refer to are not included; they are in the online documentation, <https://cri-middleware.github.io/SSPlayerForRenPy/> (Japanese: <https://cri-middleware.github.io/SSPlayerForRenPy/ja/>).
 
