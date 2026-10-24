@@ -209,7 +209,7 @@ label zz_check:
 
 - `RENPY_SKIP_MAIN_MENU` を付けないと、メインメニューで待ち続け、`label_overrides` が効きません。
 - 例外が起きると、Ren'Py はエラー画面で待ち続けます。`traceback.txt` の出現を見張り、実行時間を区切り（`perl -e 'alarm 60; exec @ARGV' renpy-sdk/renpy.sh .`）、結果はファイルに書いてください。kill されたプロセスはバッファにある出力を失います。
-- `renpy.log` は、`config.log` が無いと何も書きません。
+- Player 自身の報告（`[SSPlayer] …`）は print で出すので、どのプロジェクトでも `log.txt` とコンソールに届きます。`renpy.log` は、`config.log` が無いと何も書きません。
 - `modal True` の画面（Shift+B のブラウザなど）を出したまま `renpy.pause` すると戻りません。`zorder` の高い画面の `timer … repeat True` で手順を進め、ラベルでは `$ ui.interact()` で待ちます。
 - 操作は本物の入力で起こします。`renpy.test.testmouse` の `move_mouse`・`press_mouse`・`release_mouse` を、`renpy.display.focus.focus_list` から読んだ位置で使います。Displayable の状態を書き換えてドラッグを真似ると、Ren'Py が実際に通る経路を素通りします。
 - init のコードは要るが描画は要らないもの（`SSPlayer` のコンストラクタ、`_duplicate`、読み込み、インポーター）は、init ブロックを実行する lint で回せます。使い捨ての `game/zz_*.rpy` に `init 999 python:` を書き、`renpy-sdk/renpy.sh . lint --error-code` を実行します。

@@ -244,7 +244,8 @@ Run it with
 - An exception leaves Ren'Py on its error screen. Watch for `traceback.txt`, bound the run
   (`perl -e 'alarm 60; exec @ARGV' renpy-sdk/renpy.sh .`), and write results to a file: a
   killed process loses its buffered output.
-- `renpy.log` writes nothing unless `config.log` is set.
+- The player's own reports (`[SSPlayer] …`) are printed, so they reach `log.txt` and the console in any
+  project. `renpy.log` writes nothing unless `config.log` is set.
 - A `modal True` screen, such as the Shift+B browser, never returns from `renpy.pause`. Step
   through it from a high-`zorder` screen's `timer … repeat True`, and wait in the label with
   `$ ui.interact()`.
