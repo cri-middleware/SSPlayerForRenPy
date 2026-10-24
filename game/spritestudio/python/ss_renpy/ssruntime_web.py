@@ -440,8 +440,12 @@ class _WebRuntime:
         self._frame_rate = None
         emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_frame_rate({fps});")
 
-    def set_animation_section(self, start: int, end: int):
-        emscripten.run_script(f"window.ss_ctxs[{self._ctx_id}].set_animation_section({int(start)}, {int(end)});")
+    def set_animation_section(self, start: int, end: int) -> bool:
+        # The JS setter THROWS on a section it refuses where native returns
+        # False; caught in JS, as setup_animation's is.
+        return emscripten.run_script_int(
+            f"(function(c){{try{{c.set_animation_section({int(start)}, {int(end)});"
+            f"return 1;}}catch(e){{return 0;}}}})(window.ss_ctxs[{self._ctx_id}])") == 1
 
     def set_playback_direction(self, direction: int, style: int = 0):
         # WebPlaybackDirection / WebPlaybackStyle throw on anything but 0 or

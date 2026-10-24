@@ -354,7 +354,7 @@ _REQUIRED = (
     ("ss_runtime_set_frame_rate", [_P, C.c_int], None),
     ("ss_runtime_set_speed_scale", [_P, _f32], None),
     ("ss_runtime_set_playback_direction", [_P, C.c_int, C.c_int], None),
-    ("ss_runtime_set_animation_section", [_P, C.c_int, C.c_int], None),
+    ("ss_runtime_set_animation_section", [_P, C.c_int, C.c_int], _b),
     ("ss_runtime_set_skip_frames", [_P, _b], None),
 
     # state getters. ss_runtime_is_finished is "every configured loop has
@@ -763,9 +763,13 @@ class _NativeRuntime:
     def set_frame_rate(self, fps: int):
         self._lib.ss_runtime_set_frame_rate(self._ctx, int(fps))
 
-    def set_animation_section(self, start: int, end: int):
-        """Limit playback/loop to ``[start, end]`` (``set_animation_section``)."""
-        self._lib.ss_runtime_set_animation_section(self._ctx, int(start), int(end))
+    def set_animation_section(self, start: int, end: int) -> bool:
+        """Limit playback/loop to ``[start, end]`` (``set_animation_section``).
+
+        False, changing nothing, when both ends are inside the animation and
+        the end is before the start."""
+        return bool(self._lib.ss_runtime_set_animation_section(
+            self._ctx, int(start), int(end)))
 
     def set_playback_direction(self, direction: int, style: int = STYLE_NORMAL):
         """``direction`` = DIRECTION_FORWARD/BACKWARD; ``style`` = STYLE_NORMAL/PINGPONG."""

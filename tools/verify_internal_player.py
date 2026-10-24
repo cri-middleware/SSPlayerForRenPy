@@ -306,6 +306,63 @@ def check_playback_modes(lib) -> bool:
     return ok
 
 
+def check_section(lib) -> bool:
+    """``set_animation_section`` reports whether the Brain took the section.
+
+    An end before the start, both inside the animation, is refused: False, and
+    the section and the playhead stay as they were -- the host keeps its restore
+    record only for a section that returned True. An end outside the animation
+    is still its edge, and a section may start on the last frame and hold it."""
+    rel = "ss_assets/Ringo/Ringo.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### section  SKIP (Ringo not found)"); return True
+    data = open(abs_ssab, "rb").read()
+    p = SSInternalPlayer(data, lib=lib, base_dir="ss_assets/Ringo",
+                         resource_manager=RecordingResourceManager(),
+                         pack_reader=filesystem_pack_reader(os.path.dirname(abs_ssab)))
+    print("### section  a backward section is refused; the last frame can start one")
+    ok = True
+    try:
+        p.set_animation("attack1")
+        last = p.end_frame
+        dt_ms = 1000.0 / (p.frame_rate or 30)
+        if p.set_animation_section(5, 10) is not True:
+            print("    FAIL: set_animation_section(5, 10) was not accepted"); ok = False
+        p.play()
+        p.update(dt_ms)
+        p.update(dt_ms)
+        head = p.frame_no
+        refused = p.set_animation_section(10, 5)
+        if refused is not False:
+            print(f"    FAIL: set_animation_section(10, 5) returned {refused!r}")
+            ok = False
+        if (p.start_frame, p.end_frame) != (5, 10) or abs(p.frame_no - head) > 1e-6:
+            print(f"    FAIL: the refused section moved it to "
+                  f"{p.start_frame}..{p.end_frame} at {p.frame_no} "
+                  f"(was 5..10 at {head})"); ok = False
+        if (p.set_animation_section(last + 1, 3) is not True
+                or (p.start_frame, p.end_frame) != (0, 3)):
+            print(f"    FAIL: a start past the animation gave "
+                  f"{p.start_frame}..{p.end_frame}, want 0..3"); ok = False
+        for end in (last, -1):
+            if (p.set_animation_section(last, end) is not True
+                    or (p.start_frame, p.end_frame) != (last, last)):
+                print(f"    FAIL: set_animation_section({last}, {end}) gave "
+                      f"{p.start_frame}..{p.end_frame}, want {last}..{last}")
+                ok = False
+        p.set_loop_count(1)
+        p.play()
+        heads = {p.update(dt_ms).frame_no for _ in range(5)}
+        if heads != {float(last)}:
+            print(f"    FAIL: a section on the last frame played {sorted(heads)}")
+            ok = False
+    finally:
+        p.close()
+    print(f"    last frame={last}  -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def check_finished_edge(lib) -> bool:
     """The pure core reports the play->stop edge via ``FramePlan.finished``; the
     HOST advances the sequence. The core itself has no queue. We act as the host:
@@ -453,6 +510,7 @@ def main() -> int:
     allok &= check_restore_state(lib)
     allok &= check_loop_counts(lib)
     allok &= check_playback_modes(lib)
+    allok &= check_section(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1

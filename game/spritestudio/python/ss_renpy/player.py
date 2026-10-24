@@ -712,9 +712,10 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_frame_no(frame)
 
-    def set_animation_section(self, start: int, end: int) -> None:
-        if self._rt:
-            self._rt.set_animation_section(start, end)
+    def set_animation_section(self, start: int, end: int) -> bool:
+        """False, changing nothing, when the Brain refuses the section: both
+        ends inside the animation and the end before the start."""
+        return self._rt is not None and self._rt.set_animation_section(start, end)
 
     def set_playback_direction(self, direction: int, style: int = 0) -> None:
         # Remember it so set_animation() can re-apply after setup_animation resets
