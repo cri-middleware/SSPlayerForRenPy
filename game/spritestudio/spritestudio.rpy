@@ -3237,15 +3237,24 @@ init -10 python:
         def ss_set_animation_section(self, start, end):
             """Play only frames ``start``..``end`` of the current animation.
 
+            Both ends are included, and an end outside the animation (``-1``)
+            is its edge on that side. An end before the start, both inside
+            the animation, is refused: this returns False, logs it once per
+            pair, and leaves the section and the playhead as they were.
+
             It belongs to that animation: the next animation change (an
             ss_set_animation, a sequence moving on, a crossfade on track 0)
             plays the whole of the new one. Kept on the displayable too, so a
             load puts it back."""
             self._ensure()
-            self._core.set_animation_section(start, end)
+            if not self._core.set_animation_section(start, end):
+                self._warn_once(("section", int(start), int(end)),
+                                "set_animation_section(%r, %r) failed" % (start, end))
+                return False
             self._section = (int(start), int(end))
             self._record_playback(self._core)
             renpy.redraw(self, 0)
+            return True
 
         def _apply_playback_modes(self):
             """Push the recorded direction / ping-pong style onto the core.

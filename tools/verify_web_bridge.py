@@ -27,12 +27,15 @@ answers the few reads the bridge parses, and checks:
      binding takes an enum — folded the way the C-API reads a stray value.
   3. **A rejected pack**: when the JS side refuses a pack, ``load_ssab_bytes``
      raises RuntimeError with the reason and leaves the previous resource bound.
+  4. **A refused section**: when the JS side refuses a playback section,
+     ``set_animation_section`` returns False, as native does.
 
 With ``node`` on PATH, every recorded script, in order, is then compiled and run
-against a small stand-in for the wasm-bindgen objects, whose enum setters and
-pack constructor throw as the real ones do: that is what shows the load script
-catching the throw and returning the reason. Without ``node`` that sub-step is
-reported as a sub-case skip.
+against a small stand-in for the wasm-bindgen objects, whose enum setters,
+section setter and pack constructor throw as the real ones do: that is what
+shows the load script catching the throw and returning the reason, and the
+section script returning 0. Without ``node`` that sub-step is reported as a
+sub-case skip.
 
 What this does NOT cover: the real glue and Brain (no web build is loaded), the
 emscripten heap behind the addresses the bridge hands JS (the stand-in heap is
@@ -486,7 +489,7 @@ def check_folds():
 
 _REASON = "SSAB schema version mismatch: expected 7, found 6"
 _LOAD = "SSRuntimeResource("
-# Expected node results, by script index: the load script's return value.
+# Expected node results, by script index: what the script returns.
 _EXPECT: dict[int, str] = {}
 
 
@@ -543,6 +546,28 @@ def check_rejected_pack():
     _close(rt)
 
 
+# --- 4. a refused section --------------------------------------------------
+
+_SECTION = "set_animation_section("
+
+
+def check_refused_section():
+    print("### a section the JS side refuses")
+    rt = _runtime()
+    for label, start, end, want in (("section: refused", 10, 5, "0"),
+                                    ("section: accepted", 5, 10, "1")):
+        _FAKE.label = label
+        _FAKE.answers[_SECTION] = want
+        try:
+            got = rt.set_animation_section(start, end)
+        finally:
+            del _FAKE.answers[_SECTION]
+            _EXPECT[len(_FAKE.scripts) - 1] = want
+        check(f"set_animation_section({start}, {end}) returns {want == '1'}",
+              got is (want == "1"), f"returned {got!r}")
+    _close(rt)
+
+
 # --- every recorded script --------------------------------------------------
 
 def check_all_linted():
@@ -558,7 +583,9 @@ def check_all_linted():
 # Every script runs in one context, in the order it was sent. The stand-in for
 # a wasm-bindgen object answers 0 from every method, except the few whose result
 # a script dereferences; an enum argument other than 0 or 1 throws, as the
-# generated glue does, and so does the pack constructor once told to reject.
+# generated glue does, and so does the pack constructor once told to reject,
+# and set_animation_section given an end before its start (the stand-in knows
+# no last frame, so any two ends from 0 up count as inside the animation).
 _NODE_DRIVER = r"""
 const vm = require('vm');
 const {enums, scripts} = JSON.parse(require('fs').readFileSync(0, 'utf8'));
@@ -569,6 +596,10 @@ function stub() {
     if (typeof k !== 'string') return undefined;
     if (k === 'bind_resource') return () => !sb.ss_test_unbindable;
     if (k.startsWith('get_active_')) return () => ({free() {}});
+    if (k === 'set_animation_section') return (s, e) => {
+      if (s >= 0 && e >= 0 && e < s) throw 'Invalid parameter';
+      return 0;
+    };
     return (...a) => {
       for (const i of (Object.prototype.hasOwnProperty.call(enums, k) ? enums[k] : []))
         if (a[i] !== 0 && a[i] !== 1) throw new Error('invalid enum value passed');
@@ -643,7 +674,7 @@ def check_under_node():
           + (f"\n          ... and {len(thrown) - 8} more" if len(thrown) > 8 else ""))
     for i, want in sorted(_EXPECT.items()):
         got = results[i].get("value")
-        check(f"{scripts[i][0]}: the load script returns {ascii(want or '')}",
+        check(f"{scripts[i][0]}: the script returns {ascii(want or '')}",
               got == want, f"returned {ascii(got)}")
 
 
@@ -656,6 +687,7 @@ def main(argv) -> int:
     check_scripts()
     check_folds()
     check_rejected_pack()
+    check_refused_section()
     check_all_linted()
     check_under_node()
     print("\n== RESULT:", "ALL PASS" if _ok else "FAILURES PRESENT", "==")
