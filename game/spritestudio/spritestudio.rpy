@@ -31,6 +31,12 @@ init -10 python:
     import os
     import sys, math, time
 
+    def _ss_log(msg):
+        # print(), not renpy.log(): renpy.log writes only when the project sets
+        # config.log, while stdout reaches the console and log.txt in any
+        # project, where ss_diagnostics and the auto importer report too.
+        print("[SSPlayer] " + msg)
+
     # Packaging (build.classify): the library classifies only its OWN files — its
     # per-platform native libraries (below). The `.ssab` / `.ssqb` pack formats hold
     # the GAME's own assets, so shipping those is the game's responsibility, done in
@@ -331,8 +337,8 @@ init -10 python:
         _bf["ss_exclusion"] = (GL_FUNC_ADD, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR) + _A
         _SS_BLEND_REGISTERED = True
     except Exception as e:
-        renpy.log("ss: custom gl_blend_func registration failed (%r); "
-                  "Mul/Add via built-ins, other modes -> Mix" % (e,))
+        _ss_log("custom gl_blend_func registration failed (%r); "
+                "Mul/Add via built-ins, other modes -> Mix" % (e,))
 
     # SS framebuffer BlendType -> gl_blend_func key. Mix (0) == normal (no
     # override). Mirrors SSPlayerForWeb applyBlend: the "2" / alpha variants that
@@ -510,7 +516,7 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.partcolor) failed: %r" % (e,))
+            _ss_log("register_shader(ss.partcolor) failed: %r" % (e,))
 
         # Effect-particle shader: straight texel * (per-quad) colour. Effect
         # particle colours are RGBA 0..1 from the EffectDrawPlan (parent alpha
@@ -534,7 +540,7 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.effect) failed: %r" % (e,))
+            _ss_log("register_shader(ss.effect) failed: %r" % (e,))
 
         # Batched variants: per-vertex colour (and PartColor varg) so a whole
         # same-texture run / a whole effect batch draws in ONE mesh + ONE blit
@@ -586,7 +592,7 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
+            _ss_log("register_shader(ss.*_batched) failed: %r" % (e,))
 
         # -- Mask / clipping (coverage-bitmap hybrid) ------------------------
         # These shaders implement the spec's stencil over an offscreen coverage:
@@ -654,7 +660,7 @@ init -10 python:
                     fragment_300=_ss_mask_replay_fragment(_n, _tiled),
                 )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.mask_*) failed: %r" % (e,))
+            _ss_log("register_shader(ss.mask_*) failed: %r" % (e,))
 
         # -- User-shader effects (SS6 ss-* family) ---------------------------
         # Ported from SSPlayerForGodot (ss_player/shaders/*.fs). Each variant is a
@@ -981,8 +987,8 @@ init -10 python:
             _SS_USER_SHADER_BY_HASH = {}
             _SS_USER_NEEDS_TEXEL = set()
             _SS_USER_NEEDS_CELL = set()
-            renpy.log("ss: register_shader(ss.user_*) failed: %r; user-shader "
-                      "effects disabled" % (e,))
+            _ss_log("register_shader(ss.user_*) failed: %r; user-shader "
+                    "effects disabled" % (e,))
 
     # SS Effect blend (EmitterState.blend_type): 0=Mix (normal), 1=Add. This is
     # a *different* enum from the framebuffer BlendType used by Normal parts.
@@ -1008,7 +1014,7 @@ init -10 python:
     except Exception as e:
         _SS_Mesh2 = None
         _SS_TEXTURE_LAYOUT = None
-        renpy.log("ss: gl2 Mesh2 unavailable (%r); mesh backend disabled" % (e,))
+        _ss_log("gl2 Mesh2 unavailable (%r); mesh backend disabled" % (e,))
     # REPEAT wrap so UVs the runtime baked past the atlas edge (UvScale/translate/
     # rotate) sample correctly — the analogue of every reference player's wrap.
     try:
@@ -1054,7 +1060,7 @@ init -10 python:
     except Exception as e:
         _SS_PC_LAYOUT = None
         _SS_FX_LAYOUT = None
-        renpy.log("ss: batch-draw layouts unavailable (%r); per-part draw" % (e,))
+        _ss_log("batch-draw layouts unavailable (%r); per-part draw" % (e,))
 
     def _ss_blend_property(blend_type):
         """Return a (key, value) for Render.add_property('gl_blend_func', …) or None."""
@@ -1828,7 +1834,7 @@ init -10 python:
         def _warn_once(self, key, msg):
             if key not in self._warned:
                 self._warned.add(key)
-                renpy.log("ss: " + msg)
+                _ss_log(msg)
 
         def _warn_if_skinned_target(self, part):
             """Log once if an attachment targets a bone-skinned mesh part.
@@ -4138,8 +4144,8 @@ init python:
             try:
                 renpy.music.register_channel(_c, mixer=SS_AUDIO_MIXER, loop=False)
             except Exception as _e:
-                renpy.log("ss: could not register audio channel %r (%r)"
-                          % (_c, _e))
+                _ss_log("could not register audio channel %r (%r)"
+                        % (_c, _e))
         # Register the off-screen audio reaper as a periodic callback (~20Hz), so
         # a player swapped out of a screen (no `_hide`) still stops sounding.
         # Drop any stale copy first (a dev reload redefines the function).
