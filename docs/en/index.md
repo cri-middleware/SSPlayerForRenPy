@@ -20,6 +20,7 @@ This documentation is structured by user purpose.
     - [Setup Guide](setup.md): How to integrate the player into your game project.
     - [Asset Import](import.md): How to convert `.sspj` animation data.
     - [Usage Guide](usage.md): How to call and control animations from Ren'Py scripts.
+    - [Buttons](buttons.md): How to make an animation a button, with a state for idle, hover and insensitive.
     - [Exporting your Game](export.md): How to export to each platform (desktop / mobile / web) with the stock Ren'Py tooling.
     - [Limitations](limitations.md): List of supported and unsupported features.
 - **For Player & SDK Developers**

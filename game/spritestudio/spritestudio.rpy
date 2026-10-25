@@ -2202,6 +2202,7 @@ init -10 python:
             else:
                 rw, rh = self._size if self._size else (width, height)
                 ox, oy = rw / 2.0, rh / 2.0
+            self._draw_origin = (ox, oy)
             r = renpy.Render(rw, rh)
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0

@@ -288,7 +288,7 @@ It returns `None` until the first frame has been rendered, and for a part that i
 
 `anchor` doubles as the rotation / scale pivot, and the child's unrotated size is measured every frame, so a child that changes size keeps its anchor. A hand part carries the wrist angle, so a held item usually needs an `angle` offset to lie along the fingers rather than standing straight up.
 
-### Outlines and Hit Testing
+### Outlines and Hit Testing { #outlines-and-hit-testing }
 
 `ss_part_quad(part)` returns the outline a part (a name or index) is drawn with on the last rendered frame: four `(x, y)` corners — the top left, top right, bottom left and bottom right of the part's own art — in the same space as `ss_part_transform()`. The corners go wherever the pose takes them, so a rotated or skewed part's four points are not an upright rectangle.
 

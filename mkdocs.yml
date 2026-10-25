@@ -29,6 +29,7 @@ nav:
   - 🚀 Setup Guide: setup.md
   - 🗂️ Asset Import: import.md
   - ▶️ Usage Guide: usage.md
+  - 🔘 Buttons: buttons.md
   - 📦 Exporting your Game: export.md
   - 🛠️ For Player & SDK Developers:
       - Build Guide: development/build.md

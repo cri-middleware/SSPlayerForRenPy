@@ -24,27 +24,10 @@ These need no new SDK API — the runtime already provides everything required. 
 
 ## UI integration
 
-- [ ] **Screen-language integration** — A player is already a `Displayable`, so it drops into a
-  `screen` and lays out like an image, its natural size the authored canvas and Ren'Py's `fit` /
-  `xysize` / `align` placing it, but it lacks the behaviour of a control. This is the Ren'Py
-  face of the sibling ports' item (Godot's `Control` node, Unity's uGUI `Graphic`, Flutter's
-  intrinsic sizing and `hitTest`), in two steps, the second building on the first. Hit testing,
-  UI states and reduced motion follow the SDK porting guide's [UI integration page](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/50_features/80_ui_integration.md),
-  and the adapter lives in a file of its own (`ss_ui.rpy`), so a game that only plays animations
-  loads none of it.
-  - [ ] **Focus mask** — Ren'Py's `focus_mask` accepts a callable, which is exactly the hook
-    a per-part hit test fits: an irregular button then stops taking clicks across its
-    bounding box. It needs a **part outline read-out** first — `ss_part_quad(part)`, built as
-    the SDK guide recommends (a cell part's drawn corners, a Mesh part's vertex box, a Shape's
-    size around its pivot) — and then `ss_hit_test_part(x, y, parts)` over it, answering from
-    the parts the screen names (the whole displayable when it names none).
-  - [ ] **Button states** — `imagebutton` takes an image per state; a player takes none. Map
-    `idle` / `hover` / `insensitive` onto `normal` / `hover` / `disabled`, each a label section,
-    so a player can back a `button` without the screen re-issuing `ss_set_animation` on every
-    hover. `selected_idle` / `selected_hover` wait on the convention, which leaves a selected
-    state open.
-  - [ ] **Reduced motion** — a flag the game sets, holding each state's first frame and playing
-    a `reduced_motion` label in place of `normal`.
+- [ ] **Selected buttons** — `SSButton` shows a selected button (`selected_idle` /
+  `selected_hover`) as it would unselected. A state of its own waits on the SDK porting guide's
+  [UI integration page](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/50_features/80_ui_integration.md),
+  which leaves a selected state open.
 
 ## Needs SDK
 

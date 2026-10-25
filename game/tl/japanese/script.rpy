@@ -1,7 +1,7 @@
 # Japanese translations for script.rpy (the start menu / language choices).
 # Per-scene dialogue translations live alongside their scenes:
 #   tl/japanese/scene_ringo.rpy, scene_helper.rpy, scene_part_follow.rpy,
-#   scene_blend.rpy, scene_mask.rpy, asset_picker.rpy.
+#   scene_blend.rpy, scene_button.rpy, scene_mask.rpy, asset_picker.rpy.
 
 translate japanese strings:
 
@@ -25,6 +25,9 @@ translate japanese strings:
 
     old "Animation blending (crossfade / layering) sample"
     new "アニメーションのブレンド（クロスフェード / 重ね合わせ）サンプル"
+
+    old "Buttons (SSButton) sample"
+    new "ボタン（SSButton）のサンプル"
 
     old "Browse Imported Assets (auto-discovered)"
     new "インポート済みアセットを閲覧（自動検出）"
