@@ -5,9 +5,14 @@ A state is one of ``normal`` / ``hover`` / ``pressed`` / ``disabled`` /
 animation, up to the frame before the next label (any label, the state names
 or not), looping. A state the animation has no label for falls back --
 ``pressed`` to ``hover``, the rest to ``normal``, and ``normal`` to the whole
-animation -- and a clip can stand in for a state's label. Under reduced motion
-the section is held on its first frame, except that ``normal`` plays the
-``reduced_motion`` label's section when the animation has one.
+animation -- and a clip can stand in for a state's label. A selected button
+(a toggle that is on) reads the same labels with ``selected_`` in front first,
+and the plain ones after, so on and off stay apart when a label is missing --
+except that a press, which lasts only while the button is held down, takes
+``pressed`` right after ``selected_pressed``.
+Under reduced motion the section is held on its first frame, except that an
+unselected ``normal`` plays the ``reduced_motion`` label's section when the
+animation has one.
 
 ``ss_ui.rpy`` (``SSButton``) maps a Ren'Py button onto a state and plays what
 this returns; everything here reads label tables only, so the headless suite
@@ -78,12 +83,25 @@ def clip_parts(clip):
     return clip, None
 
 
+def chain(state: str, selected: bool = False) -> tuple:
+    """The labels ``state`` looks up, in order: its own, then those it falls
+    back to, each with ``selected_`` in front first when ``selected`` --
+    ``pressed`` excepted, which comes right after ``selected_pressed``."""
+    plain = _CHAINS.get(state, _CHAINS["normal"])
+    if not selected:
+        return plain
+    names = tuple("selected_" + s for s in plain) + plain
+    head = ("selected_pressed", "pressed") if state == "pressed" else ()
+    return head + tuple(n for n in names if n not in head)
+
+
 def resolve(state: str, animation: str, table_of, clips=None,
-            reduced_motion: bool = False, on_missing_clip=None):
+            reduced_motion: bool = False, on_missing_clip=None,
+            selected: bool = False):
     """The :class:`UiSection` ``state`` plays, its labels read from
-    ``animation``: the first state of its chain with a clip in ``clips`` or a
-    label of its own name, or else the whole animation. ``None`` when
-    ``table_of(animation)`` is ``None``.
+    ``animation``: the first name of its :func:`chain` with a clip in
+    ``clips`` or a label of its own, or else the whole animation. ``None``
+    when ``table_of(animation)`` is ``None``.
 
     ``table_of(name)`` returns an animation's label table, or ``None`` for one
     the pack lacks. A clip naming an animation or a label the pack lacks goes
@@ -97,7 +115,7 @@ def resolve(state: str, animation: str, table_of, clips=None,
     name = animation
     section = None
     source = None
-    for s in _CHAINS.get(state, _CHAINS["normal"]):
+    for s in chain(state, selected):
         clip = clips.get(s)
         if clip is not None:
             clip_anim, clip_label = clip_parts(clip)

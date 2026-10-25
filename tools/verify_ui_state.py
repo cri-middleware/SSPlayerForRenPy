@@ -2,8 +2,8 @@
 """Headless check for the button state rule in ``ss_renpy.ui_state``.
 
 Which state wins, which section each state plays, where a state without a
-label falls back to, how a clip stands in for a label, and what reduced motion
-holds. The label tables are written out here, since no example pack names its
+label falls back to, how a clip stands in for a label, how a selected button
+reads the selected labels first, and what reduced motion holds. The label tables are written out here, since no example pack names its
 labels after the states.
 
 Plain CPython — no Ren'Py.
@@ -52,14 +52,21 @@ TABLES = {
     "plain": _table(29, {}),
     "glow": _table(39, {"calm": 5}),
     "caps": _table(9, {"Normal": 0, "HOVER": 5}),
+    "toggle": _table(119, {"normal": 0, "hover": 20, "selected_normal": 40,
+                           "selected_hover": 60, "disabled": 80,
+                           "reduced_motion": 100}),
+    "on_only": _table(59, {"normal": 0, "hover": 20, "selected_normal": 40}),
+    "on_press": _table(39, {"normal": 0, "hover": 10, "pressed": 20,
+                            "selected_normal": 30}),
 }
 
 
-def resolve(state, animation, clips=None, reduced=False, missing=None):
+def resolve(state, animation, clips=None, reduced=False, missing=None,
+            selected=False):
     s = ui_state.resolve(
         state, animation, TABLES.get, clips=clips, reduced_motion=reduced,
         on_missing_clip=(lambda st, clip: missing.append((st, clip)))
-        if missing is not None else None)
+        if missing is not None else None, selected=selected)
     return s and (s.animation, s.start_frame, s.end_frame, s.hold)
 
 
@@ -125,6 +132,49 @@ def main() -> int:
           resolve("normal", "only_normal", reduced=True), ("only_normal", 10, 29, True))
     check("the whole animation is held", resolve("normal", "plain", reduced=True),
           ("plain", 0, 29, True))
+
+    print("### selected")
+    check("the chain: selected first, then plain", ui_state.chain("hover", True),
+          ("selected_hover", "selected_normal", "hover", "normal"))
+    check("the pressed chain: pressed right after selected_pressed",
+          ui_state.chain("pressed", True),
+          ("selected_pressed", "pressed", "selected_hover", "selected_normal", "hover",
+           "normal"))
+    check("a press shows over on", resolve("pressed", "on_press", selected=True),
+          ("on_press", 20, 29, False))
+    check("hover still keeps on", resolve("hover", "on_press", selected=True),
+          ("on_press", 30, 39, False))
+    check("a pressed clip shows over a selected one",
+          resolve("pressed", "plain", {"pressed": "glow", "selected_normal": "with_hover"},
+                  selected=True), ("glow", 0, 39, False))
+    check("normal", resolve("normal", "toggle", selected=True), ("toggle", 40, 59, False))
+    check("hover", resolve("hover", "toggle", selected=True), ("toggle", 60, 79, False))
+    check("pressed falls to selected_hover",
+          resolve("pressed", "toggle", selected=True), ("toggle", 60, 79, False))
+    check("disabled keeps on over disabled",
+          resolve("disabled", "toggle", selected=True), ("toggle", 40, 59, False))
+    check("hover keeps on over hover", resolve("hover", "on_only", selected=True),
+          ("on_only", 40, 59, False))
+    check("no selected labels: as unselected", resolve("hover", "button", selected=True),
+          ("button", 20, 39, False))
+    check("unselected ignores the selected labels", resolve("normal", "toggle"),
+          ("toggle", 0, 19, False))
+    check("a clip under a selected name",
+          resolve("hover", "only_normal", {"selected_normal": "glow"}, selected=True),
+          ("glow", 0, 39, False))
+    check("which unselected states do not take", resolve("hover", "only_normal",
+                                                           {"selected_normal": "glow"}),
+          ("only_normal", 10, 29, False))
+    missing = []
+    check("a selected clip the pack lacks plays the label",
+          resolve("hover", "toggle", {"selected_hover": "nope"}, missing=missing,
+                  selected=True), ("toggle", 60, 79, False))
+    check("and is reported under its name", missing, [("selected_hover", "nope")])
+    check("reduced motion holds selected normal",
+          resolve("normal", "toggle", reduced=True, selected=True), ("toggle", 40, 59, True))
+    check("but plays reduced_motion where nothing is selected-labelled",
+          resolve("normal", "button", reduced=True, selected=True),
+          ("button", 80, 99, False))
 
     print("\n== RESULT:", "ALL PASS" if _ok else "FAILURES PRESENT", "==")
     return 0 if _ok else 1
