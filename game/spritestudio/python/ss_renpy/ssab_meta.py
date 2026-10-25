@@ -47,6 +47,39 @@ class AnimationInfo:
 
 
 @dataclass(frozen=True)
+class LabelInfo:
+    name: str
+    frame: int
+
+
+@dataclass(frozen=True)
+class LabelTable:
+    """The labels of one animation and the frame range it was authored with.
+
+    ``labels`` are in frame order; the pack keeps them sorted by name hash, so
+    "the next label" is only meaningful after this sort. ``start_frame`` /
+    ``end_frame`` are the animation's own, never a playback section's."""
+    labels: tuple
+    start_frame: int
+    end_frame: int
+
+    def frame_of(self, label: str) -> int | None:
+        """The frame ``label`` marks, or ``None`` when there is no such label.
+
+        ``"_start"`` and ``"_end"`` are the animation's first and last frame,
+        as in SpriteStudio, where they are never in the table; a real label of
+        the same name wins."""
+        for l in self.labels:
+            if l.name == label:
+                return l.frame
+        if label == "_start":
+            return self.start_frame
+        if label == "_end":
+            return self.end_frame
+        return None
+
+
+@dataclass(frozen=True)
 class CellMapInfo:
     name: str
     name_hash: int
@@ -249,6 +282,24 @@ class SsabMeta:
             if w <= 0.0 or h <= 0.0:
                 return None
             return (-pivot.V1() * w - w / 2.0, pivot.V2() * h - h / 2.0, w, h)
+        return None
+
+    def label_table(self, name: str | None = None) -> LabelTable | None:
+        """The labels of animation ``name`` (the first one when ``None``) in
+        frame order; ``None`` for an unknown name. The C-API exports no label
+        lookup, so a section named by labels resolves against this."""
+        for i in range(self._root.AnimationsLength()):
+            a = self._root.Animations(i)
+            if name is not None and _s(a.Name()) != name:
+                continue
+            labels = []
+            for j in range(a.LabelsLength()):
+                l = a.Labels(j)
+                if l is not None and l.Name() is not None:
+                    labels.append(LabelInfo(name=_s(l.Name()), frame=l.Time()))
+            labels.sort(key=lambda l: l.frame)
+            return LabelTable(labels=tuple(labels),
+                              start_frame=a.StartFrame(), end_frame=a.EndFrame())
         return None
 
     def cellmaps(self) -> list[CellMapInfo]:

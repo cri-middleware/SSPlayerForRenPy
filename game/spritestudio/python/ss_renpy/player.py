@@ -717,6 +717,28 @@ class SSInternalPlayer:
         ends inside the animation and the end before the start."""
         return self._rt is not None and self._rt.set_animation_section(start, end)
 
+    def label_table(self, animation: Optional[str] = None):
+        """The :class:`~ss_renpy.ssab_meta.LabelTable` of ``animation``, the
+        current one when omitted; ``None`` for an animation this pack lacks,
+        or before one is set up. Read out of the pack on every call."""
+        name = self._current_animation if animation is None else animation
+        return self._meta.label_table(name) if name else None
+
+    def label_section(self, start_label: str, end_label: str,
+                      start_offset: int = 0, end_offset: int = 0):
+        """``(start, end)``: the frames ``start_label`` and ``end_label`` mark
+        in the current animation, plus the offsets -- the rule an Instance
+        part's start and end labels follow. ``None`` when the animation lacks
+        either label. Hand the frames to :meth:`set_animation_section`."""
+        table = self.label_table()
+        if table is None:
+            return None
+        start = table.frame_of(start_label)
+        end = table.frame_of(end_label)
+        if start is None or end is None:
+            return None
+        return (start + int(start_offset), end + int(end_offset))
+
     def set_playback_direction(self, direction: int, style: int = 0) -> None:
         # Remember it so set_animation() can re-apply after setup_animation resets
         # it; works whether called before or after set_animation.

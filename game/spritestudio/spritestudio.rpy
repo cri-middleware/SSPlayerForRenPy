@@ -3253,14 +3253,57 @@ init -10 python:
             plays the whole of the new one. Kept on the displayable too, so a
             load puts it back."""
             self._ensure()
+            return self._set_section(
+                start, end, ("section", int(start), int(end)),
+                "set_animation_section(%r, %r) failed" % (start, end))
+
+        def ss_set_animation_section_by_label(self, start_label, end_label,
+                                              start_offset=0, end_offset=0):
+            """`ss_set_animation_section` with the ends named by labels of the
+            current animation: from ``start_label``'s frame plus
+            ``start_offset`` to ``end_label``'s frame plus ``end_offset``.
+            ``"_start"`` and ``"_end"`` are the animation's own first and last
+            frame, unless it has a label of that name.
+
+            A label the animation lacks, or frames the section is refused on,
+            return False, log it once, and leave the section and the playhead
+            as they were."""
+            self._ensure()
+            section = self._core.label_section(start_label, end_label,
+                                               start_offset, end_offset)
+            if section is None:
+                anim = self._core.current_animation
+                table = self._core.label_table()
+                missing = [l for l in dict.fromkeys((start_label, end_label))
+                           if table is None or table.frame_of(l) is None]
+                self._warn_once(
+                    ("label", anim) + tuple(missing),
+                    "set_animation_section_by_label(%r, %r) failed: animation "
+                    "%r has no label %s" % (start_label, end_label, anim,
+                                            " or ".join(repr(l) for l in missing)))
+                return False
+            return self._set_section(
+                section[0], section[1],
+                ("label_section", start_label, end_label) + section,
+                "set_animation_section_by_label(%r, %r) failed: frames %d..%d"
+                % ((start_label, end_label) + section))
+
+        def _set_section(self, start, end, warn_key, warn_msg):
             if not self._core.set_animation_section(start, end):
-                self._warn_once(("section", int(start), int(end)),
-                                "set_animation_section(%r, %r) failed" % (start, end))
+                self._warn_once(warn_key, warn_msg)
                 return False
             self._section = (int(start), int(end))
             self._record_playback(self._core)
             renpy.redraw(self, 0)
             return True
+
+        def ss_label_table(self, animation=None):
+            """The labels of ``animation`` -- the current one when omitted --
+            in frame order: ``.labels`` (each with ``.name`` and ``.frame``),
+            and the animation's own ``.start_frame`` / ``.end_frame``. None for
+            an animation the pack lacks. Read out of the pack on every call."""
+            self._ensure()
+            return self._core.label_table(animation)
 
         def _apply_playback_modes(self):
             """Push the recorded direction / ping-pong style onto the core.
