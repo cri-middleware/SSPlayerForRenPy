@@ -265,6 +265,7 @@ $ ringo.ss_clear_attachments()
 | `ss_is_part_hidden(part_name)` | Whether the part is hidden on the last rendered frame |
 | `ss_is_part_skinned_mesh(part_name)` | Whether the part is a bone-skinned mesh — a poor follow target (see the note below). Static, so it answers before the first frame |
 | `ss_part_transform(part_name)` | The part's transform for the last rendered frame, or `None` |
+| `ss_part_quad(part)` / `ss_hit_test_part(x, y, parts)` | The outline the part is drawn with, and which part is at a point (see **Outlines and Hit Testing** below) |
 
 > When you only need the part's position at a single moment (a projectile spawn point, for example) rather than continuous following, calling `ss_part_transform()` directly is simpler.
 
@@ -285,6 +286,26 @@ Attachments are composited inside the player's own `render()`, in the same pass 
 It returns `None` until the first frame has been rendered, and for a part that is not in the frame being drawn. A child whose part reads `None` is simply skipped for that frame.
 
 `anchor` doubles as the rotation / scale pivot, and the child's unrotated size is measured every frame, so a child that changes size keeps its anchor. A hand part carries the wrist angle, so a held item usually needs an `angle` offset to lie along the fingers rather than standing straight up.
+
+### Outlines and Hit Testing
+
+`ss_part_quad(part)` returns the outline a part (a name or index) is drawn with on the last rendered frame: four `(x, y)` corners — the top left, top right, bottom left and bottom right of the part's own art — in the same space as `ss_part_transform()`. The corners go wherever the pose takes them, so a rotated or skewed part's four points are not an upright rectangle.
+
+- **A part with a cell**: the four corners it is drawn with, skew and vertex deform included.
+- **A mesh part**: the upright box around its vertices.
+- **A shape part**: its size around its pivot. A vertex deform that pulls a corner outside the size is not followed.
+- **`None`**: a NULL, bone, Instance or Effect part (none of them draws anything of its own), a hidden part, a part the pack lacks, and before the first frame. A part drawn fully transparent still has an outline.
+
+`ss_hit_test_part(x, y, parts=None)` returns the index of the front-most part whose outline holds the point `(x, y)`, in the same space, or `-1`. `parts` limits it to some parts, by name or index; a name the pack lacks is skipped.
+
+```renpy
+# Which part of Ringo is at this point?
+$ hit = ringo.ss_hit_test_part(20, -150)
+$ part = ringo.ss_part_names()[hit] if hit >= 0 else None
+
+# Only the head and the body count
+$ hit = ringo.ss_hit_test_part(20, -150, ["head", "body"])
+```
 
 ### Mirrored Parts
 

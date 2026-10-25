@@ -31,8 +31,9 @@ from ss_renpy import framedata, mask, ssruntime
 from ss_renpy.effect import EffectRig
 from ss_renpy.events import EventResolver
 from ss_renpy.instance import InstanceRig, collect_ordered
+from ss_renpy.outline import FrameCopy
 from ss_renpy.resource import RecordingResourceManager, ResourceManager
-from ss_renpy.ssab_meta import SsabMeta
+from ss_renpy.ssab_meta import PART_TYPE_MESH, SsabMeta
 
 # Cap on the un-drained :meth:`SSInternalPlayer.poll_events` queue. Callback-only
 # hosts never drain it, so it must be bounded; a poller that drains every
@@ -247,6 +248,9 @@ class SSInternalPlayer:
         # part-query snapshots (last rendered frame)
         self._last_world: Sequence[float] = []
         self._last_hidden: Optional[set] = None
+        self._outline = FrameCopy()
+        self._has_mesh = any(p.part_type == PART_TYPE_MESH
+                             for p in self._part_infos)
 
         # Everything a *pack* implies is done here, at load: textures, and the
         # Instance/Effect rigs (parts, effect definitions and the external packs
@@ -1101,6 +1105,7 @@ class SSInternalPlayer:
         disp = frame_no if self._sub_frame else math.floor(frame_no)
         fb = rt.get_frame_data_view(disp)
         self._last_world = rt.world_matrices_snapshot()
+        self._outline.capture(rt, fb, self._last_world, self._has_mesh)
         items: list = []
         hidden: Optional[set] = None
         frame_mask = None
@@ -1195,6 +1200,25 @@ class SSInternalPlayer:
         if i < 0 or self._last_hidden is None:
             return False
         return i in self._last_hidden
+
+    def part_quad(self, part):
+        """The outline ``part`` (a name or index) is drawn with on the last
+        rendered frame, as four ``(x, y)`` corners -- ``lt, rt, lb, rb`` -- in
+        the space :meth:`part_transform` reports; ``None`` for an unknown or
+        hidden part, one that draws nothing of its own (Null, bone, Instance,
+        Effect), or before the first frame. See ``ss_renpy.outline``."""
+        i = self.resolve_part(part)
+        return self._outline.quad(i) if i >= 0 else None
+
+    def hit_test_part(self, x: float, y: float, parts=None) -> int:
+        """The index of the front-most part whose :meth:`part_quad` outline
+        holds ``(x, y)`` on the last rendered frame, among ``parts`` (names or
+        indices; every part when ``None``), or -1. A part this pack lacks is
+        skipped."""
+        targets = None
+        if parts is not None:
+            targets = {i for i in map(self.resolve_part, parts) if i >= 0}
+        return self._outline.hit_test(x, y, targets)
 
     def is_part_skinned_mesh(self, name: str) -> bool:
         """Whether ``name`` is a bone-skinned mesh part (``False`` if unknown).

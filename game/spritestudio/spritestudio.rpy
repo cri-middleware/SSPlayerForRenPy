@@ -3611,6 +3611,23 @@ init -10 python:
             """
             return self._core.is_part_hidden(name) if self._core else False
 
+        def ss_part_quad(self, part):
+            """The outline ``part`` (a name or index) is drawn with on the last
+            rendered frame: four ``(x, y)`` corners -- top left, top right,
+            bottom left, bottom right of the part's own art -- in the space
+            `ss_part_transform` reports. None for an unknown or hidden part,
+            one that draws nothing of its own (Null, bone, Instance, Effect),
+            and before anything has been rendered."""
+            return self._core.part_quad(part) if self._core else None
+
+        def ss_hit_test_part(self, x, y, parts=None):
+            """The index of the front-most part whose `ss_part_quad` outline
+            holds ``(x, y)`` on the last rendered frame, among ``parts`` (names
+            or indices; every part when omitted), or -1. The point is in the
+            space `ss_part_transform` reports; a name the pack lacks is
+            skipped."""
+            return self._core.hit_test_part(x, y, parts) if self._core else -1
+
         def ss_is_part_skinned_mesh(self, name):
             """Whether ``name`` is a bone-skinned mesh part.
 
