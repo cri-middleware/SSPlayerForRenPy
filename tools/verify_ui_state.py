@@ -56,6 +56,8 @@ TABLES = {
                            "selected_hover": 60, "disabled": 80,
                            "reduced_motion": 100}),
     "on_only": _table(59, {"normal": 0, "hover": 20, "selected_normal": 40}),
+    "on_press": _table(39, {"normal": 0, "hover": 10, "pressed": 20,
+                            "selected_normal": 30}),
 }
 
 
@@ -134,6 +136,17 @@ def main() -> int:
     print("### selected")
     check("the chain: selected first, then plain", ui_state.chain("hover", True),
           ("selected_hover", "selected_normal", "hover", "normal"))
+    check("the pressed chain: pressed right after selected_pressed",
+          ui_state.chain("pressed", True),
+          ("selected_pressed", "pressed", "selected_hover", "selected_normal", "hover",
+           "normal"))
+    check("a press shows over on", resolve("pressed", "on_press", selected=True),
+          ("on_press", 20, 29, False))
+    check("hover still keeps on", resolve("hover", "on_press", selected=True),
+          ("on_press", 30, 39, False))
+    check("a pressed clip shows over a selected one",
+          resolve("pressed", "plain", {"pressed": "glow", "selected_normal": "with_hover"},
+                  selected=True), ("glow", 0, 39, False))
     check("normal", resolve("normal", "toggle", selected=True), ("toggle", 40, 59, False))
     check("hover", resolve("hover", "toggle", selected=True), ("toggle", 60, 79, False))
     check("pressed falls to selected_hover",

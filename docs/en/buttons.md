@@ -1,6 +1,6 @@
 # 🔘 Buttons
 
-`SSButton` makes an animation a button. Each state of the button — idle, hover, insensitive, and selected — plays its own part of the animation, and the mouse can be kept to some of its parts, so an irregular button stops taking clicks across its whole box. It is a Ren'Py button, so `action`, `alt`, `hovered`, styles, sounds and the keyboard work as they do for an `imagebutton`.
+`SSButton` makes an animation a button. Each state of the button — idle, hover, held down, insensitive, and selected — plays its own part of the animation, and the mouse can be kept to some of its parts, so an irregular button stops taking clicks across its whole box. It is a Ren'Py button, so `action`, `alt`, `hovered`, styles, sounds and the keyboard work as they do for an `imagebutton`.
 
 ```renpy
 screen title_menu():
@@ -21,18 +21,19 @@ In SpriteStudio, put labels named after the states in one animation:
 |---|---|
 | idle | `normal` |
 | hover — the mouse over it, or the keyboard on it | `hover` |
+| held down — the mouse button held down on it | `pressed` |
 | insensitive | `disabled` |
 
 Each state plays from its label up to the frame before the next label — whatever that label is called — and loops. The last label runs to the end of the animation. Labels match exactly, so write them in lower case.
 
-- A state with no label plays `normal`; with no `normal` either, the whole animation plays.
+- A state with no label plays `normal` (`pressed` plays `hover` first); with no `normal` either, the whole animation plays.
 - The labels are read from the animation the player is on when the button first shows (the pack's first animation for a path). `animation="button"` names another.
 
 ### Selected Buttons
 
-A button is selected when its action says so — a `SetVariable` whose variable holds its value, a `ToggleVariable` that is on, a `Preference` that is set. A selected button plays the same labels with `selected_` in front: `selected_normal`, `selected_hover`, `selected_disabled`.
+A button is selected when its action says so — a `SetVariable` whose variable holds its value, a `ToggleVariable` that is on, a `Preference` that is set. A selected button plays the same labels with `selected_` in front: `selected_normal`, `selected_hover`, `selected_pressed`, `selected_disabled`.
 
-When a selected label is missing, the selected label it falls back to is tried before any plain one, so whether the button is on stays visible: a selected button under the mouse plays `selected_hover`, else `selected_normal`, and only then `hover`, `normal` or the whole animation. An animation with no selected labels plays as it does unselected.
+When a selected label is missing, the selected label it falls back to is tried before any plain one, so whether the button is on stays visible: a selected button under the mouse plays `selected_hover`, else `selected_normal`, and only then `hover`, `normal` or the whole animation. Held down is the exception: `pressed` comes right after `selected_pressed`, because it lasts only while the mouse is down and shows that the press was taken. An animation with no selected labels plays as it does unselected.
 
 ```renpy
 # A toggle: Ringo dances while the music is on
@@ -89,5 +90,5 @@ With self-voicing on, the button reads its `alt` text, as an image button does. 
 ## Notes
 
 - **The button plays the player.** It picks the animation, the section and the loop count, and plays and stops it, so do not call `ss_play()` and the like on that player, nor show it anywhere else.
-- **There is no pressed state.** A Ren'Py button has no state for the mouse being held down on it.
+- **Held down is the mouse's.** Ren'Py's own buttons have no such state. `SSButton` shows it while the mouse button, or a touch, is down over the button: whenever letting go would click it, since Ren'Py clicks the button the mouse is released over, wherever the press began. A key runs the action as it goes down, so the keyboard shows no held-down state.
 - `parts` names the parts of the pack the player itself plays, not the parts inside an Instance part.

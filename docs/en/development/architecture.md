@@ -76,15 +76,15 @@ and each masked part's shader replays the writers at its position to rebuild the
 planning is in the engine-independent core, the drawing and the GLSL in the Ren'Py layer, and the
 `SS_MASK_*` settings set the bitmap's size and quality.
 
-**A button is a `Button` of its own, not a `focus_mask` function on `button`.** The function
-Ren'Py calls gets a point measured from the button's top left, and cannot see where the button put
-its child: padding, alignment and the player's own origin all lie between. `SSButton` subclasses
-`Button`, so it reads where `Window.render` placed the player, and its state from its own style
-prefix. Nor is it a screen-language statement: one has to be registered by a file loaded before
-every file that uses it, and `game/spritestudio/` sorts after `screens.rpy`. A player Ren'Py shows
-afresh starts its constructor's animation over inside its own `render()`, so the button checks after
-rendering whether the player still plays its state's section, and renders once more when it does
-not.
+**A button is a `Button` of its own, not a `focus_mask` function on `button`.** The function Ren'Py
+calls gets a point measured from the button's top left, and cannot see where the button put its
+child: padding, alignment and the player's own origin all lie between. `SSButton` subclasses
+`Button`, so it reads where `Window.render` placed the player, its state from its own style prefix,
+and the held-down state Ren'Py's buttons lack from the mouse button. Nor is it a screen-language
+statement: one has to be registered by a file loaded before every file that uses it, and
+`game/spritestudio/` sorts after `screens.rpy`. A player Ren'Py shows afresh starts its
+constructor's animation over inside its own `render()`, so the button checks after rendering whether
+the player still plays its state's section, and renders once more when it does not.
 
 **The importer rides Ren'Py's autoreload.** The auto importer runs at `init -10`, so it runs at
 every launch and every reload. It claims the source folder in `config.autoreload_functions`

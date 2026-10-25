@@ -4,15 +4,16 @@
 #         add SSButton("ss_assets/ui/start.ssab", action=Start(),
 #                      parts=["face"], alt=_("Start"))
 #
-# Idle, hover and insensitive play the labels named normal, hover and disabled
-# in one animation, selected_normal and so on while the button is selected;
-# `parts` keeps the mouse to those parts' outlines; and `reduced_motion` holds
-# each state still. The state rule is
+# Idle, hover, the mouse held down and insensitive play the labels named
+# normal, hover, pressed and disabled in one animation, selected_normal and so
+# on while the button is selected; `parts` keeps the mouse to those parts'
+# outlines; and `reduced_motion` holds each state still. The state rule is
 # ss_renpy.ui_state. Runs at init -9 (after spritestudio.rpy at -10 defines
 # SSPlayer). Drop this file to remove it.
 
 init -9 python:
 
+    import pygame_sdl2 as _ss_pygame
     from ss_renpy import ui_state as _ss_ui_state
 
     class _SSHitMask(object):
@@ -32,11 +33,16 @@ init -9 python:
         playing and stopping -- so do not drive the same player elsewhere.
 
         Idle plays the `normal` label's section of `animation` (the player's
-        current animation when omitted), hover the `hover` label's, and
-        insensitive the `disabled` label's, each up to the frame before the
-        next label and looping. A selected button plays the same labels with
-        `selected_` in front (`selected_normal`, `selected_hover`, ...),
-        falling back to the plain ones only after every selected one. `clips`
+        current animation when omitted), hover the `hover` label's, the mouse
+        held down on it the `pressed` label's, and insensitive the `disabled`
+        label's, each up to the frame before the next label and looping.
+        Ren'Py's buttons have no pressed state; this one shows it while the
+        mouse button is down over it -- whenever letting go would click it,
+        since Ren'Py clicks the button the mouse is released over, wherever
+        the press began. A key runs the action as it goes down. A selected
+        button plays the same labels with `selected_` in front
+        (`selected_normal`, `selected_hover`, ...), falling back through the
+        selected ones before any plain one. `clips`
         replaces a state's label, under the same names, by an animation's
         name, or by a dict with an "animation" and / or a "label".
         `reduced_motion` holds each state on its first frame, except that an
@@ -87,14 +93,24 @@ init -9 python:
                 rv = super(SSButton, self).render(width, height, st, at)
             return rv
 
+        def event(self, ev, x, y, st):
+            if (ev.type in (_ss_pygame.MOUSEBUTTONDOWN, _ss_pygame.MOUSEBUTTONUP)
+                    and ev.button == 1 and self.is_focused()):
+                renpy.redraw(self, 0)
+            return super(SSButton, self).event(ev, x, y, st)
+
         def _state(self):
-            """``(state, selected)`` from the button's style prefix."""
+            """``(state, selected)`` from the button's style prefix and the
+            mouse button."""
             prefix = self.style.prefix
             selected = prefix.startswith("selected_")
             if selected:
                 prefix = prefix[len("selected_"):]
-            return (_ss_ui_state.state_of(disabled=prefix == "insensitive_",
-                                          hovered=prefix == "hover_"),
+            hovered = prefix == "hover_"
+            return (_ss_ui_state.state_of(
+                        disabled=prefix == "insensitive_",
+                        pressed=hovered and _ss_pygame.mouse.get_pressed()[0],
+                        hovered=hovered),
                     selected)
 
         @staticmethod

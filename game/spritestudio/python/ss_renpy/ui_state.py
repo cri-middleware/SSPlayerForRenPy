@@ -7,7 +7,9 @@ or not), looping. A state the animation has no label for falls back --
 ``pressed`` to ``hover``, the rest to ``normal``, and ``normal`` to the whole
 animation -- and a clip can stand in for a state's label. A selected button
 (a toggle that is on) reads the same labels with ``selected_`` in front first,
-and the plain ones after, so on and off stay apart when a label is missing.
+and the plain ones after, so on and off stay apart when a label is missing --
+except that a press, which lasts only while the button is held down, takes
+``pressed`` right after ``selected_pressed``.
 Under reduced motion the section is held on its first frame, except that an
 unselected ``normal`` plays the ``reduced_motion`` label's section when the
 animation has one.
@@ -83,9 +85,14 @@ def clip_parts(clip):
 
 def chain(state: str, selected: bool = False) -> tuple:
     """The labels ``state`` looks up, in order: its own, then those it falls
-    back to, each with ``selected_`` in front first when ``selected``."""
+    back to, each with ``selected_`` in front first when ``selected`` --
+    ``pressed`` excepted, which comes right after ``selected_pressed``."""
     plain = _CHAINS.get(state, _CHAINS["normal"])
-    return tuple("selected_" + s for s in plain) + plain if selected else plain
+    if not selected:
+        return plain
+    names = tuple("selected_" + s for s in plain) + plain
+    head = ("selected_pressed", "pressed") if state == "pressed" else ()
+    return head + tuple(n for n in names if n not in head)
 
 
 def resolve(state: str, animation: str, table_of, clips=None,
