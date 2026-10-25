@@ -19,6 +19,7 @@
     - [導入ガイド (Setup)](setup.md): ゲームプロジェクトへの組み込み方法
     - [アセットの取り込み (Import)](import.md): `.sspj` アニメーションデータの変換方法
     - [再生と制御 (Usage)](usage.md): Ren'Pyスクリプトからの呼び出し方・制御方法
+    - [ボタン](buttons.md): アニメーションを、idle・hover・insensitive の状態を持つボタンにする方法
     - [ゲームのエクスポート (Export)](export.md): 標準の Ren'Py ツールで各プラットフォーム（デスクトップ / モバイル / Web）へ書き出す方法
     - [制約と適用範囲](limitations.md): 対応状況・未サポート機能の一覧
 - **Player・SDK 開発者向けガイド**

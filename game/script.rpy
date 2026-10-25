@@ -120,6 +120,9 @@ screen ss_main_menu():
             textbutton _("Animation blending (crossfade / layering) sample"):
                 action Return("blend_demo")
                 text_size 24
+            textbutton _("Buttons (SSButton) sample"):
+                action Return("button_demo")
+                text_size 24
 
             null height 20
 

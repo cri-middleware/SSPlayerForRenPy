@@ -29,6 +29,7 @@ nav:
   - 🚀 導入ガイド: setup.md
   - 🗂️ アセットの取り込み: import.md
   - ▶️ 再生と制御: usage.md
+  - 🔘 ボタン: buttons.md
   - 📦 ゲームのエクスポート: export.md
   - 🛠️ Player・SDK 開発者向けガイド:
       - ビルドガイド: development/build.md
