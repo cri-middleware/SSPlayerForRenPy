@@ -1,6 +1,6 @@
 # Japanese translations for the button sample (game/scene_button.rpy). The
-# animation names (wait1 / joy / sitdown_wait) are shown untranslated, like the
-# other samples'. "Close" is translated in tl/japanese/asset_picker.rpy, so it
+# animation names (wait1 / joy / sitdown_wait / dance) are shown untranslated,
+# like the other samples'. "Close" is translated in tl/japanese/asset_picker.rpy, so it
 # is not repeated here (a duplicate string translation is an error).
 
 translate japanese strings:
@@ -20,8 +20,8 @@ translate japanese strings:
     old "Buttons — Ringo as Ren'Py buttons (SSButton)"
     new "ボタン — Ringo を Ren'Py のボタンに（SSButton）"
 
-    old "Idle plays wait1, hover joy and insensitive sitdown_wait. Each button takes the mouse on a different area; the keyboard reaches all four."
-    new "idle で wait1、hover で joy、insensitive で sitdown_wait を再生します。マウスを受ける範囲はボタンごとに違い、キーボードでは 4 つすべてに届きます。"
+    old "Idle plays wait1, hover joy and insensitive sitdown_wait; the button pressed last is selected and dances. Each button takes the mouse on a different area; the keyboard reaches all four."
+    new "idle で wait1、hover で joy、insensitive で sitdown_wait を再生します。最後に押したボタンは選択中になり、dance を踊ります。マウスを受ける範囲はボタンごとに違い、キーボードでは 4 つすべてに届きます。"
 
     old "Pressed: %s"
     new "押したボタン: %s"

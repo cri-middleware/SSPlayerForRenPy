@@ -22,13 +22,6 @@ These need no new SDK API — the runtime already provides everything required. 
   on that tag. Reference: `SSPlayerForWgpu`'s Bevy integration, where `transition_ms` decides
   between a crossfade and a cut and track-0 commands are refused.
 
-## UI integration
-
-- [ ] **Selected buttons** — `SSButton` shows a selected button (`selected_idle` /
-  `selected_hover`) as it would unselected. A state of its own waits on the SDK porting guide's
-  [UI integration page](https://github.com/cri-middleware/SpriteStudio-SDK/blob/HEAD/libs/ssruntime/docs/50_features/80_ui_integration.md),
-  which leaves a selected state open.
-
 ## Needs SDK
 
 - [ ] **Stretch a NineSlice part to a screen's box** — The runtime evaluates a NineSlice

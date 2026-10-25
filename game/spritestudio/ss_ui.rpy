@@ -5,8 +5,9 @@
 #                      parts=["face"], alt=_("Start"))
 #
 # Idle, hover and insensitive play the labels named normal, hover and disabled
-# in one animation; `parts` keeps the mouse to those parts' outlines; and
-# `reduced_motion` holds each state still. The state rule is
+# in one animation, selected_normal and so on while the button is selected;
+# `parts` keeps the mouse to those parts' outlines; and `reduced_motion` holds
+# each state still. The state rule is
 # ss_renpy.ui_state. Runs at init -9 (after spritestudio.rpy at -10 defines
 # SSPlayer). Drop this file to remove it.
 
@@ -33,11 +34,14 @@ init -9 python:
         Idle plays the `normal` label's section of `animation` (the player's
         current animation when omitted), hover the `hover` label's, and
         insensitive the `disabled` label's, each up to the frame before the
-        next label and looping. A selected button shows as it would
-        unselected. `clips` replaces a state's label by an animation's name, or
-        by a dict with an "animation" and / or a "label". `reduced_motion`
-        holds each state on its first frame, except that idle plays the
-        `reduced_motion` label's section where there is one.
+        next label and looping. A selected button plays the same labels with
+        `selected_` in front (`selected_normal`, `selected_hover`, ...),
+        falling back to the plain ones only after every selected one. `clips`
+        replaces a state's label, under the same names, by an animation's
+        name, or by a dict with an "animation" and / or a "label".
+        `reduced_motion` holds each state on its first frame, except that an
+        unselected idle plays the `reduced_motion` label's section where there
+        is one.
 
         `parts` (names or indices) keeps the mouse to those parts' outlines,
         where by default the whole box takes it; the keyboard is not kept.
@@ -84,11 +88,14 @@ init -9 python:
             return rv
 
         def _state(self):
+            """``(state, selected)`` from the button's style prefix."""
             prefix = self.style.prefix
-            if prefix.startswith("selected_"):
+            selected = prefix.startswith("selected_")
+            if selected:
                 prefix = prefix[len("selected_"):]
-            return _ss_ui_state.state_of(disabled=prefix == "insensitive_",
-                                         hovered=prefix == "hover_")
+            return (_ss_ui_state.state_of(disabled=prefix == "insensitive_",
+                                          hovered=prefix == "hover_"),
+                    selected)
 
         @staticmethod
         def _playback(p):
@@ -99,7 +106,7 @@ init -9 python:
             """Play the section of the state shown, unless the player already
             plays it. True when it changed what the player plays."""
             p = self.player
-            key = (self._state(), self.reduced_motion)
+            key = self._state() + (self.reduced_motion,)
             if self._shown == (key, self._playback(p)):
                 return False
             names = p.ss_animation_names()
@@ -114,8 +121,8 @@ init -9 python:
                 return False
             self._base = base
             section = _ss_ui_state.resolve(
-                key[0], base, p.ss_label_table, self.clips, key[1],
-                self._missing_clip)
+                key[0], base, p.ss_label_table, self.clips, key[2],
+                self._missing_clip, selected=key[1])
             p.ss_set_animation(section.animation)
             p.ss_set_animation_section(section.start_frame, section.end_frame)
             if section.hold:

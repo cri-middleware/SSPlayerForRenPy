@@ -1,8 +1,11 @@
 # Button sample — Ringo as Ren'Py buttons, through SSButton
 # (spritestudio/ss_ui.rpy). Ringo has no labels named after the states, so
 # `clips` gives each state an animation: idle plays wait1, hover joy and
-# insensitive sitdown_wait. The four buttons differ only in where the mouse
-# counts:
+# insensitive sitdown_wait. Each button's action sets ss_ui_pressed to its own
+# number, which Ren'Py reports as selected, so the button pressed last is
+# selected and plays dance -- also while hovered or insensitive, since only
+# selected_normal is given and the selected labels come first. The four buttons
+# differ only in where the mouse counts:
 #
 #   1. the whole box (the default);
 #   2. the drawn pixels (focus_mask=True);
@@ -21,7 +24,8 @@ default ss_ui_pressed = None
 
 init python:
     SS_UI_SRC = "ss_assets/Ringo/Ringo.ssab"
-    SS_UI_CLIPS = {"normal": "wait1", "hover": "joy", "disabled": "sitdown_wait"}
+    SS_UI_CLIPS = {"normal": "wait1", "hover": "joy", "disabled": "sitdown_wait",
+                   "selected_normal": "dance"}
     SS_UI_BUTTONS = [
         (_("Whole box"), {}),
         (_("Drawn pixels"), {"focus_mask": True}),
@@ -62,7 +66,7 @@ screen ss_ui_buttons():
         vbox:
             spacing 4
             text _("Buttons — Ringo as Ren'Py buttons (SSButton)") size 24 color "#ffffff"
-            text _("Idle plays wait1, hover joy and insensitive sitdown_wait. Each button takes the mouse on a different area; the keyboard reaches all four.") size 13 color "#9aa0ab"
+            text _("Idle plays wait1, hover joy and insensitive sitdown_wait; the button pressed last is selected and dances. Each button takes the mouse on a different area; the keyboard reaches all four.") size 13 color "#9aa0ab"
 
     hbox:
         xalign 0.5
