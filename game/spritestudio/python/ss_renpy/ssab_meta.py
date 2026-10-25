@@ -25,6 +25,7 @@ from ss.format.SsAnimeBinary import SsAnimeBinary
 PART_TYPE_NORMAL = PartType.PartTypeNormal      # 2
 PART_TYPE_INSTANCE = PartType.PartTypeInstance  # 6
 PART_TYPE_EFFECT = PartType.PartTypeEffect      # 8
+PART_TYPE_MESH = PartType.PartTypeMesh          # 9
 PART_TYPE_MASK = PartType.PartTypeMask          # 12
 
 
