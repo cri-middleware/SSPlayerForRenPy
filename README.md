@@ -42,7 +42,7 @@ Everything after that (events, per-part overrides, `SSCharacter`) is the same pa
 in the [documentation](./docs/en/index.md).
 **Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdk--player-developers).
 
-You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudio 7.5 or later**.
+You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudio 7.6 or later**.
 
 1. **Install**: Download [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)
    (a stable link to the latest release; [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases)

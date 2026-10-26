@@ -40,7 +40,7 @@
 **ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 表示する。その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
 **Player 自体や、その下の Rust コアを変更する場合**は [2 章](#%EF%B8%8F-2-フル開発環境sdk--player-開発者)へ。
 
-**Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.5 以上**で作成したプロジェクトを用意してください。
+**Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.6 以上**で作成したプロジェクトを用意してください。
 
 1. **導入**: [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（常に最新リリースを指す恒久リンク。すべての版は [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) にあります）をダウンロードして展開し、中の `spritestudio/` フォルダをプロジェクトの `game/` フォルダへコピーします。
 2. **変換**: プロジェクトのルート（`game/` と同じ階層）に `SpriteStudio_Source/` フォルダを作り、SpriteStudio のプロジェクトを `.sspj` だけでなくフォルダごとコピーします。Ren'Py ランチャーでプロジェクトを選び **プロジェクトの起動** を押すと、ゲームが始まる前にプロジェクトが `game/ss_assets/<プロジェクト名>/` へ変換されます（ランチャーは開発者モードでゲームを起動し、変換には開発者モードが必要です。配布したゲームが変換することはありません）。
