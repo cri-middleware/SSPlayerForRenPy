@@ -4,7 +4,7 @@
 
 ## 1. 必要環境
 - **Ren'Py**: バージョン 8.x 系 (Python 3 ベース) が必要です。
-- **SpriteStudio**: SpriteStudio 7.5 以上で作成したプロジェクト。
+- **SpriteStudio**: SpriteStudio 7.6 以上で作成したプロジェクト。
 
 ## 2. ライブラリの配置
 最新パッケージ — [`SSPlayerForRenPy.zip`](https://github.com/cri-middleware/SSPlayerForRenPy/releases/latest/download/SSPlayerForRenPy.zip)（恒久リンク・常に最新リリース。特定バージョンは [GitHub Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) から）— をダウンロードして展開し、中にある **`spritestudio/`** フォルダを、ご自身のプロジェクトの `game/` ディレクトリ内にそのままコピーしてください。
