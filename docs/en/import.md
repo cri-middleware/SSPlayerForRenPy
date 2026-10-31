@@ -173,8 +173,8 @@ If you want to try conversion quickly in your browser without installing any too
 
 It is hosted on the SpriteStudio Player for Web site at
 [`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/).
-Folder selection uses the **File System Access API**, so a **Chromium-based browser
-(Chrome / Edge)** is required.
+Dropping a folder needs a **Chromium-based browser (Chrome / Edge)**; in other browsers, pick it
+with **Browse...**.
 
 For details, see [Preparing assets](https://cri-middleware.github.io/SSPlayerForWeb/usage/assets) in the SpriteStudio Player for Web documentation.
 
