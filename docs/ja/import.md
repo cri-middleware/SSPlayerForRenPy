@@ -84,7 +84,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/1-auto_import_live.webm" type="video/webm">
 > </video>
-> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;">
+> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;" loading="lazy">
 
 > [!TIP]
 > **出力パスのカスタマイズ**ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。
