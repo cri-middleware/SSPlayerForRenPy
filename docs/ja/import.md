@@ -162,7 +162,7 @@ ssconverter-cli SpriteStudio_Source/
 - `.sspj` の入ったフォルダをドロップする（または **Browse...** で選ぶ）と、**⚡ Convert & Download** で変換し、結果が **`.zip` 形式でダウンロード** されます。ZIP には `.sspj` の名前のフォルダが 1 つ入っています。
 - そのフォルダを `game/ss_assets/` に展開します。`.ssab` は `game/ss_assets/Ringo/Ringo.ssab` のように、画像と一緒に置かれます。
 
-SpriteStudio Player for Web のサイト内、[`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/) で公開されています。フォルダ選択に **File System Access API** を使うため、**Chromium 系ブラウザ（Chrome / Edge）** が必要です。
+SpriteStudio Player for Web のサイト内、[`https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/`](https://cri-middleware.github.io/SSPlayerForWeb/ssconverter/) で公開されています。フォルダのドロップには **Chromium 系ブラウザ（Chrome / Edge）** が必要です。ほかのブラウザでは **Browse...** で選択してください。
 
 詳しくは SpriteStudio Player for Web のドキュメントの [アセットの準備](https://cri-middleware.github.io/SSPlayerForWeb/ja/usage/assets) を参照してください。
 
