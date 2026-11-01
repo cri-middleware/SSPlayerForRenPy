@@ -34,10 +34,10 @@
 
 ---
 
-## 🚀 1. クイックスタート
+## 🚀 クイックスタート
 
 **ゲームで使う場合**はこのまま下へ。フォルダを置く → 自分の `.sspj` を変換する → 表示する。その先（イベント、パーツ単位の上書き、`SSCharacter`）も同じ道の続きで、[ドキュメント](./docs/ja/index.md)にあります。
-**Player 自体や、その下の Rust コアを変更する場合**は [2 章](#%EF%B8%8F-2-フル開発環境sdk--player-開発者)へ。
+**Player 自体や、その下の Rust コアを変更する場合**は [CONTRIBUTING.md](./CONTRIBUTING.md) と[ビルドガイド](docs/ja/development/build.md)（変更した版をゲームで使う方法と、Ren'Py での確かめ方を含む）へ。層とその理由は[プレイヤーの構成](docs/ja/development/architecture.md)にあります。
 
 **Ren'Py 8.x**（Python 3 系）と、**SpriteStudio 7.6 以上**で作成したプロジェクトを用意してください。
 
@@ -79,55 +79,6 @@ SpriteStudio で編集したら、ゲームの実行中に **Shift+R** を 1 回
 SpriteStudio のデータが手元に無くても始められます。[公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) が手頃です。
 
 **次に読む:** [再生と制御](docs/ja/usage.md) · [アセットの取り込み](docs/ja/import.md)（Ren'Py を起動せずに変換する方法も含む） · [制約と適用範囲](docs/ja/limitations.md)
-
-## ⚙️ 2. フル開発環境（SDK / Player 開発者）
-
-### チェックアウトから動かしてみる
-
-同梱のデモを実行して、プレイヤーが正しく動作することを確認できます。以下のスクリプトは、ビルド済みのRust製SDKコアを取得し、デモを起動します（コアを自前でビルドする必要はありません）。
-
-**macOS / Linux (`*.sh`):**
-```bash
-git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
-cd SSPlayerForRenPy
-git submodule update --init --recursive
-scripts/download-sdk.sh
-scripts/fetch-renpy-sdk.sh
-scripts/deploy-examples.sh
-scripts/run-demo.sh
-```
-
-**Windows (`*.ps1`):**
-```powershell
-git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
-cd SSPlayerForRenPy
-git submodule update --init --recursive
-scripts\download-sdk.ps1
-scripts\fetch-renpy-sdk.ps1
-scripts\deploy-examples.ps1
-scripts\run-demo.ps1
-```
-
-※ `deploy-examples`, `run-demo` は Ren'Py SDK にバンドルされている Python を使用します。
-※詳細と、変更した版をゲームで使う方法・Ren'Py での確かめ方は[ビルドガイド](docs/ja/development/build.md)を、プレイヤーの構成とその理由は[プレイヤーの構成](docs/ja/development/architecture.md)をご覧ください。
-
-### コアを自前でビルドする
-
-アニメーション計算のコア部分を担うRust製サブモジュール (`SpriteStudio-SDK`) も含めて開発・コントリビュートを行いたい方向けの手順です。
-
-**macOS / Linux:**
-```bash
-git submodule update --init --recursive
-scripts/build-runtime.sh
-```
-
-**Windows:**
-```powershell
-git submodule update --init --recursive
-scripts\build-runtime.ps1
-```
-
-- [チェックアウトから動かしてみる](#チェックアウトから動かしてみる)の `scripts/download-sdk.*`（ビルド済みコアの取得）の代わりに `scripts/build-runtime.*` を実行し、コアを自前でビルドします。以降の `fetch-renpy-sdk` / `deploy-examples` / `run-demo` は同じ手順です。
 
 ## 🔗 関連リポジトリ
 

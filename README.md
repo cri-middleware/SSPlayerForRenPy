@@ -34,12 +34,12 @@ For detailed specifications, import procedures, and API references, please visit
 
 ---
 
-## 🚀 1. Quick Start
+## 🚀 Quick Start
 
 **Using it in your game?** Read on — drop the folder in, convert your `.sspj`, show it.
 Everything after that (events, per-part overrides, `SSCharacter`) is the same path further in,
 in the [documentation](./docs/en/index.md).
-**Working on the Player, or the Rust core under it?** [Section 2](#%EF%B8%8F-2-full-build-environment-for-sdk--player-developers).
+**Working on the Player, or the Rust core under it?** [CONTRIBUTING.md](./CONTRIBUTING.md), the [Build Guide](docs/en/development/build.md) — which also covers using a changed copy in a game and checking it in Ren'Py — and [How the Player Is Put Together](docs/en/development/architecture.md) for the layers and why.
 
 You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudio 7.6 or later**.
 
@@ -93,55 +93,6 @@ No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.we
 
 **Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
 the converters that work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
-
-## ⚙️ 2. Full Build Environment (For SDK / Player Developers)
-
-### See it running from a checkout
-
-Run the bundled demo to confirm the player works correctly. The scripts below fetch the pre-built native Rust SDK core and launch the demo (no need to build the core yourself).
-
-**macOS / Linux (`*.sh`):**
-```bash
-git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
-cd SSPlayerForRenPy
-git submodule update --init --recursive
-scripts/download-sdk.sh
-scripts/fetch-renpy-sdk.sh
-scripts/deploy-examples.sh
-scripts/run-demo.sh
-```
-
-**Windows (`*.ps1`):**
-```powershell
-git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
-cd SSPlayerForRenPy
-git submodule update --init --recursive
-scripts\download-sdk.ps1
-scripts\fetch-renpy-sdk.ps1
-scripts\deploy-examples.ps1
-scripts\run-demo.ps1
-```
-
-*Note: `deploy-examples` and `run-demo` use the Python binary bundled with the Ren'Py SDK.*
-*For details — and for using your changed copy in a game and checking it in Ren'Py — see the [Build Guide](docs/en/development/build.md); how the player is put together, and why, is in [How the Player Is Put Together](docs/en/development/architecture.md).*
-
-### Building the core yourself
-
-If you want to develop and contribute to the core animation module (`SpriteStudio-SDK`), follow these steps.
-
-**macOS / Linux:**
-```bash
-git submodule update --init --recursive
-scripts/build-runtime.sh
-```
-
-**Windows:**
-```powershell
-git submodule update --init --recursive
-scripts\build-runtime.ps1
-```
-
-- Run `scripts/build-runtime.*` in place of the `scripts/download-sdk.*` step in [See it running from a checkout](#see-it-running-from-a-checkout) — this builds the core yourself instead of fetching the pre-built one. The following `fetch-renpy-sdk` / `deploy-examples` / `run-demo` steps are the same as there.
 
 ## 🔗 Related Repositories
 

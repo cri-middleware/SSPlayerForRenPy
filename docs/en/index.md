@@ -29,14 +29,11 @@ This documentation is structured by user purpose.
 
 ## Key Features
 
-This player is designed to bring the full expressive power of SpriteStudio to the Ren'Py engine.
-
-*   **Eliminate Complex ATL:** You no longer need to write long, complex ATL (Animation and Transformation Language) blocks in Ren'Py. Animations crafted in the editor can be played with just a few lines of script.
-*   **Full Feature Support:** It fully supports advanced SpriteStudio features out of the box, including bone hierarchies, meshes & deformations, and particle effects.
-*   **A lightweight alternative to video:** Openings, living backgrounds and effect cut-ins run as animation instead of a `Movie`: they scale freely, loop seamlessly and change on your script's cue, and the file holds the artwork and the motion rather than every frame.
-*   **Transparency & Blending:** Supports seamless fading and additive blending for effects, enabling the rich visual presentation essential for modern visual novels.
-*   **Animation Blending:** Cross-fade from one animation into the next instead of cutting, and layer animations over each other — a wave over a walk, a blink over anything ([details](usage.md#mixing-animations)).
-*   **Dynamic Costume Changes:** Swap the texture an animation samples from at runtime, so a single asset can drive color variations, costume changes, and facial expressions from a line of script.
+- **Bring your sprites to life — by eye, not by numbers.** Breathing and blinking, swaying hair and clothes, flashy slash or magic effects are built visually in a dedicated editor (SpriteStudio), with bone rigs, mesh deformation, and particles. Instead of typing each part's position, rotation, and timing into ATL and reloading to check, you pose the parts on the canvas and time them on a timeline with easing curves, so the person who draws the character can animate it too. Ren'Py just plays the result.
+- **Lip flap that follows your dialogue.** One `SSCharacter` line defines the image and the speaker together: the sprite plays its talk animation while a line is on screen and returns to idle when it ends — no per-line code.
+- **Use it like any other image.** `show ringo wait1` works with no `image` statement, and switching to another animation is one more `show`, just like changing an expression. ATL and `Transform` still position, slide, zoom, or fade it, and the Interactive Director lists it. For a blend instead of a cut, `ss_crossfade()` fades into the next animation, layered tracks add a blink or a wave on top ([mixing animations](usage.md#mixing-animations)), and runtime overrides swap textures or part states for costumes and expressions.
+- **A lightweight alternative to video.** Openings, living backgrounds, effect cut-ins — wherever you'd play a `Movie` — run as animation instead: it scales freely, loops seamlessly, changes on your script's cue, and moves at your display's refresh rate rather than a frame rate baked into a video. However smoothly it moves, the file stays the same size: it holds the artwork and the motion, not every frame.
+- **A seamless edit-to-runtime loop.** The **Auto Importer** watches `SpriteStudio_Source/` during development: arm it with one **Shift+R**, then just save in SpriteStudio — only the changed project is re-converted, and the running game reloads itself to show it ([hot reload](import.md#hot-reload)). No manual export step.
 
 ## Related Repositories
 
