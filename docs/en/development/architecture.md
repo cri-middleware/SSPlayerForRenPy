@@ -16,7 +16,32 @@ package under `python/`, the native libraries under `libs/`.
 The **Brain** is `libssruntime`, the SpriteStudio-SDK's playback runtime, written in Rust. It
 advances the timeline, computes every part's pose, simulates particles and hands back each frame
 as a draw plan: FlatBuffers plus flat vertex buffers. The rest of the player turns that plan into
-Ren'Py renders, in four layers:
+Ren'Py renders, in four layers. An arrow is a call:
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TD
+    subgraph pkg ["game/spritestudio/"]
+        subgraph conv ["Conveniences — each removable alone"]
+            extras["images · SSCharacter<br/>SSButton · browser"]
+            imp["auto importer<br/>developer mode only"]
+        end
+        rl["Ren'Py layer<br/>SSPlayer displayable"]
+        core["Engine-independent core<br/>one pack → geometry"]
+        br["Bridge to the Brain<br/>ctypes · Web: emscripten"]
+        cbind["Converter binding<br/>ctypes"]
+    end
+    Brain["Brain · libssruntime (Rust)"]
+    libconv["libssconverter (Rust)"]
+    extras --> rl --> core --> br --> Brain
+    imp --> cbind --> libconv
+```
+
+From the bottom up:
 
 - **The bridge to the Brain** loads the native library and exposes its C API through `ctypes`; on
   the Web it talks to the Brain's WebAssembly build through `renpy.emscripten` instead. A binding
