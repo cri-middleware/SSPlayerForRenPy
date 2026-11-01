@@ -8,7 +8,32 @@ SpriteStudio の Player に共通すること（再生・モーションブレ�
 
 ゲームに要るものはすべて `game/spritestudio/` として配布します。最上位に Ren'Py のスクリプト、`python/` の下に Python のパッケージ、`libs/` の下にネイティブライブラリがあります。
 
-**Brain** は SpriteStudio-SDK の再生ランタイム `libssruntime` で、Rust で書かれています。タイムラインを進め、全パーツの姿勢を計算し、パーティクルをシミュレートして、各フレームを描画計画（FlatBuffers と平らな頂点バッファ）として返します。プレイヤーの残りの部分が、その計画を 4 つの層で Ren'Py の描画に変えます。
+**Brain** は SpriteStudio-SDK の再生ランタイム `libssruntime` で、Rust で書かれています。タイムラインを進め、全パーツの姿勢を計算し、パーティクルをシミュレートして、各フレームを描画計画（FlatBuffers と平らな頂点バッファ）として返します。プレイヤーの残りの部分が、その計画を 4 つの層で Ren'Py の描画に変えます。矢印は呼び出しです。
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TD
+    subgraph pkg ["game/spritestudio/"]
+        subgraph conv ["便利機能（それぞれ単独で外せる）"]
+            extras["画像 · SSCharacter<br/>SSButton · ブラウザ"]
+            imp["自動インポーター<br/>開発者モードだけ"]
+        end
+        rl["Ren'Py 層<br/>SSPlayer（CDD）"]
+        core["エンジン非依存のコア<br/>パック → ジオメトリ"]
+        br["Brain への橋渡し<br/>ctypes · Web は emscripten"]
+        cbind["コンバーターの<br/>バインディング"]
+    end
+    Brain["Brain · libssruntime (Rust)"]
+    libconv["libssconverter (Rust)"]
+    extras --> rl --> core --> br --> Brain
+    imp --> cbind --> libconv
+```
+
+下の層から順に:
 
 - **Brain への橋渡し**は、ネイティブライブラリを読み込み、その C API を `ctypes` で公開します。Web では代わりに、`renpy.emscripten` を通して Brain の WebAssembly 版と話します。同じ種類のバインディングが、インポーターが変換に使う `libssconverter` にも届きます。
 - **エンジン非依存のコア**は 1 つのパックを再生し、その描画計画をジオメトリに変えます。インスタンスパーツ、エフェクト、マスク、イベント、そして Brain が渡さない `.ssab` の中身を扱います。どれも `renpy` を import しないので、`scripts/run-tests.sh` が素の CPython ですべて回せます。その下にある `.ssab` の読み取りは生成物で、手で編集しません。
