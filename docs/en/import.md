@@ -70,7 +70,7 @@ If a file update is detected during the startup initialization phase, the conver
 (Example: If you placed `SpriteStudio_Source/Ringo/Ringo.sspj`, the converted data will be output to `game/ss_assets/Ringo/`.)
 
 > [!NOTE]
-> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped: the in-game notice says how many, and the console names them. Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
+> **One output folder per project name.** The folder is named after the `.sspj`, so two projects with the same file name — `Enemies/Boss/Enemy.sspj` and `Enemies/Minion/Enemy.sspj`, say — would both write into `game/ss_assets/Enemy/`. Only the first in path order is converted; the others are skipped: the in-game notice says how many, and the console names them (started from the launcher, the console's lines are in `log.txt` in your project folder). Rename one of the `.sspj` files to import both. Names that differ only in case count as the same name, because they are one folder on Windows and macOS.
 >
 > **Updating SpriteStudio Player for Ren'Py converts every project once more.** A project is converted again whenever the converter in `game/spritestudio/` differs from the one that last converted it, so after you replace that folder with a newer release, the next launch brings every project up to date. That launch takes longer than usual.
 >
@@ -104,7 +104,9 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 > **Methods 2–4 convert without Ren'Py running, so you place the output yourself.** Put the
 > converted folder in `game/ss_assets/` as it comes: the `.ssab`, its textures (`.png`) and any
 > external instance packs it references stay in the same folder, because the player finds them
-> beside the `.ssab`.
+> beside the `.ssab`. Leave **Embedded Assets** (SSConverter GUI, `ssconverter-web`) and
+> `--embedded` (`ssconverter-cli`) off: the player does not read textures and sounds from inside
+> the `.ssab`.
 
 ---
 

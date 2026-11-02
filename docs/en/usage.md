@@ -482,7 +482,7 @@ image boss = SSPlayer(
 **Available Callback Arguments:**
 - `on_user_data`: Called when User Data is reached
 - `on_signal`: Called when a Signal is reached
-- `on_audio`: Called when an audio playback specified frame is reached
+- `on_audio`: Called when an audio playback specified frame is reached. The player plays the sound itself, so use this to react to it (a subtitle, say), not to play it again
 - `on_animation_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
 - `on_animation_looped`: Called each time a loop iteration completes; the final iteration fires `on_animation_finished` instead
 - `on_animation_started`: Called when `ss_play()` starts playback, when the player is shown again and restarts, and when a sequence moves on to its next animation. Not called for the animation a player starts on when it is first shown
@@ -500,7 +500,7 @@ image boss = SSPlayer(
 ## 9. Utilities
 
 ### One-Shot Playback Made Easy (`ss_play_once`)
-Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
+Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one by passing the tag `ss_play_once` returns (the `tag=` you gave, if any) to `ss_hide_once(tag)`.
 ```renpy
 $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
                at=Transform(xcenter=640, ycenter=360), wait=True)

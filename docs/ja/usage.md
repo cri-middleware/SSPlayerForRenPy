@@ -5,7 +5,7 @@
 ---
 
 ## 1. シーンに表示する (`show`)
-変換したパックは、Ren'Py が `images/` の下のファイルを画像にするのと同じように、最初から画像になっています。`ss_assets/Ringo/Ringo.ssab` は `show ringo` で表示でき、そのアニメーションはそれぞれ属性として `show ringo wait1` のように指定できます。Interactive Director（開発者モードで **D**）にもこれらの画像とアニメーションが並び、そこで別のアニメーションを選ぶと表示中のものと入れ替わります。
+変換したパックは、Ren'Py が `images/` の下のファイルを画像にするのと同じように、最初から画像になっています。`ss_assets/Ringo/Ringo.ssab` は `show ringo` で表示でき、そのアニメーションはそれぞれ属性として `show ringo wait1` のように指定できます。インタラクティブディレクター（開発者モードで **D**）にもこれらの画像とアニメーションが並び、そこで別のアニメーションを選ぶと表示中のものと入れ替わります。
 
 ```renpy
 label start:
@@ -49,7 +49,7 @@ label start:
     r attack "攻撃！ (attack1 が終わると自動的に wait1 に戻ります)"
 ```
 
-属性を複数並べると、`aliases` のリストと同じように順番に再生します。`show ringo attack1 wait1` は attack1 を 1 回再生してから、プレイヤーの `loop` に従って wait1 を再生します。`still` を付けると止まります。`show ringo dead still` は dead を 1 回再生して最後の絵で止まり、`show ringo still` は画像が最初に再生するアニメーションの最初の絵で止まります。パックに `still` という名前のアニメーションやエイリアスがあるときは、そちらを再生します。Interactive Director では、`still` は表示中のアニメーションを差し替えずにオン・オフできます。
+属性を複数並べると、`aliases` のリストと同じように順番に再生します。`show ringo attack1 wait1` は attack1 を 1 回再生してから、プレイヤーの `loop` に従って wait1 を再生します。`still` を付けると止まります。`show ringo dead still` は dead を 1 回再生して最後の絵で止まり、`show ringo still` は画像が最初に再生するアニメーションの最初の絵で止まります。パックに `still` という名前のアニメーションやエイリアスがあるときは、そちらを再生します。インタラクティブディレクターでは、`still` は表示中のアニメーションを差し替えずにオン・オフできます。
 
 > [!NOTE]
 > **属性は `SSPlayer` の画像に持たせ、拡大縮小や配置は表示するときに指定してください。** ATL ブロックや `At()` でプレイヤーを包んで定義した画像は Transform で、Transform は属性を受け付けません（このプレイヤーではなく Ren'Py の決まりです）。そのため、そうした画像に `show ringo happy` と書くと、開発者モードではエラーになり、リリースでは無視されます。変形は `show ringo happy at half` のように表示のほうに付けるか、Ren'Py の `config.tag_transform` で、`at` の無いそのタグの表示すべてに付けてください。
@@ -482,7 +482,7 @@ image boss = SSPlayer(
 **利用可能なコールバック引数:**
 - `on_user_data`: ユーザーデータ到達時に呼ばれる
 - `on_signal`: シグナル到達時に呼ばれる
-- `on_audio`: 音声再生指定フレーム到達時に呼ばれる
+- `on_audio`: 音声再生指定フレーム到達時に呼ばれる。音はプレイヤー自身が鳴らすので、ここでは字幕のように音に合わせた処理を書き、同じ音をもう一度鳴らさない
 - `on_animation_finished`: 指定した `loop` をすべて再生し終えたときに1回呼ばれる。無限ループでは発火せず、停止操作でも発火しない
 - `on_animation_looped`: ループ完了ごと（1周回るごと）に呼ばれる。最終周はループせず `on_animation_finished` になる
 - `on_animation_started`: `ss_play()` で再生を始めたとき、プレイヤーがもう一度表示されて最初から再生するとき、シーケンスが次のアニメーションへ進んだときに呼ばれる。最初に表示されたときに始まるアニメーションでは呼ばれない
@@ -500,7 +500,7 @@ image boss = SSPlayer(
 ## 9. 便利機能
 
 ### 一発再生を手軽に（`ss_play_once`）
-任意の `.ssab` を一度だけ再生（エフェクトでも全画面カットシーンでも）。`wait=True` で再生し終わるまで待ってから自動で消します。待たずに出したものは `ss_hide_once(tag)` で消せます。
+任意の `.ssab` を一度だけ再生（エフェクトでも全画面カットシーンでも）。`wait=True` で再生し終わるまで待ってから自動で消します。待たずに出したものは、`ss_play_once` が返すタグ（`tag=` を渡したならそのタグ）を `ss_hide_once(tag)` に渡して消せます。
 ```renpy
 $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
                at=Transform(xcenter=640, ycenter=360), wait=True)

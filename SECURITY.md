@@ -25,7 +25,8 @@ Please include:
 
 - What the impact is — crash, out-of-bounds read, arbitrary code execution, information disclosure.
 - Steps to reproduce, ideally with a minimal `.ssab` and the smallest `.rpy` script needed.
-- The player version or commit, the SpriteStudio SDK version (`scripts/SDK_VERSION.txt`), your Ren'Py
+- The player version or commit, the SpriteStudio SDK version (`game/spritestudio/libs/VERSION`, or
+  `scripts/SDK_VERSION.txt` in a clone), your Ren'Py
   version, and the platform.
 - Whether the input that triggers it comes from a trusted source in your project or from somewhere
   untrusted (downloaded content, user-supplied files).
@@ -80,7 +81,7 @@ impact beyond it is more useful.
 
 - 影響の内容（クラッシュ、境界外読み取り、任意コード実行、情報漏洩など）
 - 再現手順。可能であれば最小限の `.ssab` と、必要最小限の `.rpy` スクリプト
-- プレイヤーのバージョンまたはコミット、SpriteStudio SDK のバージョン（`scripts/SDK_VERSION.txt`）、Ren'Py のバージョン、対象プラットフォーム
+- プレイヤーのバージョンまたはコミット、SpriteStudio SDK のバージョン（`game/spritestudio/libs/VERSION`。clone したリポジトリなら `scripts/SDK_VERSION.txt`）、Ren'Py のバージョン、対象プラットフォーム
 - 引き金となる入力が、プロジェクト内の信頼できるデータか、信頼できない経路（ダウンロードコンテンツ、ユーザーが用意したファイル）由来か
 
 受領の確認、再現可否、修正版の公開時期についてご連絡します。修正を公開するまでの間、公表をお待ちいただけますようお願いします。

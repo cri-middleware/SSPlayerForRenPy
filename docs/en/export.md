@@ -51,15 +51,16 @@ Keys** once from the launcher's **Android** screen, per Ren'Py's docs. Then:
 
    The ABIs are `arm64-v8a` (most 64-bit devices), `armeabi-v7a` (older phones)
    and `x86_64` (emulators).
-2. **Build** an `.aab` (for Play upload) or an `.apk`.
+2. **Build** — on the same screen, pick **Play Bundle** (an `.aab`, for Play upload) or
+   **Universal APK** (an `.apk`), then press **Build Package**.
 
 ## iOS Export
 
 Standard Ren'Py [renios](https://www.renpy.org/doc/html/ios.html): it generates an
 **Xcode project** (the `.ipa` is built from Xcode). **macOS + Xcode required.**
 
-1. **Generate the Xcode project** — from Ren'Py's launcher (**iOS** → **Create Xcode
-   Project**), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
+1. **Generate the Xcode project** — from Ren'Py's launcher (**iOS** → **Select Xcode Projects
+   Directory** the first time, then **Create Xcode Project**), or the equivalent `<renpy> launcher ios_create . <xcode-project-dir>`
    CLI command.
 2. **Embed the native library, once** — in Xcode: app target → **General** →
    **Frameworks, Libraries, and Embedded Content** → **+** → *Add Files…* →
