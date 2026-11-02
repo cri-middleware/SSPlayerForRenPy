@@ -8,7 +8,7 @@ Anyone with the Write role on this repository can cut a release: every step is a
 
 A release is a tag on `main`, pushed first and built second. The version is written in one place, `__version__` in `game/spritestudio/python/ss_renpy/__init__.py`, in PEP 440 form — `7.0.0b1`, `7.0.0rc1`, `7.0.0`, never a `-`. `scripts/release-version.sh` prints it, the tag is `v` followed by it, and the release build refuses a tag that disagrees. It ships inside the folder creators drop into their game, which is why it, and not `scripts/SDK_VERSION.txt`, names the release. Branches follow git-flow: `develop` integrates, `main` holds released commits only, and `release/X.Y` lives for one release — cut from `develop` when the release ships `develop`'s work, or from the line's latest tag when it ships only fixes on top of it, and deleted once the release is out.
 
-Every block runs as written in a new shell: it works out what it needs from the checkout, git and GitHub. Two values are set by hand, each written as a placeholder to fill in: `<version>`, the version being released, as in `7.0.1`, in steps 1 and 2, and `<sdk-tag>`, the SpriteStudio-SDK release it ships, as in `v7.0.0`, in step 2. Left as it is, a placeholder stops its line with a syntax error. A value that would not stop a command by itself when empty is read as `${VAR:?}`: an empty `BRANCH` in step 3 would dispatch the QA build from `develop`, and an empty `TAG` in step 6 would watch the newest Pages run, whichever tag it built.
+Every block runs as written in a new shell: it works out what it needs from the checkout, git and GitHub. One value is set by hand, written as a placeholder to fill in: `<version>`, the version being released, as in `7.0.1`, in steps 1 and 2. Left as it is, the placeholder stops its line with a syntax error. A value that would not stop a command by itself when empty is read as `${VAR:?}`: an empty `BRANCH` in step 3 would dispatch the QA build from `develop`, and an empty `TAG` in step 6 would watch the newest Pages run, whichever tag it built.
 
 An agent can run every block. A person sorts the scan's summary in step 3 and signs off the rendering there, which is judged by eye, and decides two steps: the merge in step 4, which puts the release on `main`, and step 6, which publishes it for good.
 
@@ -37,16 +37,11 @@ git switch -C "$BRANCH" "${BASE:?}"
 
 The patch block sorts an `a`, `b` or `rc` version before the release it leads to, so `v7.0.0` counts as later than `v7.0.0rc1`.
 
-### 2. SDK, version and changelog
+Either way, the release ships the SpriteStudio-SDK release that `scripts/SDK_VERSION.txt` names on the branch; `cat scripts/SDK_VERSION.txt` prints it. To ship another, change the file in a commit of its own on the branch: step 3's QA build and rendering sign-off fetch the native libraries by it.
 
-In one commit. Pin the SpriteStudio-SDK release this one ships in `scripts/SDK_VERSION.txt`, the tag `download-sdk.sh` fetches the native libraries by; `<sdk-tag>` is that release's tag.
+### 2. Version and changelog
 
-```bash
-SDK_TAG=<sdk-tag>
-printf '%s\n' "${SDK_TAG:?}" >| scripts/SDK_VERSION.txt
-```
-
-Then set `__version__` to the version being released:
+In one commit. Set `__version__` to the version being released:
 
 ```bash
 VERSION=<version>
@@ -57,7 +52,7 @@ scripts/release-version.sh                       # must print the version
 Date the version's heading in `CHANGELOG.md` as `## [X.Y.Z] - YYYY-MM-DD`, adding the heading if the version has none yet, and commit:
 
 ```bash
-git add scripts/SDK_VERSION.txt game/spritestudio/python CHANGELOG.md
+git add game/spritestudio/python CHANGELOG.md
 git commit -m "chore(release): v$(scripts/release-version.sh)"
 ```
 
@@ -80,7 +75,7 @@ git push origin "${BRANCH:?}" &&
 gh run watch "${RUN:?}" --exit-status
 ```
 
-**A person signs off the rendering.** GL2 rendering — premultiplied alpha, mesh, blend, mask, the `ss-*` shaders — has no headless check, so it is judged by eye in the demo, on the branch, against the SDK release from step 2. This is the one part that is not bash on Windows: `fetch-renpy-sdk.sh` refuses Git Bash and `run-demo.sh` starts the macOS / Linux launcher, so run the three scripts' `.ps1` twins in PowerShell, as [CONTRIBUTING.md](./CONTRIBUTING.md) does.
+**A person signs off the rendering.** GL2 rendering — premultiplied alpha, mesh, blend, mask, the `ss-*` shaders — has no headless check, so it is judged by eye in the demo, on the branch, against the SDK release `scripts/SDK_VERSION.txt` pins. This is the one part that is not bash on Windows: `fetch-renpy-sdk.sh` refuses Git Bash and `run-demo.sh` starts the macOS / Linux launcher, so run the three scripts' `.ps1` twins in PowerShell, as [CONTRIBUTING.md](./CONTRIBUTING.md) does.
 
 ```bash
 scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B opens the Asset Browser
@@ -244,7 +239,7 @@ scripts/build-release.sh demo=skip    # the plugin zip only, much faster
 
 リリースは `main` 上のタグです。先にタグを push し、ビルドはその後です。バージョンが書かれているのは `game/spritestudio/python/ss_renpy/__init__.py` の `__version__` の 1 か所だけで、PEP 440 の形（`7.0.0b1`、`7.0.0rc1`、`7.0.0`。`-` は使いません）です。`scripts/release-version.sh` がそれを出力し、タグはその頭に `v` を付けたものです。食い違うタグはリリースビルドが拒否します。この値はクリエイターがゲームに入れるフォルダの中に入るので、`scripts/SDK_VERSION.txt` ではなくこちらがリリースの名前になります。ブランチは git-flow です。`develop` が統合ブランチで、`main` にはリリース済みのコミットだけが入ります。`release/X.Y` は 1 回のリリースの間だけ使います。`develop` の作業を出すリリースなら `develop` から、タグの上に修正だけを載せるリリースならその系統の最新のタグから切り、リリースが済んだら消します。
 
-どのブロックも、新しいシェルで書かれたとおりに実行できます。必要なものはチェックアウト・git・GitHub から求めます。手で設定する値は 2 つで、どちらも埋めるプレースホルダとして書いてあります。手順 1 と 2 の `<version>` はリリースするバージョン（`7.0.1` など）、手順 2 の `<sdk-tag>` は同梱する SpriteStudio-SDK のリリース（`v7.0.0` など）です。埋めずに実行すると、その行は構文エラーで止まります。空でもそれだけでは止まらない値は `${VAR:?}` で読みます。手順 3 の `BRANCH` が空だと QA ビルドを `develop` から実行し、手順 6 の `TAG` が空だと、どのタグをビルドしたかに関係なくいちばん新しい Pages の run を見てしまうためです。
+どのブロックも、新しいシェルで書かれたとおりに実行できます。必要なものはチェックアウト・git・GitHub から求めます。手で設定する値は 1 つで、埋めるプレースホルダとして書いてあります。手順 1 と 2 の `<version>` で、リリースするバージョン（`7.0.1` など）です。埋めずに実行すると、その行は構文エラーで止まります。空でもそれだけでは止まらない値は `${VAR:?}` で読みます。手順 3 の `BRANCH` が空だと QA ビルドを `develop` から実行し、手順 6 の `TAG` が空だと、どのタグをビルドしたかに関係なくいちばん新しい Pages の run を見てしまうためです。
 
 どのブロックもエージェントに実行させられます。手順 3 の検査の一覧は人が仕分け、描画の確認は目で判断するので人が行い、2 つの手順は人が判断します。リリースを `main` に入れる手順 4 のマージと、取り消せない公開を行う手順 6 です。
 
@@ -273,16 +268,11 @@ git switch -C "$BRANCH" "${BASE:?}"
 
 パッチのブロックは、`a`・`b`・`rc` の付いたバージョンを、それが目指すリリースより前に並べます。`v7.0.0` は `v7.0.0rc1` より後と数えます。
 
-### 2. SDK、バージョン、CHANGELOG
+どちらの場合も、リリースが同梱するのは、ブランチの `scripts/SDK_VERSION.txt` が指す SpriteStudio-SDK のリリースです。`cat scripts/SDK_VERSION.txt` で出力できます。別のリリースを同梱するときは、ブランチ上でこのファイルを書き換えて単独のコミットにします。手順 3 の QA ビルドと描画の確認が、そのタグでネイティブライブラリを取得します。
 
-1 コミットで行います。同梱する SpriteStudio-SDK のリリースを `scripts/SDK_VERSION.txt` で固定します。`download-sdk.sh` がネイティブライブラリを取得するときに使うタグです。`<sdk-tag>` はそのリリースのタグです。
+### 2. バージョン、CHANGELOG
 
-```bash
-SDK_TAG=<sdk-tag>
-printf '%s\n' "${SDK_TAG:?}" >| scripts/SDK_VERSION.txt
-```
-
-続けて `__version__` をリリースするバージョンにします。
+1 コミットで行います。`__version__` をリリースするバージョンにします。
 
 ```bash
 VERSION=<version>
@@ -293,7 +283,7 @@ scripts/release-version.sh                       # そのバージョンが出�
 `CHANGELOG.md` のそのバージョンの見出しに日付を入れて `## [X.Y.Z] - YYYY-MM-DD` とし（見出しがまだ無ければ足します）、コミットします。
 
 ```bash
-git add scripts/SDK_VERSION.txt game/spritestudio/python CHANGELOG.md
+git add game/spritestudio/python CHANGELOG.md
 git commit -m "chore(release): v$(scripts/release-version.sh)"
 ```
 
@@ -316,7 +306,7 @@ git push origin "${BRANCH:?}" &&
 gh run watch "${RUN:?}" --exit-status
 ```
 
-**描画の確認は人が行います。** GL2 の描画 — 乗算済みアルファ、メッシュ、ブレンド、マスク、`ss-*` シェーダ — にはヘッドレスの検査が無いので、ブランチ上で、手順 2 の SDK リリースを使ってデモを目で見て判断します。Windows で bash を使わないのはここだけです。`fetch-renpy-sdk.sh` は Git Bash では実行を拒否し、`run-demo.sh` は macOS / Linux 用の起動スクリプトを使うので、[CONTRIBUTING.md](./CONTRIBUTING.md) と同じく、3 つのスクリプトの `.ps1` 版を PowerShell で実行してください。
+**描画の確認は人が行います。** GL2 の描画 — 乗算済みアルファ、メッシュ、ブレンド、マスク、`ss-*` シェーダ — にはヘッドレスの検査が無いので、ブランチ上で、`scripts/SDK_VERSION.txt` が指す SDK リリースを使ってデモを目で見て判断します。Windows で bash を使わないのはここだけです。`fetch-renpy-sdk.sh` は Git Bash では実行を拒否し、`run-demo.sh` は macOS / Linux 用の起動スクリプトを使うので、[CONTRIBUTING.md](./CONTRIBUTING.md) と同じく、3 つのスクリプトの `.ps1` 版を PowerShell で実行してください。
 
 ```bash
 scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B で Asset Browser を開く
