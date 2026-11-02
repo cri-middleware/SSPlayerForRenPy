@@ -39,13 +39,11 @@ The patch block sorts an `a`, `b` or `rc` version before the release it leads to
 
 ### 2. SDK, version and changelog
 
-In one commit. Pin the SpriteStudio-SDK release this one ships, in both places it is read from: `scripts/SDK_VERSION.txt`, the tag `download-sdk.sh` fetches the native libraries by, and the `SpriteStudio-SDK` submodule, whose test projects `deploy-examples.sh` converts. `<sdk-tag>` is that release's tag. The block's last command lists the SDK's `.fbs` schemas that changed since the previous pin; when it lists any, regenerate the bindings with `scripts/generate-fbs-code.sh`.
+In one commit. Pin the SpriteStudio-SDK release this one ships in `scripts/SDK_VERSION.txt`, the tag `download-sdk.sh` fetches the native libraries by; `<sdk-tag>` is that release's tag.
 
 ```bash
 SDK_TAG=<sdk-tag>
 printf '%s\n' "${SDK_TAG:?}" >| scripts/SDK_VERSION.txt
-git submodule update --init SpriteStudio-SDK && git -C SpriteStudio-SDK fetch --tags origin && git -C SpriteStudio-SDK checkout "${SDK_TAG:?}"
-git -C SpriteStudio-SDK diff --stat "$(git rev-parse HEAD:SpriteStudio-SDK)" HEAD -- libs/ssab/fbs libs/ssruntime/fbs   # any output: run scripts/generate-fbs-code.sh
 ```
 
 Then set `__version__` to the version being released:
@@ -59,7 +57,7 @@ scripts/release-version.sh                       # must print the version
 Date the version's heading in `CHANGELOG.md` as `## [X.Y.Z] - YYYY-MM-DD`, adding the heading if the version has none yet, and commit:
 
 ```bash
-git add scripts/SDK_VERSION.txt SpriteStudio-SDK game/spritestudio/python CHANGELOG.md
+git add scripts/SDK_VERSION.txt game/spritestudio/python CHANGELOG.md
 git commit -m "chore(release): v$(scripts/release-version.sh)"
 ```
 
@@ -277,13 +275,11 @@ git switch -C "$BRANCH" "${BASE:?}"
 
 ### 2. SDK、バージョン、CHANGELOG
 
-1 コミットで行います。同梱する SpriteStudio-SDK のリリースを、読まれる 2 か所の両方で固定します。`download-sdk.sh` がネイティブライブラリを取得するときに使うタグ `scripts/SDK_VERSION.txt` と、`deploy-examples.sh` がテストプロジェクトを変換する `SpriteStudio-SDK` submodule です。`<sdk-tag>` はそのリリースのタグです。ブロックの最後のコマンドは、前回固定したときから変わった SDK の `.fbs` スキーマを並べます。何か並んだら、`scripts/generate-fbs-code.sh` でバインディングを生成し直します。
+1 コミットで行います。同梱する SpriteStudio-SDK のリリースを `scripts/SDK_VERSION.txt` で固定します。`download-sdk.sh` がネイティブライブラリを取得するときに使うタグです。`<sdk-tag>` はそのリリースのタグです。
 
 ```bash
 SDK_TAG=<sdk-tag>
 printf '%s\n' "${SDK_TAG:?}" >| scripts/SDK_VERSION.txt
-git submodule update --init SpriteStudio-SDK && git -C SpriteStudio-SDK fetch --tags origin && git -C SpriteStudio-SDK checkout "${SDK_TAG:?}"
-git -C SpriteStudio-SDK diff --stat "$(git rev-parse HEAD:SpriteStudio-SDK)" HEAD -- libs/ssab/fbs libs/ssruntime/fbs   # 何か出たら scripts/generate-fbs-code.sh を実行する
 ```
 
 続けて `__version__` をリリースするバージョンにします。
@@ -297,7 +293,7 @@ scripts/release-version.sh                       # そのバージョンが出�
 `CHANGELOG.md` のそのバージョンの見出しに日付を入れて `## [X.Y.Z] - YYYY-MM-DD` とし（見出しがまだ無ければ足します）、コミットします。
 
 ```bash
-git add scripts/SDK_VERSION.txt SpriteStudio-SDK game/spritestudio/python CHANGELOG.md
+git add scripts/SDK_VERSION.txt game/spritestudio/python CHANGELOG.md
 git commit -m "chore(release): v$(scripts/release-version.sh)"
 ```
 
