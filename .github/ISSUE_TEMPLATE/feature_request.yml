@@ -40,9 +40,9 @@ body:
       label: Where does this belong? / 対象範囲
       description: |
         Playback behaviour is usually the shared SpriteStudio runtime; this repository owns
-        the Ren'Py displayables, the creator-defined statements and the asset tooling. Unsure is fine.
+        the Ren'Py displayables and the asset tooling. Unsure is fine.
         再生の挙動は共通ランタイム側です。わからない場合はそのままで構いません。
       options:
-        - Ren'Py side (displayables, statements, asset tooling)
+        - Ren'Py side (displayables, asset tooling)
         - Shared SpriteStudio runtime (playback behaviour)
         - Not sure / わからない
