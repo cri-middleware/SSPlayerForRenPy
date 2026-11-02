@@ -21,7 +21,7 @@
     - [再生と制御 (Usage)](usage.md): Ren'Pyスクリプトからの呼び出し方・制御方法
     - [ボタン](buttons.md): アニメーションを、idle・hover・insensitive の状態を持つボタンにする方法
     - [ゲームのエクスポート (Export)](export.md): 標準の Ren'Py ツールで各プラットフォーム（デスクトップ / モバイル / Web）へ書き出す方法
-    - [制約と適用範囲](limitations.md): 対応状況・未サポート機能の一覧
+    - [制約と適用範囲](limitations.md): 対応していない機能と、一部だけ対応している機能の一覧
 - **Player・SDK 開発者向けガイド**
     - [ビルドガイド](development/build.md): カスタマイズ環境の構築、ネイティブのビルド手順、変更した版をゲームで使う方法、Ren'Py での確かめ方
     - [プレイヤーの構成](development/architecture.md): 層、各プラットフォームがネイティブライブラリを読み込む場所、この作りになっている理由
