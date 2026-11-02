@@ -376,7 +376,7 @@ init -10 python:
         return """
             uniform sampler2D tex0;
             uniform sampler2D tex1;     // coverage bitmap
-            attribute vec4 a_position;  // for the coverage UV (Live2D-style)
+            attribute vec4 a_position;  // for the coverage UV (from the vertex position)
             attribute vec2 a_tex_coord;
             attribute vec4 a_ss_color;  // PER-VERTEX PartColor (not uniform)
             attribute vec3 a_ss_varg;   // PER-VERTEX PartColor varg
@@ -606,7 +606,7 @@ init -10 python:
         #
         #   ss.partcolor_mask — ss.partcolor_batched (PER-VERTEX colour) + the
         #       stencil REPLAY. Each masked target computes its coverage UV from
-        #       a_position (Live2D's mask pattern), samples the coverage (nearest,
+        #       a_position (a screen-space mask lookup), samples the coverage (nearest,
         #       emulated by snapping the
         #       UV to texel centres — Ren'Py has no per-texture nearest filter),
         #       replays the writers that hold their bit at the target's position
@@ -1273,8 +1273,8 @@ init -10 python:
         def images(self):
             return list(self._cache.values())
 
-    # The image attribute that stops a player, named as Ren'Py's Live2D names
-    # its own: `show ringo dead still` plays dead once and holds its last frame,
+    # The image attribute that stops a player, named as Ren'Py's built-in
+    # animation support names its own: `show ringo dead still` plays dead once and holds its last frame,
     # and `show ringo still` holds the first frame of the animation the image
     # starts on. A pack's own animation or alias of this name plays instead.
     _SS_STILL = "still"
@@ -1590,7 +1590,7 @@ init -10 python:
             # Start from the template's original spec (may be a list = sequence),
             # then let the attributes pick what to play: every alias and
             # animation they name, in the order given, as one sequence — the
-            # order Ren'Py's Live2D plays its motions in.
+            # order Ren'Py's built-in animation support plays its motions in.
             target_anim = self._initial_animation
             # The template's ORIGINAL loop — self.loop is mutated to 1 while a
             # sequence is queued, and copying that would make the copy's final
