@@ -257,8 +257,8 @@ Run it with
 - What needs init code but no drawing — `SSPlayer`'s constructor, `_duplicate`, loading, the
   importer — runs under lint, which executes init blocks: an `init 999 python:` in a
   throwaway `game/zz_*.rpy`, then `renpy-sdk/renpy.sh . lint --error-code`.
-- The demo's own scripts (`game/*.rpy` outside `spritestudio/`) are under no test and no lint
-  check. After renaming an `ss_*` method, search them by hand.
+- The demo's own scripts (`game/*.rpy` outside `spritestudio/`) are under no test, and lint does not
+  check the `ss_*` calls in their Python. After renaming an `ss_*` method, search them by hand.
 
 ### 5.3 The Web Build
 

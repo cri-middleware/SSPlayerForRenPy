@@ -35,7 +35,7 @@ flowchart TD
 
 下の層から順に:
 
-- **Brain への橋渡し**は、ネイティブライブラリを読み込み、その C API を `ctypes` で公開します。Web では代わりに、`renpy.emscripten` を通して Brain の WebAssembly 版と話します。同じ種類のバインディングが、インポーターが変換に使う `libssconverter` にも届きます。
+- **Brain への橋渡し**は、ネイティブライブラリを読み込み、その C API を `ctypes` で公開します。Web では代わりに、Ren'Py の `emscripten` モジュールを通して Brain の WebAssembly 版と話します。同じ種類のバインディングが、インポーターが変換に使う `libssconverter` にも届きます。
 - **エンジン非依存のコア**は 1 つのパックを再生し、その描画計画をジオメトリに変えます。インスタンスパーツ、エフェクト、マスク、イベント、そして Brain が渡さない `.ssab` の中身を扱います。どれも `renpy` を import しないので、`scripts/run-tests.sh` が素の CPython ですべて回せます。その下にある `.ssab` の読み取りは生成物で、手で編集しません。
 - **Ren'Py 層**は、`init -10` で Brain を読み込み、`SS_*` の設定を持ち、Creator-Defined Displayable の `SSPlayer` を定義します。`SSPlayer` の `render()` が計画から `renpy.Render` を組み立て（GL2 のメッシュとシェーダー）、その周りにマスク・アタッチメント・音・セーブ対応があります。
 - **便利機能**はその上にあり、それぞれ単独で外せます。すべてのパックを画像にするもの、`SSCharacter`、ヘルパー、ボタン（`SSButton`）、ブラウザ（Shift+B）、診断です。自動インポーターもその 1 つで、`config.developer` が有効なときだけ走ります。

@@ -44,7 +44,7 @@ flowchart TD
 From the bottom up:
 
 - **The bridge to the Brain** loads the native library and exposes its C API through `ctypes`; on
-  the Web it talks to the Brain's WebAssembly build through `renpy.emscripten` instead. A binding
+  the Web it talks to the Brain's WebAssembly build through Ren'Py's `emscripten` module instead. A binding
   of the same kind reaches `libssconverter`, which the importer converts with.
 - **The engine-independent core** plays one pack and turns its draw plan into geometry: instance
   parts, effects, masks, events, and what the `.ssab` holds that the Brain does not hand over.

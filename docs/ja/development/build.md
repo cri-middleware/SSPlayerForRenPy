@@ -214,7 +214,7 @@ label zz_check:
 - `modal True` の画面（Shift+B のブラウザなど）を出したまま `renpy.pause` すると戻りません。`zorder` の高い画面の `timer … repeat True` で手順を進め、ラベルでは `$ ui.interact()` で待ちます。
 - 操作は本物の入力で起こします。`renpy.test.testmouse` の `move_mouse`・`press_mouse`・`release_mouse` を、`renpy.display.focus.focus_list` から読んだ位置で使います。Displayable の状態を書き換えてドラッグを真似ると、Ren'Py が実際に通る経路を素通りします。
 - init のコードは要るが描画は要らないもの（`SSPlayer` のコンストラクタ、`_duplicate`、読み込み、インポーター）は、init ブロックを実行する lint で回せます。使い捨ての `game/zz_*.rpy` に `init 999 python:` を書き、`renpy-sdk/renpy.sh . lint --error-code` を実行します。
-- デモ自体のスクリプト（`spritestudio/` の外の `game/*.rpy`）は、テストにも lint にも掛かりません。`ss_*` のメソッドを改名したら、手で探してください。
+- デモ自体のスクリプト（`spritestudio/` の外の `game/*.rpy`）にはテストが無く、lint もその Python の中の `ss_*` の呼び出しは確かめません。`ss_*` のメソッドを改名したら、手で探してください。
 
 ### 5.3 Web 版
 
