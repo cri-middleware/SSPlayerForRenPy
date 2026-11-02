@@ -16,7 +16,7 @@ These need no new SDK API — the runtime already provides everything required. 
   `frame_updated` signal; `SSPlayerForWeb`'s `onFrame`.
 - [ ] **Crossfade on image attributes** — `SSPlayer` exposes the runtime's track stack, but an
   image attribute still cuts: `show ringo walk` builds a new player through `_duplicate`, which
-  knows nothing of the animation shown. Following Ren'Py's Live2D, `fade=` and `default_fade` on
+  knows nothing of the animation shown. Following Ren'Py's built-in animation support, `fade=` and `default_fade` on
   `SSPlayer` would crossfade from the animation shown — a selling point — which needs the
   incoming player to reach the outgoing one's runtime and to be the only path switching track 0
   on that tag. Reference: `SSPlayerForWgpu`'s Bevy integration, where `transition_ms` decides
@@ -51,7 +51,7 @@ These need no new SDK API — the runtime already provides everything required. 
   Player-side draw path; the SDK roadmap has no entry for it.
 - [ ] **Timeline events of Instance / Effect parts** — Only the root animation's UserData /
   Signal / Audio events are surfaced. The SDK roadmap has no entry for them.
-- [ ] **Built into Ren'Py** — SpriteStudio support that ships with Ren'Py, as Live2D's does, so a
+- [ ] **Built into Ren'Py** — SpriteStudio support that ships with Ren'Py, as some other formats' does, so a
   project plays `.ssab` without `spritestudio/` copied into its `game/`. A wish, not scheduled: it
   rests on Ren'Py's maintainers taking it in, and on Ren'Py's own build producing the native cores
   for every platform it targets. Being BSD-3-Clause, the cores could come inside the Ren'Py SDK
