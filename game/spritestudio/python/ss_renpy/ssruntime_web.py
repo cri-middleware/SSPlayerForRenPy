@@ -2,7 +2,7 @@
 
 This module provides `_WebRuntime`, a drop-in replacement for `_NativeRuntime`
 that operates on the Web platform (Ren'Py Web) by communicating with the JS API
-of the SDK's `ssruntime-ffi` wasm-bindgen build, via `renpy.emscripten`, and
+of the SDK's `ssruntime-ffi` wasm-bindgen build, via Ren'Py's `emscripten` module, and
 `load_library`, which loads that build out of the game's own files.
 
 What a frame hands back — the FrameData FlatBuffer, the SoA buffers, an
