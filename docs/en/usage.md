@@ -80,7 +80,7 @@ label start:
 
 - The image tag is the lowercased file stem of the `.ssab` (e.g., `"ringo"`). You can override it with `tag=`.
 - You can also pass `aliases=` (for emotions, etc.) and `size=` (see [Size and Placement](#size-and-placement)).
-- The lip-sync start/stop timing can be adjusted using `start` / `stop` (Character callback event names).
+- By default the talk animation starts when the line appears (`show_done`) and plays until the line is dismissed (`end`). For lip-sync that stops when the text finishes typing, pass `stop=("slow_done", "end")`. `start` / `stop` take Character callback event names.
 
 > [!NOTE]
 > While a line is spoken, `talk` replaces the attribute the sprite was showing, so an emotion such as `show ringo happy` is not visible during the line; it comes back when the line ends. There is no per-emotion talk animation.
@@ -126,7 +126,7 @@ For animations like magic explosions or hit effects that play once and end, you 
 image hit_effect = SSPlayer(
     "ss_assets/ParticleEffect/e038.ssab",
     animation="hit",
-    loop=1 # End and disappear from the screen after 1 playback (or stop on the last frame)
+    loop=1 # Play once, then hold the last frame (the image stays shown until you hide it)
 )
 
 label battle:
@@ -185,29 +185,29 @@ if ringo.ss_is_track_finished(1):
 
 - **A crossfade on track 0 switches at the call.** From then on `ss_get_current_animation()` names the incoming animation, and `ss_is_finished()`, `on_animation_finished` / `on_animation_looped` and the events describe it — the outgoing animation running out during the fade does not finish the player. `ss_set_animation()` of the animation you faded away from switches back to it; `ss_set_animation()` of the one you faded to does nothing, and the fade carries on.
 - **What carries over.** Speed, playback direction, frame skip and a frame-rate override belong to the track, so the incoming animation plays the way the outgoing one did, and it gets the loop count you set with `ss_set_loop_count()` (the constructor's `loop` otherwise). A pending sequence is dropped, as with `ss_set_animation()`; part overrides stay. `on_animation_started` is not called: the animation was switched, not started.
-- **Layering.** `ss_set_track_animation(track, name)` lays an animation on a track without a fade. `ss_set_track_alpha(track, alpha)` sets how strongly the track applies, and `ss_fade_track(track, alpha, seconds)` fades it there. `ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` adds the track onto the pose instead of mixing it in. A track moves only the attributes its animation has keys for.
+- **Layering.** `ss_set_track_animation(track, name)` lays an animation on a track without a fade. `ss_set_track_alpha(track, alpha)` sets how strongly the track applies, and `ss_fade_track(track, alpha, duration)` fades it there. `ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` adds the track onto the pose instead of mixing it in. A track moves only the attributes its animation has keys for.
 - **Each track has its own playback settings** — `ss_set_track_speed()`, `ss_set_track_loop_count()`, `ss_set_track_playback_direction()`, `ss_set_track_frame_skip_enabled()`, `ss_set_track_frame_rate()` — and they reach every animation laid on the track later. Track 0's are the player's own (`ss_set_speed_scale()` and the rest). The loop count is the exception: an animation laid on a track loops forever until you set its count, so set it after laying the animation.
 - **A finished track holds its last frame** and stays mixed in until you fade it or empty it with `ss_clear_track(track)`. `ss_is_track_finished(track)` reports it, as `ss_is_finished()` does for track 0, and `ss_track_just_looped(track)` is its loop pulse. Only track 0 finishing ends the player's playback.
 - **Starting in step.** `ss_set_track_sync(track, ssruntime.TRACK_SYNC_START)` before laying an animation starts it at the same point of its cycle as track 0 — two walk cycles keep their stride.
 - **Playback control acts on the whole stack.** `ss_pause()` / `ss_resume()` / `ss_stop()` hold, release and stop every track and fade; `ss_play()` restarts track 0 only. The other tracks carry on after track 0 has finished.
 - **`ss_set_animation()` resets the stack** to track 0 alone, so lay your layers again after it. The stack is not saved either: a loaded save brings the player back on track 0's animation at its saved frame, without the other tracks.
-- **Several animations on one track.** `ss_add_track_source(track, name, weight)` adds another animation to a track and returns its handle; `ss_set_source_weight(handle, weight)` sets the proportions, as in a walk-to-run blend. `ss_track_main_source(track)` is the handle of the animation the track was given. The runtime reuses a handle once it releases that source (the outgoing side of a finished crossfade, for one), so ask for it again rather than keeping it.
+- **Several animations on one track.** `ss_add_track_source(track, name, weight)` adds another animation to a track and returns its handle; `ss_set_source_weight(source, weight)` sets the proportions, as in a walk-to-run blend. `ss_track_main_source(track)` is the handle of the animation the track was given. The runtime reuses a handle once it releases that source (the outgoing side of a finished crossfade, for one), so ask for it again rather than keeping it.
 
 | Call | What it does |
 |---|---|
-| `ss_crossfade(track, name, seconds)` | Fade the track over to another animation |
+| `ss_crossfade(track, name, duration)` | Fade the track over to another animation |
 | `ss_set_track_animation(track, name)` | Lay an animation on the track, without a fade |
 | `ss_clear_track(track)` / `ss_track_count()` | Empty a track / how many tracks there are |
 | `ss_set_track_alpha(track, alpha)` | How strongly the track applies, `0.0`–`1.0` |
-| `ss_fade_track(track, alpha, seconds)` | Fade the track's alpha |
+| `ss_fade_track(track, alpha, duration)` | Fade the track's alpha |
 | `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | How far the fade in flight has got (`0.0`–`1.0`, `None` when not fading) / stop it there |
 | `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX` (default) or `TRACK_BLEND_ADDITIVE` |
 | `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE` (from the top, default) or `TRACK_SYNC_START` (in step with track 0) |
 | `ss_set_track_frame(track, frame)` | Move the track's playhead |
 | `ss_is_track_finished(track)` / `ss_track_just_looped(track)` | The track's animation has played its loops (state) / wrapped this update (pulse) |
-| `ss_set_track_outgoing_event_threshold(track, share)` | Let the outgoing side of a crossfade fire events (see §8) |
+| `ss_set_track_outgoing_event_threshold(track, threshold)` | Let the outgoing side of a crossfade fire events (see §8) |
 | `ss_add_track_source(track, name, weight)` | Add another animation to a track; returns its handle |
-| `ss_set_source_weight(handle, weight)` / `ss_set_source_frame(handle, frame)` / `ss_set_source_event_threshold(handle, weight)` | One source's weight, playhead, and the weight from which it fires events |
+| `ss_set_source_weight(source, weight)` / `ss_set_source_frame(source, frame)` / `ss_set_source_event_threshold(source, threshold)` | One source's weight, playhead, and the weight from which it fires events |
 
 The settings read back through the matching `ss_get_*` (`ss_is_track_frame_skip_enabled()` for frame skip). A setter returns `False` when it is refused — an unknown animation, a track or handle that does not exist — and a getter returns `None` where there is nothing to read.
 
@@ -230,7 +230,7 @@ image ringo = SSPlayer(
 
 | Setting | Description |
 |---|---|
-| **part** | The name of the part to follow (the PartData name in the `.ssab`). `ss_part_names()` lists them, and the SpriteStudio Browser (Shift+B) shows them per pack |
+| **part** | The name of the part to follow (the part's name in SpriteStudio). `ss_part_names()` lists them, and the SpriteStudio Browser (Shift+B) shows them per pack |
 | **child** | The displayable to make follow |
 | **anchor** | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot |
 | **angle** | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part's local axis |
@@ -262,10 +262,10 @@ $ ringo.ss_clear_attachments()
 | `ss_detach(child=None, part=None)` | Removes every attachment matching that child and / or part, and returns the number removed. With neither given it removes nothing |
 | `ss_clear_attachments()` | Removes every attachment and returns the number removed |
 | `ss_attachments()` | The current attachments as `(part_name, child)` pairs |
-| `ss_part_names()` / `ss_find_part_index(part_name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
-| `ss_is_part_hidden(part_name)` | Whether the part is hidden on the last rendered frame |
-| `ss_is_part_skinned_mesh(part_name)` | Whether the part is a bone-skinned mesh — a poor follow target (see the note below). Static, so it answers before the first frame |
-| `ss_part_transform(part_name)` | The part's transform for the last rendered frame, or `None` |
+| `ss_part_names()` / `ss_find_part_index(name)` | The pack's part names / one part's index (`-1` if the part is not in the asset) |
+| `ss_is_part_hidden(name)` | Whether the part is hidden on the last rendered frame |
+| `ss_is_part_skinned_mesh(name)` | Whether the part is a bone-skinned mesh — a poor follow target (see the note below). Static, so it answers before the first frame |
+| `ss_part_transform(name)` | The part's transform for the last rendered frame, or `None` |
 | `ss_part_quad(part)` / `ss_hit_test_part(x, y, parts)` | The outline the part is drawn with, and which part is at a point (see **Outlines and Hit Testing** below) |
 
 > When you only need the part's position at a single moment (a projectile spawn point, for example) rather than continuous following, calling `ss_part_transform()` directly is simpler.
@@ -274,9 +274,9 @@ $ ringo.ss_clear_attachments()
 
 ### Timing and Accuracy
 
-Attachments are composited inside the player's own `render()`, in the same pass that computes the frame's pose, so **a child never lags the animation**.
+A child is placed from the same pose as the frame it is drawn with, so **it never lags the animation**.
 
-`ss_part_transform()` returns the pose the compositing itself uses, in player-local pixels with the animation's origin at the center of the player's box.
+`ss_part_transform()` returns the pose the children are placed from, in pixels from the animation's origin. That origin sits at the canvas's pivot (see [Size and Placement](#size-and-placement)), or at the centre of the box when you pass `size`.
 
 | Key | Meaning |
 |---|---|
@@ -361,7 +361,7 @@ $ ringo.ss_clear_all_part_overrides()
 
 | Method | Description |
 |---|---|
-| `ss_find_part_index(part_name)` | Part index, or `-1` if the part is not in the asset |
+| `ss_find_part_index(name)` | Part index, or `-1` if the part is not in the asset |
 | `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | Part Color override (single color) |
 | `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | Four-corner form: left-top, right-top, left-bottom, right-bottom |
 | `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | Draw a different cell |
@@ -411,7 +411,7 @@ Part Color and cell overrides conflict with the animation, so they take a `prior
 - **Color** applies to normal parts, **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
 - Colors are interpreted in the same 8-bit sRGB space as the authored Part Color, and alpha is pre-multiplied by the runtime — pass the color as authored, without converting it yourself.
 - A cell override is resolved when you set it, so an unknown cellmap / cell name fails immediately (returns `False`).
-- Overrides live on the runtime, which owns their lifecycle: an override lasts across animation changes as its priority mode says, so pick the mode that expresses what you want.
+- An override lasts across animation changes as its priority mode says, so pick the mode that expresses what you want.
 - Overrides are restored when a saved game is loaded, so a costume change survives save / load. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
 - Overrides do not reach parts **inside** an instance part (the child animation runs as a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
 
@@ -482,10 +482,10 @@ image boss = SSPlayer(
 **Available Callback Arguments:**
 - `on_user_data`: Called when User Data is reached
 - `on_signal`: Called when a Signal is reached
-- `on_audio`: Called when an audio playback specified frame is reached
+- `on_audio`: Called when an audio playback specified frame is reached. The player plays the sound itself, so use this to react to it (a subtitle, say), not to play it again
 - `on_animation_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
 - `on_animation_looped`: Called each time a loop iteration completes; the final iteration fires `on_animation_finished` instead
-- `on_animation_started`: Called when animation playback starts
+- `on_animation_started`: Called when `ss_play()` starts playback, when the player is shown again and restarts, and when a sequence moves on to its next animation. Not called for the animation a player starts on when it is first shown
 
 > [!NOTE]
 > Callbacks are invoked from the drawing thread in the form `cb(player, frame_index, event)` for the per-part events, and `cb(player)` for start/finish/loop. `frame_index` is the frame the key is **authored** on, which is not necessarily the frame it was noticed on — one update can step across several and fires every key in between. The event itself carries `part_index` and `part_name` (`None` when the pack has no name for that part). To support pickling during rollback, please pass module-level functions rather than lambdas or local functions. A callback runs as its frame is drawn, and Ren'Py keeps drawing the scene under the game menu, so one can run while the player is on the save screen — just as SpriteStudio sounds keep playing there. Keep a callback to what may happen at any moment, such as setting a variable or `renpy.notify()`, rather than jumping to or calling a label.
@@ -500,7 +500,7 @@ image boss = SSPlayer(
 ## 9. Utilities
 
 ### One-Shot Playback Made Easy (`ss_play_once`)
-Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one with `ss_hide_once(tag)`.
+Plays any `.ssab` once (effect or full-screen cutscene). With `wait=True`, it waits until playback finishes and automatically disappears; hide a non-waiting one by passing the tag `ss_play_once` returns (the `tag=` you gave, if any) to `ss_hide_once(tag)`.
 ```renpy
 $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
                at=Transform(xcenter=640, ycenter=360), wait=True)

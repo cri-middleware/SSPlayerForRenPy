@@ -50,6 +50,7 @@ How the player is put together — its layers, where each platform loads the nat
 ### Prerequisites
 - Python 3
 - Rust (`rustup`) for building the core runtime
+- The `SpriteStudio-SDK` submodule (`git submodule update --init`): `build-runtime` builds it, and `deploy-examples` converts its test projects
 
 ### Build the Runtime
 To compile the SDK runtime, use the provided build scripts:
@@ -64,10 +65,9 @@ To compile the SDK runtime, use the provided build scripts:
 .\scripts\build-runtime.ps1
 ```
 
-Once built, deploy the example assets and run the demo:
+Instead of building, `./scripts/download-sdk.sh` installs the released runtime; run after a build, it replaces the build. With the runtime in place, deploy the example assets and run the demo:
 
 ```bash
-./scripts/download-sdk.sh        # or build-runtime.sh, above
 ./scripts/deploy-examples.sh     # game/ss_assets/
 ./scripts/run-demo.sh
 ```
@@ -87,7 +87,7 @@ Every engine-independent layer has a headless check in `tools/`, in plain CPytho
 Outside the suite: `tools/analyze.py` (DrawBatchKind audit), `cli_convert.py` (shell `.sspj` → `.ssab`), `ss_stamp_import.py` (stamp the auto-importer marker over an out-of-band pack), and `render_png.py` / `render_mask_png.py` (software raster, not GL2 — the only two needing Pillow).
 
 ### Documentation
-`docs/` is bilingual and ordered `setup → import → usage → export`, plus `limitations` and the developer pages under `development/`; `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`, each locale owning its own `assets/`, with source-relative asset paths **including inside raw `<video>` / `<img>` HTML**. Keep `docs/` user-facing: never cite a dev script there. The developer pages under `development/` are the exception: they are the developer shelf — building, using a changed copy, checking in Ren'Py, how the player is put together and why — and cite scripts throughout. The English pages also ship inside the release zip's `spritestudio/docs/`, behind the front door `scripts/release-docs/zip-README.md`; renaming a page it links to means editing it too, and `build-release` refuses a link that goes nowhere. If you edit a page, build both locales before you finish. CI builds them too, both `--strict`, on a pull request that touches the site's sources, on the release PR and weekly; the front door's links are checked only when `build-release` runs, which no pull request does.
+`docs/` is bilingual and ordered `setup → import → usage → buttons → export`, plus `limitations` and the developer pages under `development/`; `limitations.md` is the canonical supported / unsupported list. Every page exists as both `docs/en/<path>` and `docs/ja/<path>`, each locale owning its own `assets/`, with source-relative asset paths **including inside raw `<video>` / `<img>` HTML**. Keep `docs/` user-facing: never cite a dev script there. The developer pages under `development/` are the exception: they are the developer shelf — building, using a changed copy, checking in Ren'Py, how the player is put together and why — and cite scripts throughout. The English pages also ship inside the release zip's `spritestudio/docs/`, behind the front door `scripts/release-docs/zip-README.md`; renaming a page it links to means editing it too, and `build-release` refuses a link that goes nowhere. If you edit a page, build both locales before you finish. CI builds them too, both `--strict`, on a pull request that touches the site's sources, on the release PR and weekly; the front door's links are checked only when `build-release` runs, which no pull request does.
 
 ```bash
 scripts/prepare-docs.sh              # once: .venv + the pins in docs/requirements.txt
@@ -167,6 +167,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ### 前提条件
 - Python 3
 - RustランタイムをビルドするためのRust環境 (`rustup`)
+- `SpriteStudio-SDK` サブモジュール（`git submodule update --init`）: `build-runtime` がこれをビルドし、`deploy-examples` がその中のテストプロジェクトを変換します
 
 ### ビルド方法
 提供されているスクリプトを使用して、SDKからRustランタイムをビルドします。
@@ -181,10 +182,9 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 .\scripts\build-runtime.ps1
 ```
 
-ビルドしたら、サンプルアセットを配置してデモを実行してください。
+ビルドする代わりに、`./scripts/download-sdk.sh` でリリース済みのランタイムを入れることもできます。ビルドの後に実行すると、ビルドしたものが置き換わります。ランタイムを置いたら、サンプルアセットを配置してデモを実行してください。
 
 ```bash
-./scripts/download-sdk.sh        # または上記の build-runtime.sh
 ./scripts/deploy-examples.sh     # game/ss_assets/
 ./scripts/run-demo.sh
 ```
@@ -204,7 +204,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 スイートの外にあるもの: `tools/analyze.py`（DrawBatchKind の監査）、`cli_convert.py`（シェルからの `.sspj` → `.ssab` 変換）、`ss_stamp_import.py`（別経路で作ったパックに自動インポーターのマーカーを付ける）、`render_png.py` / `render_mask_png.py`（GL2 ではなくソフトウェアラスタ。Pillow が必要なのはこの 2 つだけ）。
 
 ### ドキュメント
-`docs/` は日英 2 言語で、`setup → import → usage → export`（＋ `limitations` と、`development/` の下の開発者向けのページ）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。例外は `development/` の下の開発者向けのページで、これは開発者向けの棚（ビルド、変更した版の使い方、Ren'Py での確かめ方、プレイヤーの構成とその理由）なので、スクリプトを随所で引用します。英語のページはリリースの zip の `spritestudio/docs/` にも入り、入口ページ `scripts/release-docs/zip-README.md` から案内されます。入口ページが指すページを改名したら入口ページも直してください（行き先の無いリンクは `build-release` が拒否します）。ページを編集したら、仕上げる前に両ロケールをビルドしてください。CI も、サイトのソースに触れるプルリクエスト、リリースのプルリクエスト、週次の実行で、両ロケールを `--strict` でビルドします。入口ページのリンクを確かめるのは `build-release` の実行時だけで、これはどのプルリクエストでも実行されません。
+`docs/` は日英 2 言語で、`setup → import → usage → buttons → export`（＋ `limitations` と、`development/` の下の開発者向けのページ）の順です。`limitations.md` が対応・非対応の正典一覧です。ページは `docs/en/<path>` と `docs/ja/<path>` の両方に存在し、`assets/` もロケールごとに持ち、アセットのパスはソース相対です（**生の `<video>` / `<img>` HTML の中でも同じ**）。`docs/` は利用者向けに保ち、開発用スクリプトを引用しないでください。例外は `development/` の下の開発者向けのページで、これは開発者向けの棚（ビルド、変更した版の使い方、Ren'Py での確かめ方、プレイヤーの構成とその理由）なので、スクリプトを随所で引用します。英語のページはリリースの zip の `spritestudio/docs/` にも入り、入口ページ `scripts/release-docs/zip-README.md` から案内されます。入口ページが指すページを改名したら入口ページも直してください（行き先の無いリンクは `build-release` が拒否します）。ページを編集したら、仕上げる前に両ロケールをビルドしてください。CI も、サイトのソースに触れるプルリクエスト、リリースのプルリクエスト、週次の実行で、両ロケールを `--strict` でビルドします。入口ページのリンクを確かめるのは `build-release` の実行時だけで、これはどのプルリクエストでも実行されません。
 
 ```bash
 scripts/prepare-docs.sh              # 一度だけ: .venv と docs/requirements.txt のピン

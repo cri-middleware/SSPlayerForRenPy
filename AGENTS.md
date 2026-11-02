@@ -28,7 +28,8 @@ A creator-facing Ren'Py plugin for **SpriteStudio**, over two native cores from 
 submodule: `libssruntime` (the Brain) emits each frame as a FlatBuffers draw plan, and `libssconverter`
 turns `.sspj` into `.ssab`. In `game/spritestudio/`, `SSInternalPlayer` (`python/ss_renpy/player.py`) is
 the engine-independent core, and the `SSPlayer` displayable (`spritestudio.rpy`) builds the
-`renpy.Render`; the other `*.rpy` are self-contained, dev-gated conveniences.
+`renpy.Render`; the other `*.rpy` are self-contained conveniences, and the importer, the Shift+B browser and the
+diagnostics among them run only with `config.developer` on.
 
 ## Where each answer is written
 

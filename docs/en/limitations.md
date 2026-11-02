@@ -1,6 +1,6 @@
 # ⚠️ Limitations & Scope
 
-Restrictions and unimplemented features of the current SpriteStudio Player for Ren'Py. (For the list of what *is* supported, see the usage docs.)
+Restrictions and unimplemented features of the current SpriteStudio Player for Ren'Py.
 
 This page covers what is specific to **this** player. The constraints that come from the shared runtime and therefore apply to every official player — `independent=true` parts under reverse playback and seeking, seeking not firing the events it skips, no reverse audio, unvalidated `.ssab` input — are documented once in the portal: **[Shared Limitations](https://cri-middleware.github.io/SpriteStudio-Docs/sdk/limitations/)**.
 
@@ -12,9 +12,9 @@ This page covers what is specific to **this** player. The constraints that come 
 ## Partially Supported
 
 > [!WARNING]
-> - **Blend modes** — blending goes through Ren'Py's `config.gl_blend_func`, so modes with no GL equivalent (Division, Overlay) fall back to Mix.
+> - **Blend modes** — blending goes through Ren'Py's `config.gl_blend_func`, so Div2 and Overlay2, which have no GL equivalent, fall back to Mix, Mulalpha and Mul2 draw as Mul, and Screen2 draws as Screen.
 > - **Atlases past the display's texture limit** — a texture larger than `config.max_texture_size` (4096x4096 by default, and never more than the GPU allows) is loaded as a grid of tiles, which no mesh can sample. Parts on such an atlas are drawn through the simpler transform path instead — the shape is right, but mesh deformation and UV transforms are not applied — and Effect particles on one are skipped; a line in `log.txt` names the atlas. Re-export the pack with a smaller atlas, or raise `config.max_texture_size` in `options.rpy`, which also enlarges the framebuffer Ren'Py allocates (4096 to 8192 takes it from 64MB to 256MB of VRAM).
-> - **Whole-part color tint on Mesh / Instance parts** — `parts_color` is applied per-vertex on Normal / Shape parts; a whole-part tint on Mesh parts is currently approximated (alpha only).
+> - **Whole-part color tint on Mesh parts** — `parts_color` is applied per-vertex on Normal / Shape parts; a whole-part tint on Mesh parts is currently approximated (alpha only).
 > - **Masks on Effect particles** — mask / clipping applies to Normal, Mesh, and Shape parts; particles emitted by Effect parts are drawn unclipped even where the editor clips them.
 > - **At most 96 masks at once in one animation** — counting both mask parts and parts that write a clipping mask, and the animations it plays through Instance parts: an instance's masks count again every time the instance is placed. A hidden mask, or one whose mask value is 0, does not count. Past 96 the ones drawn last are ignored, and a line in `log.txt` says so. Up to 24 masks are drawn at full resolution; past that the mask edges get coarser rather than using more memory.
 > - **Part overrides inside Instance parts** — a color / cell / visibility override reaches the parts of the animation you call it on, not the parts inside an Instance part (that nested child animation runs as a separate player). Force-hiding the Instance part itself does stop its contents from being drawn.

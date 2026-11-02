@@ -4,7 +4,7 @@ SpriteStudio Player for Ren'Py を組み込んだゲームを各プラットフ�
 
 > このページは、標準の Ren'Py ランチャーで**自分のゲーム**をエクスポートする**ゲーム制作者**向けです。本リポジトリ内で作業する場合（デモやネイティブライブラリのビルド）は、以下の各エクスポートを自動化する開発者向けヘルパースクリプトを [ビルドガイド](development/build.md) にまとめています。
 
-全プラットフォーム共通: `game/spritestudio/libs/` には全プラットフォーム向けのネイティブライブラリが入っていて、Ren'Py がゲームに同梱します。**アセット**はゲーム自身のコンテンツなので、ご自身の `options.rpy` で classify してください。`build.classify('**.ssab', 'all')`、シーケンスパックがあれば `build.classify('**.ssqb', 'all')`、アニメが SS Audio のイベントで音を鳴らすなら `'**.wav'` / `'**.mp3'` も追加します。特に Web エクスポートは、明示分類しないと未知の拡張子を落とします。
+全プラットフォーム共通: `game/spritestudio/libs/` には全プラットフォーム向けのネイティブライブラリが入っています。デスクトップと Web では、Ren'Py が必要なものをゲームに同梱します。Android と iOS では、後述のとおり一度だけ手で配置します。**アセット**はゲーム自身のコンテンツなので、ご自身の `options.rpy` で classify してください。`build.classify('**.ssab', 'all')`、シーケンスパックがあれば `build.classify('**.ssqb', 'all')`、アニメが SS Audio のイベントで音を鳴らすなら `'**.wav'` / `'**.mp3'` も追加します。特に Web エクスポートは、明示分類しないと未知の拡張子を落とします。
 
 ## デスクトップ向けエクスポート (Windows / macOS / Linux)
 
@@ -31,13 +31,13 @@ Ren'Py 標準の [RAPT](https://www.renpy.org/doc/html/android.html) を使い�
    ```
 
    ABI は `arm64-v8a`（大半の 64bit 端末）、`armeabi-v7a`（旧端末）、`x86_64`（エミュレータ）です。
-2. **ビルド** — `.aab`（Play アップロード用）か `.apk` を作ります。
+2. **ビルド** — 同じ画面で **Play Bundle**（`.aab`、Play アップロード用）か **Universal APK**（`.apk`）を選び、**パッケージのビルド** を押します。
 
 ## iOS 向けエクスポート
 
 Ren'Py 標準の [renios](https://www.renpy.org/doc/html/ios.html) を使います。**Xcode プロジェクト**を生成し、`.ipa` は Xcode でビルドします。**macOS + Xcode が必須**です。
 
-1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（**iOS** → **Xcode プロジェクト作成**）、または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
+1. **Xcode プロジェクトを生成** — Ren'Py のランチャー（**iOS** → 初回は **Xcode プロジェクトディレクトリー選択**、続けて **Xcode プロジェクト作成**）、または同等の `<renpy> launcher ios_create . <xcode-project-dir>` CLI コマンドで生成します。
 2. **ネイティブライブラリを一度だけ埋め込む** — Xcode で app ターゲット → **General** → **Frameworks, Libraries, and Embedded Content** → **+** → *Add Files…* → `game/spritestudio/libs/ios/libssruntime.xcframework` → **Embed & Sign**。以降の `ios_populate` の再実行でも維持されます。
 3. **ビルド** — **シミュレータ**を選んで **Run**（署名不要）、または signing team を設定し **Product > Archive** で実機 `.ipa` を生成します。
 

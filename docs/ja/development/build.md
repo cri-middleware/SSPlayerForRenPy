@@ -16,10 +16,10 @@
 Rust製のネイティブライブラリをビルドする必要がないため、手軽にカスタマイズ環境を構築できます。
 
 ### 1.1 必要な環境
-- **Python (3.x)**: デモ用データのコンバートスクリプト (`deploy-examples.sh`) や、Ren'Py SDKの取得スクリプトの実行に必要です。
+- **`curl`・`tar`・`unzip`**（macOS / Linux）: ダウンロードと取得のスクリプトが使います。Python を別にインストールする必要はありません。`deploy-examples` と `run-demo` は Ren'Py SDK に同梱の Python を使います。
 
 ### 1.2 リポジトリの準備
-デモ用のテストデータ等を取得するため、サブモジュールを初期化します。ここではネイティブのビルド環境は不要なため、`--recursive` オプションは**付けません**。
+デモが再生するテストプロジェクトを持つ `SpriteStudio-SDK` サブモジュールを初期化します。
 ```bash
 git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
@@ -72,14 +72,15 @@ Rust製の `SpriteStudio-SDK` のコードを含めてフルスクラッチで�
 1. **Python (3.x)**: ツールおよび各種スクリプト用。
 2. **Rust環境 (`rustup`)**: ランタイムライブラリをソースコードからビルドするために必須です。公式サイト ([rustup.rs](https://rustup.rs/)) からインストールしてください。
 3. **`flatc` (FlatBuffers Compiler)**: 再生データのバインディング定義（自動生成）を再構築する場合のみ必要です。
-4. **`wasm-opt` (Binaryen)**: Web (WASM) ターゲット向けにビルドを行う場合に必須です。
+4. **`wasm-pack`**（`cargo install wasm-pack`）: Web（`platform=web`）のビルドに必須です。`wasm-opt` は wasm-pack が自分で取得します。
+5. **ビルド先の Rust ターゲット**: macOS では `build-runtime.sh` が universal framework の両方のアーキテクチャを必ずビルドするので、`rustup target add aarch64-apple-darwin x86_64-apple-darwin` を実行しておきます。`platform=android` にはさらに Android NDK、`cargo-ndk`（`cargo install cargo-ndk`）、`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` が、`platform=ios` には Xcode と `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios` が要ります。
 
 ### 2.2 リポジトリとサブモジュールの完全な準備
-依存する全てのクレート等を含めて取得するため、`--recursive` を付けてサブモジュールを初期化します。
+1.2 と同じようにサブモジュールを初期化します。SDK が依存するクレートは、ビルドの際に cargo が取得します。
 ```bash
 git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
-git submodule update --init --recursive
+git submodule update --init
 ```
 
 ### 2.3 ネイティブライブラリのビルド
@@ -171,7 +172,7 @@ scripts\deploy-web.ps1     [dest_dir]
 1. ネイティブライブラリを置きます。リリース版なら `scripts/download-sdk.*`、SDK を変更したなら `scripts/build-runtime.*` です（[2.3](#23-ネイティブライブラリのビルド)。Android・iOS・Web は `platform=` で指定します）。
 2. ゲームの `game/spritestudio/` を削除してから、チェックアウトの `game/spritestudio/` をコピーします。先に削除するのは、`.rpy` が無くなっても Ren'Py が残った `.rpyc` を実行し続けるためです。
 
-変更をほかの人に渡すときは、リリースが公開する zip を作ります。`scripts/build-release.sh demo=skip` がチェックアウトから `release-dist/SSPlayerForRenPy-<version>.zip` を書き出します。ライブラリは `sdk=` で選びます（選択肢は `--help` にあります）。インストールは [導入ガイド](../setup.md) のとおりです。
+変更をほかの人に渡すときは、リリースが公開する zip を作ります。`scripts/build-release.sh demo=skip sdk=skip` が、手順 1 で置いたライブラリのまま、チェックアウトから `release-dist/SSPlayerForRenPy-<version>.zip` を書き出します。`sdk=skip` を付けないと、先に `scripts/SDK_VERSION.txt` が指す SDK リリースをその上にインストールします（選択肢は `--help` にあります）。インストールは [導入ガイド](../setup.md) のとおりです。
 
 ---
 
@@ -213,7 +214,7 @@ label zz_check:
 - `modal True` の画面（Shift+B のブラウザなど）を出したまま `renpy.pause` すると戻りません。`zorder` の高い画面の `timer … repeat True` で手順を進め、ラベルでは `$ ui.interact()` で待ちます。
 - 操作は本物の入力で起こします。`renpy.test.testmouse` の `move_mouse`・`press_mouse`・`release_mouse` を、`renpy.display.focus.focus_list` から読んだ位置で使います。Displayable の状態を書き換えてドラッグを真似ると、Ren'Py が実際に通る経路を素通りします。
 - init のコードは要るが描画は要らないもの（`SSPlayer` のコンストラクタ、`_duplicate`、読み込み、インポーター）は、init ブロックを実行する lint で回せます。使い捨ての `game/zz_*.rpy` に `init 999 python:` を書き、`renpy-sdk/renpy.sh . lint --error-code` を実行します。
-- デモ自体のスクリプト（`spritestudio/` の外の `game/*.rpy`）は、テストにも lint にも掛かりません。`ss_*` のメソッドを改名したら、手で探してください。
+- デモ自体のスクリプト（`spritestudio/` の外の `game/*.rpy`）にはテストが無く、lint もその Python の中の `ss_*` の呼び出しは確かめません。`ss_*` のメソッドを改名したら、手で探してください。
 
 ### 5.3 Web 版
 

@@ -73,6 +73,7 @@ body:
         - label: macOS
         - label: Linux
         - label: Android
+        - label: iOS
         - label: Web
 
   - type: textarea

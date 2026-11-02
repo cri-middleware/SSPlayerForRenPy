@@ -44,7 +44,7 @@ flowchart TD
 From the bottom up:
 
 - **The bridge to the Brain** loads the native library and exposes its C API through `ctypes`; on
-  the Web it talks to the Brain's WebAssembly build through `renpy.emscripten` instead. A binding
+  the Web it talks to the Brain's WebAssembly build through Ren'Py's `emscripten` module instead. A binding
   of the same kind reaches `libssconverter`, which the importer converts with.
 - **The engine-independent core** plays one pack and turns its draw plan into geometry: instance
   parts, effects, masks, events, and what the `.ssab` holds that the Brain does not hand over.
@@ -88,6 +88,11 @@ Each reason here spans files; the code it concerns carries the detail in its com
 **Attachments are composited inside `SSPlayer.render()`,** in the pass that computes the frame's
 pose. That is why a child attached with `ss_attach` never lags the animation: a separate drive
 step could run at the wrong moment and draw the child against the previous frame's pose.
+
+**Part overrides live in the Brain.** It applies them on the resolved pose and owns their
+lifecycle — a new animation drops visibility and non-Permanent color / cell overrides, a new pack
+drops everything — so the core keeps no copy. `SSPlayer` keeps a record only to put them back
+after a load, when Ren'Py rebuilds the native core.
 
 **A mirrored part reaches an attachment as a rotation.** A part's pose is described as a rotation
 and two scale magnitudes — what `ss_part_transform` returns — so the sign that carries a

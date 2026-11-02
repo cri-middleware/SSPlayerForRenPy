@@ -15,7 +15,7 @@ define config.version = "demo"
 # deploy-desktop.*). WITHOUT this, Ren'Py leaves the packaged app's
 # CFBundleExecutable / executable name empty, producing a `-mac.zip` whose `.app`
 # has no launcher binary and will not start. Downstream games should set their
-# own. See docs/en/export.md (Desktop Export).
+# own.
 define build.name = "SSPlayerForRenPy"
 define config.save_directory = "SSPlayerForRenPy-demo"
 define config.window_title = "SpriteStudio Player for Ren'Py — Demo"

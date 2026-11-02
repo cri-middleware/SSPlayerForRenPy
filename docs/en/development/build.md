@@ -21,10 +21,10 @@ Set up one of the following two environments depending on your goals:
 Because you don't need to build the Rust-based native libraries, you can set up a customization environment very easily.
 
 ### 1.1 Prerequisites
-- **Python (3.x)**: Required to run the demo data conversion script (`deploy-examples.sh`) and the Ren'Py SDK fetch script.
+- **`curl`, `tar` and `unzip`** on macOS / Linux, which the download and fetch scripts use. No Python of your own is needed: `deploy-examples` and `run-demo` use the one bundled with the Ren'Py SDK.
 
 ### 1.2 Repository Setup
-Initialize the submodules to obtain test data for the demo. Since the native build environment is not needed here, do **not** use the `--recursive` option.
+Initialize the `SpriteStudio-SDK` submodule, which holds the test projects the demo plays.
 ```bash
 git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
@@ -77,14 +77,15 @@ These steps are for those who want to build and modify from scratch, including t
 1. **Python (3.x)**: For tools and various scripts.
 2. **Rust Environment (`rustup`)**: Mandatory for building the runtime library from source code. Please install it from the official site ([rustup.rs](https://rustup.rs/)).
 3. **`flatc` (FlatBuffers Compiler)**: Only needed if you are rebuilding the binding definitions (auto-generation) of the playback data.
-4. **`wasm-opt` (Binaryen)**: Required if you are building the Web (WASM) target.
+4. **`wasm-pack`** (`cargo install wasm-pack`): Required for the Web (`platform=web`). It fetches `wasm-opt` itself.
+5. **The Rust targets the build compiles for**: on macOS, `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, as `build-runtime.sh` always builds both halves of the universal framework. `platform=android` also needs the Android NDK, `cargo-ndk` (`cargo install cargo-ndk`) and `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`; `platform=ios` needs Xcode and `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`.
 
 ### 2.2 Complete Setup of Repository and Submodules
-To fetch all dependent crates, initialize the submodules with `--recursive`.
+Initialize the submodule as in 1.2. The crates the SDK depends on are fetched by cargo during the build.
 ```bash
 git clone https://github.com/cri-middleware/SSPlayerForRenPy.git
 cd SSPlayerForRenPy
-git submodule update --init --recursive
+git submodule update --init
 ```
 
 ### 2.3 Building the Native Library
@@ -194,8 +195,9 @@ A game takes the player as one folder, so a checkout gets into a game the way a 
    Delete first: Ren'Py keeps running a `.rpyc` whose `.rpy` is gone.
 
 To hand the change to someone else, build the zip a release publishes:
-`scripts/build-release.sh demo=skip` writes `release-dist/SSPlayerForRenPy-<version>.zip`
-from the checkout, with the libraries `sdk=` picks (`--help` lists them). It installs as the
+`scripts/build-release.sh demo=skip sdk=skip` writes `release-dist/SSPlayerForRenPy-<version>.zip`
+from the checkout, with the libraries step 1 put in place. Without `sdk=skip` it first installs the
+SDK release `scripts/SDK_VERSION.txt` names over them (`--help` lists the choices). It installs as the
 [Setup Guide](../setup.md) describes.
 
 ---
@@ -255,8 +257,8 @@ Run it with
 - What needs init code but no drawing — `SSPlayer`'s constructor, `_duplicate`, loading, the
   importer — runs under lint, which executes init blocks: an `init 999 python:` in a
   throwaway `game/zz_*.rpy`, then `renpy-sdk/renpy.sh . lint --error-code`.
-- The demo's own scripts (`game/*.rpy` outside `spritestudio/`) are under no test and no lint
-  check. After renaming an `ss_*` method, search them by hand.
+- The demo's own scripts (`game/*.rpy` outside `spritestudio/`) are under no test, and lint does not
+  check the `ss_*` calls in their Python. After renaming an `ss_*` method, search them by hand.
 
 ### 5.3 The Web Build
 

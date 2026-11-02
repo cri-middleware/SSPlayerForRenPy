@@ -78,7 +78,7 @@ gh run watch "${RUN:?}" --exit-status
 **A person signs off the rendering.** GL2 rendering — premultiplied alpha, mesh, blend, mask, the `ss-*` shaders — has no headless check, so it is judged by eye in the demo, on the branch, against the SDK release `scripts/SDK_VERSION.txt` pins. This is the one part that is not bash on Windows: `fetch-renpy-sdk.sh` refuses Git Bash and `run-demo.sh` starts the macOS / Linux launcher, so run the three scripts' `.ps1` twins in PowerShell, as [CONTRIBUTING.md](./CONTRIBUTING.md) does.
 
 ```bash
-scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B opens the Asset Browser
+git submodule update --init && scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B opens the Asset Browser
 ```
 
 Last, scan the branch for code that carries someone else's copyright or license. `provenance.yml` runs ScanCode, which finds copyright and license notices, and keeps its report and a summary on the run (`provenance`); the block downloads them into `qa/<run ID>` and prints the summary. **A person sorts what the summary lists.** A notice of the earlier SpriteStudio Players and SDK marks our own code. A notice of a library this repository bundles must be listed in `THIRD_PARTY_NOTICES.md`. Anything else is rewritten, unless its license, read at its source, is compatible with BSD-3-Clause and the code keeps the notice that license asks for. After any change on the branch, run the block again.
@@ -313,7 +313,7 @@ gh run watch "${RUN:?}" --exit-status
 **描画の確認は人が行います。** GL2 の描画 — 乗算済みアルファ、メッシュ、ブレンド、マスク、`ss-*` シェーダ — にはヘッドレスの検査が無いので、ブランチ上で、`scripts/SDK_VERSION.txt` が指す SDK リリースを使ってデモを目で見て判断します。Windows で bash を使わないのはここだけです。`fetch-renpy-sdk.sh` は Git Bash では実行を拒否し、`run-demo.sh` は macOS / Linux 用の起動スクリプトを使うので、[CONTRIBUTING.md](./CONTRIBUTING.md) と同じく、3 つのスクリプトの `.ps1` 版を PowerShell で実行してください。
 
 ```bash
-scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B で Asset Browser を開く
+git submodule update --init && scripts/download-sdk.sh && scripts/deploy-examples.sh && scripts/run-demo.sh   # Shift+B で Asset Browser を開く
 ```
 
 最後に、他者の著作権やライセンスの付いたコードが無いかを、ブランチで検査します。`provenance.yml` は ScanCode で著作権表示とライセンスの記述を見つけ、報告と一覧を run に残します（`provenance`）。ブロックはそれを `qa/<run ID>` にダウンロードし、一覧を表示します。**一覧は人が仕分けます。** 以前の SpriteStudio の Player・SDK の表示が付いたコードは、自社のコードです。このリポジトリが同梱するライブラリの表示は、`THIRD_PARTY_NOTICES.md` に載っていなければなりません。それ以外は書き直します。残せるのは、出所で確かめたライセンスが BSD-3-Clause と両立し、そのライセンスが求める表示をコードに残すときだけです。ブランチを変えたら、このブロックをもう一度実行します。
