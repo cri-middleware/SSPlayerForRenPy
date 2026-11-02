@@ -50,6 +50,7 @@ How the player is put together — its layers, where each platform loads the nat
 ### Prerequisites
 - Python 3
 - Rust (`rustup`) for building the core runtime
+- The `SpriteStudio-SDK` submodule (`git submodule update --init`): `build-runtime` builds it, and `deploy-examples` converts its test projects
 
 ### Build the Runtime
 To compile the SDK runtime, use the provided build scripts:
@@ -64,10 +65,9 @@ To compile the SDK runtime, use the provided build scripts:
 .\scripts\build-runtime.ps1
 ```
 
-Once built, deploy the example assets and run the demo:
+Instead of building, `./scripts/download-sdk.sh` installs the released runtime; run after a build, it replaces the build. With the runtime in place, deploy the example assets and run the demo:
 
 ```bash
-./scripts/download-sdk.sh        # or build-runtime.sh, above
 ./scripts/deploy-examples.sh     # game/ss_assets/
 ./scripts/run-demo.sh
 ```
@@ -167,6 +167,7 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 ### 前提条件
 - Python 3
 - RustランタイムをビルドするためのRust環境 (`rustup`)
+- `SpriteStudio-SDK` サブモジュール（`git submodule update --init`）: `build-runtime` がこれをビルドし、`deploy-examples` がその中のテストプロジェクトを変換します
 
 ### ビルド方法
 提供されているスクリプトを使用して、SDKからRustランタイムをビルドします。
@@ -181,10 +182,9 @@ Ren'Pyとのネイティブな統合と高いパフォーマンスを維持す�
 .\scripts\build-runtime.ps1
 ```
 
-ビルドしたら、サンプルアセットを配置してデモを実行してください。
+ビルドする代わりに、`./scripts/download-sdk.sh` でリリース済みのランタイムを入れることもできます。ビルドの後に実行すると、ビルドしたものが置き換わります。ランタイムを置いたら、サンプルアセットを配置してデモを実行してください。
 
 ```bash
-./scripts/download-sdk.sh        # または上記の build-runtime.sh
 ./scripts/deploy-examples.sh     # game/ss_assets/
 ./scripts/run-demo.sh
 ```
