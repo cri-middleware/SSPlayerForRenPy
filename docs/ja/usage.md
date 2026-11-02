@@ -80,7 +80,7 @@ label start:
 
 - 画像タグは `.ssab` のファイル名 stem を小文字化したもの（例 `"ringo"`）。`tag=` で上書き可。
 - `aliases=`（感情など）や `size=`（[サイズと配置](#サイズと配置) を参照）も渡せます。
-- 口パクの開始/終了タイミングは `start` / `stop`（Character のコールバックイベント名）で調整可能。
+- 既定では、台詞が表示されたとき（`show_done`）に talk を始め、台詞を閉じるとき（`end`）まで続けます。文字の表示が終わったところで止めたいときは `stop=("slow_done", "end")` を渡します。`start` / `stop` には Character のコールバックイベント名を渡します。
 
 > [!NOTE]
 > 台詞の間は `talk` が表示中の属性を置き換えるため、`show ringo happy` のような感情は台詞の間は見えませんが、台詞が終わると元に戻ります。感情ごとの talk アニメには対応していません。
@@ -126,7 +126,7 @@ add SSPlayer("ss_assets/Ringo/Ringo.ssab") fit "scale-down" xysize (400, 300) xa
 image hit_effect = SSPlayer(
     "ss_assets/ParticleEffect/e038.ssab",
     animation="hit",
-    loop=1 # 1回再生したら終了して画面から消える（または最後のフレームで止まる）
+    loop=1 # 1 回再生したら最後のフレームで止まる（画像は hide するまで表示されたまま）
 )
 
 label battle:
@@ -185,29 +185,29 @@ if ringo.ss_is_track_finished(1):
 
 - **トラック 0 のクロスフェードは、呼んだ時点で切り替わります。** そこから `ss_get_current_animation()` は入ってくる側の名前を返し、`ss_is_finished()`、`on_animation_finished` / `on_animation_looped`、イベントも入ってくる側のものになります。出ていく側がフェード中に終わっても、プレイヤーは終了になりません。フェード前のアニメーションを `ss_set_animation()` すればそちらに戻れます。フェード先のアニメーションを `ss_set_animation()` しても何も起きず、フェードはそのまま続きます。
 - **引き継がれるもの。** 速度・再生方向・フレームスキップ・フレームレートの上書きはトラックの設定なので、入ってくる側も出ていく側と同じように再生されます。ループ回数も、`ss_set_loop_count()` で設定した回数（設定していなければコンストラクタの `loop`）が入ってくる側に掛かります。待っているシーケンスは `ss_set_animation()` と同じく破棄されます。パーツオーバーライドは残ります。`on_animation_started` は呼ばれません（切り替えであって、再生の開始ではないため）。
-- **重ね合わせ。** `ss_set_track_animation(track, name)` は、フェードせずにトラックへアニメーションを載せます。`ss_set_track_alpha(track, alpha)` でそのトラックの効き具合を決め、`ss_fade_track(track, alpha, seconds)` でそこまでフェードさせます。`ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` にすると、ポーズに混ぜる代わりに足し込みます。トラックが動かすのは、そのアニメーションにキーがあるアトリビュートだけです。
+- **重ね合わせ。** `ss_set_track_animation(track, name)` は、フェードせずにトラックへアニメーションを載せます。`ss_set_track_alpha(track, alpha)` でそのトラックの効き具合を決め、`ss_fade_track(track, alpha, duration)` でそこまでフェードさせます。`ss_set_track_blend(track, ssruntime.TRACK_BLEND_ADDITIVE)` にすると、ポーズに混ぜる代わりに足し込みます。トラックが動かすのは、そのアニメーションにキーがあるアトリビュートだけです。
 - **再生設定はトラックごと** にあり（`ss_set_track_speed()`、`ss_set_track_loop_count()`、`ss_set_track_playback_direction()`、`ss_set_track_frame_skip_enabled()`、`ss_set_track_frame_rate()`）、あとからそのトラックに載せるアニメーションにも効きます。トラック 0 の設定はプレイヤー自身の設定（`ss_set_speed_scale()` など）です。ただしループ回数は例外で、トラックに載せたアニメーションは回数を設定するまで無限にループします。回数はアニメーションを載せた後に設定してください。
 - **終わったトラックは最後のフレームのまま** 混ざり続けます。フェードさせるか、`ss_clear_track(track)` で空にするまでそのままです。終わったかどうかは `ss_is_track_finished(track)`（トラック 0 の `ss_is_finished()` に当たるもの）、ループの瞬間は `ss_track_just_looped(track)` で分かります。プレイヤーの再生を終わらせるのは、トラック 0 の終了だけです。
 - **歩調を揃えて始める。** アニメーションを載せる前に `ss_set_track_sync(track, ssruntime.TRACK_SYNC_START)` にしておくと、トラック 0 と同じ周期の位置から始まります（歩き同士なら歩幅が揃います）。
 - **再生制御はスタック全体に効きます。** `ss_pause()` / `ss_resume()` / `ss_stop()` はすべてのトラックとフェードを止め、再開し、停止します。`ss_play()` が頭出しするのはトラック 0 だけです。トラック 0 が終わった後も、他のトラックは動き続けます。
 - **`ss_set_animation()` はスタックをトラック 0 だけに戻します。** 重ねていたものは、その後で載せ直してください。またスタックはセーブされません。セーブをロードすると、プレイヤーはトラック 0 のアニメーションのセーブ時のフレームから戻り、他のトラックはありません。
-- **1 つのトラックに複数のアニメーション。** `ss_add_track_source(track, name, weight)` はトラックに別のアニメーションを足し、そのハンドルを返します。`ss_set_source_weight(handle, weight)` で比率を決めます（歩きから走りへのブレンドなど）。`ss_track_main_source(track)` は、トラックに載せたアニメーションのハンドルです。ランタイムはソースを解放すると（クロスフェードを終えた出ていく側など）ハンドルを使い回すので、ハンドルは持ち続けずに、その都度問い合わせてください。
+- **1 つのトラックに複数のアニメーション。** `ss_add_track_source(track, name, weight)` はトラックに別のアニメーションを足し、そのハンドルを返します。`ss_set_source_weight(source, weight)` で比率を決めます（歩きから走りへのブレンドなど）。`ss_track_main_source(track)` は、トラックに載せたアニメーションのハンドルです。ランタイムはソースを解放すると（クロスフェードを終えた出ていく側など）ハンドルを使い回すので、ハンドルは持ち続けずに、その都度問い合わせてください。
 
 | 呼び出し | 内容 |
 |---|---|
-| `ss_crossfade(track, name, seconds)` | トラックを別のアニメーションへフェードで切り替える |
+| `ss_crossfade(track, name, duration)` | トラックを別のアニメーションへフェードで切り替える |
 | `ss_set_track_animation(track, name)` | フェードせずにトラックへアニメーションを載せる |
 | `ss_clear_track(track)` / `ss_track_count()` | トラックを空にする / トラックの数 |
 | `ss_set_track_alpha(track, alpha)` | トラックの効き具合（`0.0`〜`1.0`） |
-| `ss_fade_track(track, alpha, seconds)` | トラックの alpha をフェードさせる |
+| `ss_fade_track(track, alpha, duration)` | トラックの alpha をフェードさせる |
 | `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | 進行中のフェードの進み具合（`0.0`〜`1.0`、フェード中でなければ `None`）/ その位置でフェードを止める |
 | `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX`（既定）か `TRACK_BLEND_ADDITIVE` |
 | `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE`（先頭から。既定）か `TRACK_SYNC_START`（トラック 0 に揃える） |
 | `ss_set_track_frame(track, frame)` | トラックの再生位置を動かす |
 | `ss_is_track_finished(track)` / `ss_track_just_looped(track)` | トラックのアニメーションがループを再生し終えた（状態）/ 直近の update でループした（パルス） |
-| `ss_set_track_outgoing_event_threshold(track, share)` | クロスフェードの出ていく側にもイベントを出させる（§8 を参照） |
+| `ss_set_track_outgoing_event_threshold(track, threshold)` | クロスフェードの出ていく側にもイベントを出させる（§8 を参照） |
 | `ss_add_track_source(track, name, weight)` | トラックに別のアニメーションを足す。ハンドルを返す |
-| `ss_set_source_weight(handle, weight)` / `ss_set_source_frame(handle, frame)` / `ss_set_source_event_threshold(handle, weight)` | ソースごとの weight、再生位置、イベントを出し始める weight |
+| `ss_set_source_weight(source, weight)` / `ss_set_source_frame(source, frame)` / `ss_set_source_event_threshold(source, threshold)` | ソースごとの weight、再生位置、イベントを出し始める weight |
 
 設定値は対応する `ss_get_*` で読み戻せます（フレームスキップは `ss_is_track_frame_skip_enabled()`）。セッターは断られると `False` を返し（存在しないアニメーション・トラック・ハンドルなど）、ゲッターは読むものが無いと `None` を返します。
 
@@ -262,10 +262,10 @@ $ ringo.ss_clear_attachments()
 | `ss_detach(child=None, part=None)` | その子 / そのパーツに一致する追従をすべて削除し、削除件数を返す。両方を省略した場合は何も削除しません |
 | `ss_clear_attachments()` | すべての追従を削除し、削除件数を返す |
 | `ss_attachments()` | 現在の追従を `(パーツ名, 子)` の組で取得 |
-| `ss_part_names()` / `ss_find_part_index(part_name)` | パックのパーツ名一覧 / パーツインデックス（アセットに無ければ `-1`） |
-| `ss_is_part_hidden(part_name)` | そのパーツが直近の描画フレームで hide かを取得 |
-| `ss_is_part_skinned_mesh(part_name)` | そのパーツがボーンスキンのメッシュか（＝追従先に不向き。下の注意点を参照）を取得。静的情報なので最初のフレーム前でも取得可 |
-| `ss_part_transform(part_name)` | そのパーツの直近の描画フレームの変換を取得（無ければ `None`） |
+| `ss_part_names()` / `ss_find_part_index(name)` | パックのパーツ名一覧 / パーツインデックス（アセットに無ければ `-1`） |
+| `ss_is_part_hidden(name)` | そのパーツが直近の描画フレームで hide かを取得 |
+| `ss_is_part_skinned_mesh(name)` | そのパーツがボーンスキンのメッシュか（＝追従先に不向き。下の注意点を参照）を取得。静的情報なので最初のフレーム前でも取得可 |
+| `ss_part_transform(name)` | そのパーツの直近の描画フレームの変換を取得（無ければ `None`） |
 | `ss_part_quad(part)` / `ss_hit_test_part(x, y, parts)` | そのパーツを描いた輪郭と、ある点にあるパーツを取得（下の **輪郭と当たり判定** を参照） |
 
 > 常時追従させるまでもなく「その瞬間のパーツ位置だけ知りたい」場合（弾の発射位置を取るなど）は、 `ss_part_transform()` を直接呼ぶ方が簡潔です。
@@ -276,7 +276,7 @@ $ ringo.ss_clear_attachments()
 
 追従の合成はプレイヤー自身の `render()` の中、そのフレームの姿勢を計算するのと同じパスで行われます。そのため**子がアニメーションから遅れることはありません**。
 
-`ss_part_transform()` は合成そのものが使う姿勢を返します。単位はプレイヤーローカルのピクセルで、アニメーション原点がプレイヤーの描画ボックス中心に来る座標系です。
+`ss_part_transform()` は、子を置くのと同じ姿勢を返します。単位はピクセルで、アニメーションの原点からの位置です。原点は、キャンバスの基準点（pivot。[サイズと配置](#サイズと配置) を参照）、`size` を渡したときは箱の中央にあります。
 
 | キー | 意味 |
 |---|---|
@@ -361,7 +361,7 @@ $ ringo.ss_clear_all_part_overrides()
 
 | メソッド | 説明 |
 |---|---|
-| `ss_find_part_index(part_name)` | パーツインデックス。アセットに無ければ `-1` |
+| `ss_find_part_index(name)` | パーツインデックス。アセットに無ければ `-1` |
 | `ss_set_part_color_override(part, color, blend_op=0, priority=1)` | パーツカラーオーバーライド（単色） |
 | `ss_set_part_color_override_corners(part, corners, blend_op=0, priority=1)` | 四隅指定版（左上・右上・左下・右下） |
 | `ss_set_part_cell_override(part, cellmap_name, cell_name, priority=1)` | 別のセルで描画する |
@@ -485,7 +485,7 @@ image boss = SSPlayer(
 - `on_audio`: 音声再生指定フレーム到達時に呼ばれる
 - `on_animation_finished`: 指定した `loop` をすべて再生し終えたときに1回呼ばれる。無限ループでは発火せず、停止操作でも発火しない
 - `on_animation_looped`: ループ完了ごと（1周回るごと）に呼ばれる。最終周はループせず `on_animation_finished` になる
-- `on_animation_started`: アニメーション再生開始時に呼ばれる
+- `on_animation_started`: `ss_play()` で再生を始めたとき、プレイヤーがもう一度表示されて最初から再生するとき、シーケンスが次のアニメーションへ進んだときに呼ばれる。最初に表示されたときに始まるアニメーションでは呼ばれない
 
 > [!NOTE]
 > コールバックは描画スレッドから、パーツ単位のイベントは `cb(player, frame_index, event)`、開始/終了/ループ系は `cb(player)` の形で呼ばれます。`frame_index` はキーが **置かれている** フレームであって、検出されたフレームとは限りません（1 回の更新で複数フレームをまたぐことがあり、その間のキーはすべてそこで発火します）。イベント自身は `part_index` と `part_name` を持ちます（パックにそのパーツの名前が無い場合は `None`）。ロールバック（rollback）時のピクル化のため、ラムダやローカル関数ではなくモジュールレベルの関数を渡してください。コールバックはそのフレームが描かれるときに呼ばれ、Ren'Py はゲームメニューの下でもシーンを描き続けるので、プレイヤーがセーブ画面を開いている間に呼ばれることもあります（SpriteStudio の音がそこでも鳴り続けるのと同じです）。コールバックでは、ラベルへのジャンプや呼び出しではなく、変数の設定や `renpy.notify()` のように、いつ起きても構わない処理を行います。

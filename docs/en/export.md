@@ -10,7 +10,8 @@ Ren'Py's own documentation.
 > export below are documented in the [Build Guide](development/build.md).
 
 Common to every platform: `game/spritestudio/libs/` already holds the player's
-native library for every platform, and Ren'Py packages it with your game. Your
+native library for every platform. Ren'Py packages the ones a desktop or Web build needs with
+your game; for Android and iOS you place it once by hand, as below. Your
 **assets** are your game's own content, so classify them in your own
 `options.rpy`: `build.classify('**.ssab', 'all')`, `build.classify('**.ssqb', 'all')`
 for sequence packs, and `'**.wav'` / `'**.mp3'` if your animations play SS Audio

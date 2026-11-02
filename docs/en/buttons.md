@@ -68,7 +68,7 @@ The keyboard reaches the button whichever you choose. The box is the player's â€
 
 ## Reduced Motion
 
-`reduced_motion=True` holds each state on the first frame of its section. The player is stopped, so no events or sounds fire. Where the animation has a `reduced_motion` label, idle plays that label's section instead, so a button can keep a gentle loop. A selected button stays held on its selected section, so it still shows that it is on.
+`reduced_motion=True` holds each state on the first frame of its section. The player is stopped, so no events or sounds fire. Where the animation has a `reduced_motion` label, idle plays that label's section instead, as does a state that falls back to `normal`, so a button can keep a gentle loop. A selected button stays held on its selected section, so it still shows that it is on.
 
 Ren'Py has no setting for it, so keep one among your preferences:
 
