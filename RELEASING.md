@@ -21,8 +21,8 @@ For `develop`'s work:
 ```bash
 VERSION=<version>
 BRANCH=release/$(echo "${VERSION:?}" | cut -d. -f1,2)
-git fetch origin
-git switch -C "$BRANCH" origin/develop
+git fetch origin &&
+  git switch -C "$BRANCH" origin/develop
 ```
 
 For a patch:
@@ -30,9 +30,9 @@ For a patch:
 ```bash
 VERSION=<version>
 BRANCH=release/$(echo "${VERSION:?}" | cut -d. -f1,2)
-git fetch origin --tags
-BASE=$(git -c versionsort.suffix=a -c versionsort.suffix=b -c versionsort.suffix=rc tag --list "v${BRANCH#release/}.*" --sort=-v:refname | head -n 1)   # the line's latest tag
-git switch -C "$BRANCH" "${BASE:?}"
+git fetch origin --tags &&
+  BASE=$(git -c versionsort.suffix=a -c versionsort.suffix=b -c versionsort.suffix=rc tag --list "v${BRANCH#release/}.*" --sort=-v:refname | head -n 1) &&   # the line's latest tag
+  git switch -C "$BRANCH" "${BASE:?}"
 ```
 
 The patch block sorts an `a`, `b` or `rc` version before the release it leads to, so `v7.0.0` counts as later than `v7.0.0rc1`.
@@ -94,14 +94,14 @@ git push origin "${BRANCH:?}" &&
 
 ### 4. Merge and tag
 
-Merge with a merge commit, never a squash or a rebase, so that `main` keeps the commits the QA build built rather than copies of them. Before merging, check that a QA run built the branch's head green, and that merging it changes nothing in its tree. If it would, `main` holds changes the branch does not, and the tag would go on a tree no QA run built: merge `main` into the branch and go back to step 3.
+Merge with a merge commit, never a squash or a rebase, so that `main` keeps the commits the QA build built rather than copies of them. Before merging, check that a QA run built the branch's head green, and that merging it changes nothing in its tree. If it would, `main` holds changes the branch does not, and the tag would go on a tree no QA run built: merge `main` into the branch and go back to step 3. The block below fails when either check does not hold.
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
-git fetch origin
-SHA=$(git rev-parse --verify -q "origin/${BRANCH:?}")
-gh run list -w release.yml -c "${SHA:?}" -s success -L 1                                             # must list a run
-git diff --stat "origin/${BRANCH:?}" "$(git merge-tree --write-tree origin/main "origin/$BRANCH")"   # must print nothing
+git fetch origin &&
+  SHA=$(git rev-parse --verify -q "origin/${BRANCH:?}") &&
+  gh run list -w release.yml -c "${SHA:?}" -s success -L 1 | grep . &&                                             # must list a run
+  git diff --exit-code --stat "origin/${BRANCH:?}" "$(git merge-tree --write-tree origin/main "origin/$BRANCH")"   # must print nothing
 ```
 
 **A person runs the merge**, which puts the release on `main`: choose **Create a merge commit** on the pull request's page, or run
@@ -137,13 +137,17 @@ Nothing passes the tag around: `build-release.sh` reads `GITHUB_REF_NAME`, or th
 
 **A person runs this step**: the notes are a judgment, and a published Release is permanent. Open the draft on the [Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) page and check the attachments: `SSPlayerForRenPy-X.Y.Z.zip` and its alias `SSPlayerForRenPy.zip`, `SSPlayerForRenPy-web-demo-X.Y.Z.zip` and `SSPlayerForRenPy-web-demo.zip`, and `SHA256SUMS`. Edit the notes and **Publish release** as the draft is marked: `scripts/release-channel.sh` made it a pre-release when a full release is already tagged, and left it to become Latest otherwise. So `releases/latest/download/SSPlayerForRenPy.zip`, which the README and the docs hand out, stays on the newest full release, or before the first one on the newest prerelease. Only a Release that becomes Latest deploys the site.
 
-Publishing starts `pages.yml`, which deploys the [documentation site](https://cri-middleware.github.io/SSPlayerForRenPy/) and the playable Web demo it downloads from this Release. Watch the run through, then open the site: a failed run leaves the Release published and the site as it was. Once the cause is fixed, re-run it with `gh run rerun "${RUN:?}"`; a re-run builds the same tag.
+Publishing starts `pages.yml`, which deploys the [documentation site](https://cri-middleware.github.io/SSPlayerForRenPy/) and the playable Web demo it downloads from this Release. Watch the run through, then open the site; the block waits up to a minute for the run, which appears a few seconds after the Release is published. A failed run leaves the Release published and the site as it was. Once the cause is fixed, re-run it with `gh run rerun <run-id>`, the run the block watched; a re-run builds the same tag.
 
 ```bash
 git fetch origin --tags
 TAG=$(git describe --exact-match --tags --match 'v[0-9]*' origin/main)
-RUN=$(gh run list -w pages.yml -b "${TAG:?}" -L 1 --json databaseId -q '.[0].databaseId')
-gh run watch "${RUN:?}" --exit-status             # RUN is empty until the run appears: repeat the last two lines
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  RUN=$(gh run list -w pages.yml -b "${TAG:?}" -L 1 --json databaseId -q '.[0].databaseId')
+  [ -n "$RUN" ] && break
+  sleep 5
+done
+gh run watch "${RUN:?}" --exit-status
 ```
 
 ### 7. Merge back
@@ -252,8 +256,8 @@ scripts/build-release.sh demo=skip    # the plugin zip only, much faster
 ```bash
 VERSION=<version>
 BRANCH=release/$(echo "${VERSION:?}" | cut -d. -f1,2)
-git fetch origin
-git switch -C "$BRANCH" origin/develop
+git fetch origin &&
+  git switch -C "$BRANCH" origin/develop
 ```
 
 パッチのとき:
@@ -261,9 +265,9 @@ git switch -C "$BRANCH" origin/develop
 ```bash
 VERSION=<version>
 BRANCH=release/$(echo "${VERSION:?}" | cut -d. -f1,2)
-git fetch origin --tags
-BASE=$(git -c versionsort.suffix=a -c versionsort.suffix=b -c versionsort.suffix=rc tag --list "v${BRANCH#release/}.*" --sort=-v:refname | head -n 1)   # その系統の最新のタグ
-git switch -C "$BRANCH" "${BASE:?}"
+git fetch origin --tags &&
+  BASE=$(git -c versionsort.suffix=a -c versionsort.suffix=b -c versionsort.suffix=rc tag --list "v${BRANCH#release/}.*" --sort=-v:refname | head -n 1) &&   # その系統の最新のタグ
+  git switch -C "$BRANCH" "${BASE:?}"
 ```
 
 パッチのブロックは、`a`・`b`・`rc` の付いたバージョンを、それが目指すリリースより前に並べます。`v7.0.0` は `v7.0.0rc1` より後と数えます。
@@ -325,14 +329,14 @@ git push origin "${BRANCH:?}" &&
 
 ### 4. マージとタグ
 
-マージはマージコミットで行い、squash や rebase は使いません。QA ビルドしたコミットの写しではなく、そのものを `main` に残すためです。マージの前に、ブランチの先頭を QA の run が緑でビルドしていること、マージしてもブランチのツリーが変わらないことを確かめます。変わるなら `main` にブランチの持たない変更があり、どの QA の run もビルドしていないツリーにタグが付きます。そのときは `main` をブランチへマージして手順 3 に戻ります。
+マージはマージコミットで行い、squash や rebase は使いません。QA ビルドしたコミットの写しではなく、そのものを `main` に残すためです。マージの前に、ブランチの先頭を QA の run が緑でビルドしていること、マージしてもブランチのツリーが変わらないことを確かめます。変わるなら `main` にブランチの持たない変更があり、どの QA の run もビルドしていないツリーにタグが付きます。そのときは `main` をブランチへマージして手順 3 に戻ります。下のブロックは、どちらかが満たされなければ失敗します。
 
 ```bash
 BRANCH=$(git branch --show-current | grep '^release/')
-git fetch origin
-SHA=$(git rev-parse --verify -q "origin/${BRANCH:?}")
-gh run list -w release.yml -c "${SHA:?}" -s success -L 1                                             # run が 1 つ表示されること
-git diff --stat "origin/${BRANCH:?}" "$(git merge-tree --write-tree origin/main "origin/$BRANCH")"   # 何も出力されないこと
+git fetch origin &&
+  SHA=$(git rev-parse --verify -q "origin/${BRANCH:?}") &&
+  gh run list -w release.yml -c "${SHA:?}" -s success -L 1 | grep . &&                                             # run が 1 つ表示されること
+  git diff --exit-code --stat "origin/${BRANCH:?}" "$(git merge-tree --write-tree origin/main "origin/$BRANCH")"   # 何も出力されないこと
 ```
 
 **マージは人が行います。** リリースが `main` に入るためです。プルリクエストのページで **Create a merge commit** を選ぶか、次を実行します。
@@ -368,13 +372,17 @@ gh run watch "${RUN:?}" --exit-status
 
 **この手順は人が行います。** リリースノートの中身は判断が要り、公開した Release は取り消せないためです。[Releases](https://github.com/cri-middleware/SSPlayerForRenPy/releases) ページで下書きを開き、添付を確かめます。`SSPlayerForRenPy-X.Y.Z.zip` とそのエイリアス `SSPlayerForRenPy.zip`、`SSPlayerForRenPy-web-demo-X.Y.Z.zip` と `SSPlayerForRenPy-web-demo.zip`、`SHA256SUMS` です。リリースノートを編集し、下書きの印のまま **Publish release** を押します。`scripts/release-channel.sh` が、正式版のタグがすでにあれば pre-release にし、なければ Latest になるようにしてあります。そのため、README と docs が案内する `releases/latest/download/SSPlayerForRenPy.zip` は最新の正式版を指し続けます（最初の正式版より前は最新のプレリリース）。サイトをデプロイするのは Latest になる Release だけです。
 
-公開すると `pages.yml` が動き、[ドキュメントサイト](https://cri-middleware.github.io/SSPlayerForRenPy/) と、この Release から取得する遊べる Web デモをデプロイします。run を最後まで見届けてから、サイトを開いて確かめます。run が失敗しても Release は公開されたままで、サイトは元のまま残ります。原因を直したら `gh run rerun "${RUN:?}"` で再実行します。再実行は同じタグをビルドします。
+公開すると `pages.yml` が動き、[ドキュメントサイト](https://cri-middleware.github.io/SSPlayerForRenPy/) と、この Release から取得する遊べる Web デモをデプロイします。run を最後まで見届けてから、サイトを開いて確かめます。run は Release の公開から数秒遅れて出るので、ブロックは最大 1 分待ちます。run が失敗しても Release は公開されたままで、サイトは元のまま残ります。原因を直したら、ブロックが見届けた run を `gh run rerun <run-id>` で再実行します。再実行は同じタグをビルドします。
 
 ```bash
 git fetch origin --tags
 TAG=$(git describe --exact-match --tags --match 'v[0-9]*' origin/main)
-RUN=$(gh run list -w pages.yml -b "${TAG:?}" -L 1 --json databaseId -q '.[0].databaseId')
-gh run watch "${RUN:?}" --exit-status             # run が出るまで RUN は空。最後の 2 行を繰り返す
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  RUN=$(gh run list -w pages.yml -b "${TAG:?}" -L 1 --json databaseId -q '.[0].databaseId')
+  [ -n "$RUN" ] && break
+  sleep 5
+done
+gh run watch "${RUN:?}" --exit-status
 ```
 
 ### 7. develop へ戻す
