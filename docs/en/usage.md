@@ -230,7 +230,7 @@ image ringo = SSPlayer(
 
 | Setting | Description |
 |---|---|
-| **part** | The name of the part to follow (the PartData name in the `.ssab`). `ss_part_names()` lists them, and the SpriteStudio Browser (Shift+B) shows them per pack |
+| **part** | The name of the part to follow (the part's name in SpriteStudio). `ss_part_names()` lists them, and the SpriteStudio Browser (Shift+B) shows them per pack |
 | **child** | The displayable to make follow |
 | **anchor** | Which point of the child is pinned to the part, as a 0–1 fraction of its size. `(0.5, 0.5)` centers it (default); `(0.5, 1.0)` puts its bottom edge on the part — the grip of a held item. This is also the rotation / scale pivot |
 | **angle** | A fixed rotation offset in degrees (clockwise-positive) added on top of the part's own rotation, so the child's rest orientation lines up with the part's local axis |
@@ -274,7 +274,7 @@ $ ringo.ss_clear_attachments()
 
 ### Timing and Accuracy
 
-Attachments are composited inside the player's own `render()`, in the same pass that computes the frame's pose, so **a child never lags the animation**.
+A child is placed from the same pose as the frame it is drawn with, so **it never lags the animation**.
 
 `ss_part_transform()` returns the pose the children are placed from, in pixels from the animation's origin. That origin sits at the canvas's pivot (see [Size and Placement](#size-and-placement)), or at the centre of the box when you pass `size`.
 
@@ -411,7 +411,7 @@ Part Color and cell overrides conflict with the animation, so they take a `prior
 - **Color** applies to normal parts, **cell** to normal and mask parts; other part types silently ignore the override (the call still returns `True`).
 - Colors are interpreted in the same 8-bit sRGB space as the authored Part Color, and alpha is pre-multiplied by the runtime — pass the color as authored, without converting it yourself.
 - A cell override is resolved when you set it, so an unknown cellmap / cell name fails immediately (returns `False`).
-- Overrides live on the runtime, which owns their lifecycle: an override lasts across animation changes as its priority mode says, so pick the mode that expresses what you want.
+- An override lasts across animation changes as its priority mode says, so pick the mode that expresses what you want.
 - Overrides are restored when a saved game is loaded, so a costume change survives save / load. One-shot (`priority=0`) overrides are the exception — they are momentary by design and are not carried across a save.
 - Overrides do not reach parts **inside** an instance part (the child animation runs as a separate player). Force-hiding the instance part itself does stop its contents from being drawn.
 
