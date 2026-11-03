@@ -69,6 +69,9 @@ class FramePlan:
     # rasterizes its writers into an offscreen coverage bitmap; masked items
     # reference it via ``MeshPart.mask``.
     frame_mask: object = None
+    # The frame a seek landed on, when this update is the first after it, else -1.
+    # Its audio keys are reported but were not crossed, so they are not sounded.
+    seek_frame: int = -1
 
 
 def _pack_rgba(color) -> int:
@@ -203,6 +206,7 @@ class SSInternalPlayer:
         self._parent_driven = bool(parent_driven)
 
         self._rt = ssruntime.SSRuntime(lib)
+        self._seek_landing = -1
         self._rt.configure(coordinate_system=coordinate_system, origin=origin)
         self._rt.load_ssab_bytes(ssab_data)
 
@@ -553,6 +557,8 @@ class SSInternalPlayer:
         if self._current_animation is None:
             self.set_animation(None)
         self._reset_slots()
+        # play() starts from its own frame, whose keys do sound, so a seek made before it is dropped.
+        self._seek_landing = -1
         if start_frame is not None and start_frame >= 0:
             self._rt.play_with_start_frame(start_frame)
         else:
@@ -715,6 +721,7 @@ class SSInternalPlayer:
     def set_frame_no(self, frame: float) -> None:
         if self._rt:
             self._rt.set_frame_no(frame)
+            self._seek_landing = math.floor(self._rt.frame_no)
 
     def set_animation_section(self, start: int, end: int) -> bool:
         """False, changing nothing, when the Brain refuses the section: both
@@ -888,8 +895,13 @@ class SSInternalPlayer:
 
     def set_track_frame(self, track, frame: float) -> bool:
         t = self._track(track)
-        return (t >= 0 and self._rt is not None
-                and self._rt.set_track_frame(t, float(frame)))
+        if not (t >= 0 and self._rt is not None
+                and self._rt.set_track_frame(t, float(frame))):
+            return False
+        # Track 0's playhead is the character's, so moving it is a seek.
+        if t == 0:
+            self._seek_landing = math.floor(self._rt.frame_no)
+        return True
 
     def track_frame(self, track) -> Optional[float]:
         t = self._track(track)
@@ -1101,6 +1113,7 @@ class SSInternalPlayer:
         dt_s = dt_ms / 1000.0
         frame_no = rt.update_ms(dt_ms)
         looped = rt.just_looped
+        seek_frame, self._seek_landing = self._seek_landing, -1
 
         events_out: list = []
         if self._enable_events and self._evt is not None:
@@ -1161,7 +1174,7 @@ class SSInternalPlayer:
         return FramePlan(items=items, frame_no=frame_no, disp=disp,
                          looped=looped, finished=finished, events=events_out,
                          world_matrices=self._last_world, hidden_parts=hidden,
-                         frame_mask=frame_mask)
+                         frame_mask=frame_mask, seek_frame=seek_frame)
 
     # -- timeline events -----------------------------------------------
     def poll_events(self) -> list:

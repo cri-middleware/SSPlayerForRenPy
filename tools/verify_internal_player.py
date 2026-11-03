@@ -492,6 +492,73 @@ def check_restore_state(lib) -> bool:
     return ok
 
 
+def check_seek_landing(lib) -> bool:
+    """A seek lands on a frame without crossing its keys: the next update still
+    reports that frame's events, and flags it as ``seek_frame`` so the host does
+    not sound its audio keys -- playing, paused or stopped. play() starts from
+    its own frame, which is not flagged, and neither is a key crossed after the
+    landing frame. Sound.ssab keys audio on frames 0, 10 and 20.
+    """
+    rel = "ss_assets/overall/Sound.ssab"
+    abs_ssab = os.path.join(_GAME, rel)
+    if not os.path.exists(abs_ssab):
+        print("### seek-landing  SKIP (Sound.ssab not found)"); return True
+    data = open(abs_ssab, "rb").read()
+    base = os.path.dirname(abs_ssab)
+
+    def _new():
+        p = SSInternalPlayer(data, lib=lib, base_dir="ss_assets/overall",
+                             resource_manager=RecordingResourceManager(),
+                             pack_reader=filesystem_pack_reader(base))
+        p.set_animation("anime_1")
+        return p
+
+    def _audio_frames(plan):
+        return [fe.frame_index for fe in plan.events if fe.audios]
+
+    print("### seek-landing  a seek's landing frame is flagged for one update")
+    ok = True
+    step = 1000.0 / 60.0
+
+    def expect(cond, what):
+        nonlocal ok
+        print(("    ok   " if cond else "    FAIL ") + what)
+        ok &= bool(cond)
+
+    for state in ("playing", "paused", "stopped"):
+        p = _new()
+        if state != "stopped":
+            p.play()
+            p.update(step)
+            if state == "paused":
+                p.pause()
+        p.set_frame_no(10)
+        plan = p.update(0.0)
+        expect(10 in _audio_frames(plan), "%s: the landing frame's audio key is reported" % state)
+        expect(plan.seek_frame == 10, "%s: and flagged as the seek's landing frame" % state)
+        expect(p.update(step).seek_frame == -1, "%s: for that one update only" % state)
+
+    p = _new()
+    p.play()
+    p.update(step)
+    p.set_track_frame(0, 10)
+    expect(p.update(0.0).seek_frame == 10, "moving track 0's playhead is a seek too")
+
+    p = _new()
+    p.set_frame_no(10)
+    p.play(10)
+    expect(p.update(0.0).seek_frame == -1, "play() after a seek is not flagged")
+
+    p = _new()
+    p.play()
+    p.update(step)
+    p.set_frame_no(9)
+    plan = p.update(100.0)   # long enough to cross frame 10 at the pack's rate
+    expect(plan.seek_frame == 9 and 10 in _audio_frames(plan),
+           "a key crossed after the landing frame is reported unflagged")
+    return ok
+
+
 def main() -> int:
     lib = ssruntime.load_library()
     targets = [
@@ -511,6 +578,7 @@ def main() -> int:
     allok &= check_loop_counts(lib)
     allok &= check_playback_modes(lib)
     allok &= check_section(lib)
+    allok &= check_seek_landing(lib)
     print()
     print("== RESULT:", "ALL PASS" if allok else "FAILURES PRESENT", "==")
     return 0 if allok else 1
