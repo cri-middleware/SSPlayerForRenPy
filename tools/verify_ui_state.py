@@ -56,6 +56,7 @@ TABLES = {
                            "selected_hover": 60, "disabled": 80,
                            "reduced_motion": 100}),
     "on_only": _table(59, {"normal": 0, "hover": 20, "selected_normal": 40}),
+    "calm_only": _table(59, {"pressed": 20, "reduced_motion": 40}),
     "on_press": _table(39, {"normal": 0, "hover": 10, "pressed": 20,
                             "selected_normal": 30}),
 }
@@ -130,6 +131,12 @@ def main() -> int:
           resolve("focused", "button", reduced=True), ("button", 80, 99, False))
     check("normal is held without reduced_motion",
           resolve("normal", "only_normal", reduced=True), ("only_normal", 10, 29, True))
+    check("reduced_motion plays where normal falls back to the whole animation",
+          resolve("normal", "calm_only", reduced=True), ("calm_only", 40, 59, False))
+    check("and for a state that falls back to it",
+          resolve("hover", "calm_only", reduced=True), ("calm_only", 40, 59, False))
+    check("a state with a label of its own is still held",
+          resolve("pressed", "calm_only", reduced=True), ("calm_only", 20, 39, True))
     check("the whole animation is held", resolve("normal", "plain", reduced=True),
           ("plain", 0, 29, True))
 

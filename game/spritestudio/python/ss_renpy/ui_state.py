@@ -11,8 +11,8 @@ and the plain ones after, so on and off stay apart when a label is missing --
 except that a press, which lasts only while the button is held down, takes
 ``pressed`` right after ``selected_pressed``.
 Under reduced motion the section is held on its first frame, except that an
-unselected ``normal`` plays the ``reduced_motion`` label's section when the
-animation has one.
+unselected ``normal``, and the states that fall back to it, play the
+``reduced_motion`` label's section when the animation has one.
 
 ``ss_ui.rpy`` (``SSButton``) maps a Ren'Py button onto a state and plays what
 this returns; everything here reads label tables only, so the headless suite
@@ -139,7 +139,7 @@ def resolve(state: str, animation: str, table_of, clips=None,
             break
     if section is None:
         section = (base.start_frame, base.end_frame)
-    if reduced_motion and source == "normal":
+    if reduced_motion and source in ("normal", None):
         calm = label_section(base, REDUCED_MOTION_LABEL)
         if calm is not None:
             return UiSection(animation, calm[0], calm[1], False)

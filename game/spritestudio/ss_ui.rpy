@@ -46,8 +46,8 @@ init -9 python:
         replaces a state's label, under the same names, by an animation's
         name, or by a dict with an "animation" and / or a "label".
         `reduced_motion` holds each state on its first frame, except that an
-        unselected idle plays the `reduced_motion` label's section where there
-        is one.
+        unselected idle, and the states that fall back to it, play the
+        `reduced_motion` label's section where there is one.
 
         `parts` (names or indices) keeps the mouse to those parts' outlines,
         where by default the whole box takes it; the keyboard is not kept.
