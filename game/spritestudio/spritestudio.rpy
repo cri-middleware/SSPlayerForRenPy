@@ -1874,7 +1874,7 @@ init -10 python:
             try:
                 if SS_ENABLE_EVENTS:
                     for fe in plan.events:
-                        self._dispatch_frame_events(fe)
+                        self._dispatch_frame_events(fe, plan.seek_frame)
                 if plan.looped:
                     self._call_cb(self.on_animation_looped)
             except Exception as e:
@@ -1882,7 +1882,7 @@ init -10 python:
                                 "event dispatch failed (%r); events disabled "
                                 "this frame" % (e,))
 
-        def _dispatch_frame_events(self, fe):
+        def _dispatch_frame_events(self, fe, seek_frame=-1):
             for u in fe.users:
                 self._call_cb(self.on_user_data, fe.frame_index, u)
             for s in fe.signals:
@@ -1891,8 +1891,9 @@ init -10 python:
                 # Play it ourselves (the Player, not the runtime, plays audio)
                 # AND notify: on_audio stays
                 # a notification hook so a game can react (subtitles, ...)
-                # without owning playback.
-                if SS_ENABLE_AUDIO:
+                # without owning playback. A seek lands on a frame without
+                # crossing its keys, so those are not sounded.
+                if SS_ENABLE_AUDIO and fe.frame_index != seek_frame:
                     self._play_audio(fe.frame_index, a)
                 self._call_cb(self.on_audio, fe.frame_index, a)
 
