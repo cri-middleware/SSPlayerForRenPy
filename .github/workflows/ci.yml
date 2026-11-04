@@ -3,7 +3,9 @@ name: CI
 # Two tiers, as in SpriteStudio-SDK. Every pull request runs release.yml's
 # headless gate (the plain-CPython tests under tools/ and the Ren'Py lint), with
 # the runtime built from the SDK submodule rather than downloaded: the submodule
-# is the source a PR that bumps it changes. It also checks that each script under
+# is the source a PR that bumps it changes. A PR on the submodule commit the
+# weekly run last built takes that build instead of building it again (see the
+# test job). It also checks that each script under
 # scripts/ and its twin in the other shell take the same arguments. The weekly
 # run, a dispatch and the release PR (release/X.Y into main) also build the
 # runtime for macOS, Windows and Web, export the project for each desktop
@@ -48,13 +50,37 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      # The runtime build depends on nothing but the submodule commit, the script
+      # that drives it, this workflow and the runner image, so its key is made
+      # of those, and only an exact match counts. The weekly run always builds,
+      # which keeps proving the submodule builds with the current toolchain and
+      # keeps the Rust cache seeded, and saves the libraries when no build is
+      # saved under that key yet. A pull request whose key matches restores them
+      # and skips Rust altogether; one that bumps the submodule, or changes any
+      # of the rest, misses and builds as before.
+      - name: Name the runtime build
+        id: runtime
+        run: echo "key=runtime-${ImageOS}-linux-debug-$(git rev-parse HEAD:SpriteStudio-SDK)-${{ hashFiles('scripts/build-runtime.sh', '.github/workflows/ci.yml') }}" >> "$GITHUB_OUTPUT"
+
+      # game/spritestudio/libs/ is gitignored and nothing else writes into it.
+      - name: Restore the runtime build
+        id: runtime-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: game/spritestudio/libs
+          key: ${{ steps.runtime.outputs.key }}
+          # The weekly run builds regardless; it only asks whether a build is saved.
+          lookup-only: ${{ github.event_name != 'pull_request' }}
+
       - name: Setup Rust toolchain
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           # Pinned by SHA, so the channel must be named explicitly here.
           toolchain: stable
 
       - name: Setup Rust cache
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: SpriteStudio-SDK
@@ -64,7 +90,15 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/develop' }}
 
       - name: Build the runtime
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
         run: bash scripts/build-runtime.sh
+
+      - name: Save the runtime build
+        if: github.ref == 'refs/heads/develop' && steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: game/spritestudio/libs
+          key: ${{ steps.runtime.outputs.key }}
 
       # game/ss_assets/ is gitignored; the tests play these converted packs.
       - name: Generate example animation data
