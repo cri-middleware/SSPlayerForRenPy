@@ -6,7 +6,8 @@ name: CI
 # is the source a PR that bumps it changes. A PR on the submodule commit the
 # weekly run last built takes that build instead of building it again (see the
 # test job). It also checks that each script under
-# scripts/ and its twin in the other shell take the same arguments. The weekly
+# scripts/ and its twin in the other shell take the same arguments, and that
+# actions.lock matches the workflows. The weekly
 # run, a dispatch and the release PR (release/X.Y into main) also build the
 # runtime for macOS, Windows and Web, export the project for each desktop
 # platform and for the Web, and build the documentation site through docs.yml,
@@ -43,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           # deploy-examples.sh converts the SDK's bundled test projects, and the
           # runtime is built from the SDK's source.
@@ -65,7 +66,7 @@ jobs:
       # game/spritestudio/libs/ is gitignored and nothing else writes into it.
       - name: Restore the runtime build
         id: runtime-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: game/spritestudio/libs
           key: ${{ steps.runtime.outputs.key }}
@@ -74,14 +75,14 @@ jobs:
 
       - name: Setup Rust toolchain
         if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        uses: dtolnay/rust-toolchain@master
         with:
           # Pinned by SHA, so the channel must be named explicitly here.
           toolchain: stable
 
       - name: Setup Rust cache
         if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: SpriteStudio-SDK
           # Only develop writes caches. A PR's cache is visible to that PR alone,
@@ -95,7 +96,7 @@ jobs:
 
       - name: Save the runtime build
         if: github.ref == 'refs/heads/develop' && steps.runtime-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: game/spritestudio/libs
           key: ${{ steps.runtime.outputs.key }}
@@ -113,7 +114,7 @@ jobs:
       # unpacks on every call, so it is cached whole, keyed on the pinned version.
       - name: Restore the Ren'Py SDK
         id: renpy-sdk
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: renpy-sdk
           key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
@@ -125,7 +126,7 @@ jobs:
       # Saved before the lint runs in it.
       - name: Save the Ren'Py SDK
         if: steps.renpy-sdk.outputs.cache-hit != 'true' && github.ref == 'refs/heads/develop'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: renpy-sdk
           key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
@@ -156,12 +157,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Compare each script with its twin
         run: bash scripts/check-twins.sh
+
+  # release.yml and pages.yml do not run on a pull request, so without this a
+  # stale lockfile would first show when one of them fails at job start.
+  lockfile:
+    name: 🐧 Workflow lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install gh-actions-lock
+        run: gh extension install github/gh-actions-lock --pin v0.4.1
+
+      - name: Verify the lockfile
+        run: gh actions-lock --verify
 
   # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
   # only release/X.Y is merged into main.
@@ -187,18 +207,18 @@ jobs:
             platform: windows
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: SpriteStudio-SDK
           # The key is the job id and the runner OS; the platform keeps it
@@ -241,27 +261,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
 
       # The web runtime is the SDK's wasm-pack bundle.
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: SpriteStudio-SDK
           key: web
           save-if: ${{ github.ref == 'refs/heads/develop' }}
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: wasm-pack
 
