@@ -12,6 +12,8 @@ workflows:
     '.github/workflows/docs.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.0.0'
+    '.github/workflows/lockfile.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/pages.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/deploy-pages@v5.0.1'
@@ -25,10 +27,6 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'softprops/action-gh-release@v3.0.3'
-    '.github/workflows/tmp-lock-called.yml':
-        - 'actions/setup-python@v7.0.0'
-    '.github/workflows/tmp-lock-test.yml':
-        - 'actions/upload-pages-artifact@v5.0.0'
 dependencies:
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'

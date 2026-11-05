@@ -6,8 +6,7 @@ name: CI
 # is the source a PR that bumps it changes. A PR on the submodule commit the
 # weekly run last built takes that build instead of building it again (see the
 # test job). It also checks that each script under
-# scripts/ and its twin in the other shell take the same arguments, and that
-# actions.lock matches the workflows. The weekly
+# scripts/ and its twin in the other shell take the same arguments. The weekly
 # run, a dispatch and the release PR (release/X.Y into main) also build the
 # runtime for macOS, Windows and Web, export the project for each desktop
 # platform and for the Web, and build the documentation site through docs.yml,
@@ -163,25 +162,6 @@ jobs:
 
       - name: Compare each script with its twin
         run: bash scripts/check-twins.sh
-
-  # release.yml and pages.yml do not run on a pull request, so without this a
-  # stale lockfile would first show when one of them fails at job start.
-  lockfile:
-    name: 🐧 Workflow lockfile
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install gh-actions-lock
-        run: gh extension install github/gh-actions-lock --pin v0.4.1
-
-      - name: Verify the lockfile
-        run: gh actions-lock --verify
 
   # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
   # only release/X.Y is merged into main.

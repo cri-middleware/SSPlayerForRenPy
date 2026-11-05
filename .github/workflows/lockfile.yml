@@ -1,0 +1,31 @@
+name: Lockfile
+
+# A uses: line missing from actions.lock stops that workflow before any job
+# exists, and the pull request shows no failed check for it. This is a workflow
+# of its own so that it still runs and reports when ci.yml is the one affected.
+# It also covers release.yml and pages.yml, which do not run on a pull request.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 🐧 Workflow lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install gh-actions-lock
+        run: gh extension install github/gh-actions-lock --pin v0.4.1
+
+      - name: Verify the lockfile
+        run: gh actions-lock --verify
