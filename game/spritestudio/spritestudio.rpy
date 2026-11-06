@@ -484,6 +484,15 @@ init -10 python:
             gl_FragColor = vec4(rgb * a, a);
         """
 
+    def _ss_register_shader(name, **kwargs):
+        """Registers a part written in GLSL ES 1.00, as every part here is. From
+        Ren'Py 8.6 a part that doesn't declare its dialect follows
+        config.glsl_version, and raises on its first draw in a new game, where
+        that is 300. Earlier versions reject the glsl argument."""
+        if hasattr(renpy.config, "glsl_version"):
+            kwargs["glsl"] = 100
+        renpy.register_shader(name, **kwargs)
+
     # PartColor shader, used by the
     # "mesh" backend. The CPU reference is framedata.eval_partcolor — keep this
     # GLSL in step with it. Registered defensively: older Ren'Py without
@@ -491,7 +500,7 @@ init -10 python:
     # transform backend).
     if hasattr(renpy, "register_shader"):
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.partcolor",
                 variables="""
                     uniform sampler2D tex0;
@@ -522,7 +531,7 @@ init -10 python:
         # particle colours are RGBA 0..1 from the EffectDrawPlan (parent alpha
         # already folded in); unlike Normal parts there is no PartColor blend.
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.effect",
                 variables="""
                     uniform sampler2D tex0;
@@ -547,7 +556,7 @@ init -10 python:
         # (dynamic batching). Same fragment math as the
         # per-part shaders above, but reading varyings instead of uniforms.
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.partcolor_batched",
                 variables="""
                     uniform sampler2D tex0;
@@ -572,7 +581,7 @@ init -10 python:
                     gl_FragColor = vec4(rgb * a, a);            // re-premultiply
                 """,
             )
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.effect_batched",
                 variables="""
                     uniform sampler2D tex0;
@@ -611,7 +620,7 @@ init -10 python:
         #       UV to texel centres — Ren'Py has no per-texture nearest filter),
         #       replays the writers that hold their bit at the target's position
         #       and discards by the inside/outside test. All in float math:
-        #       Ren'Py shaders are GLSL ES 1.00 / 120 with NO integer bitwise
+        #       These parts are GLSL ES 1.00 / 120 with NO integer bitwise
         #       ops, so the bit test is `mod(floor(byte / exp2(b)), 2)`. The loop
         #       is a constant 24 with an early `break` (ES 1.00 forbids
         #       uniform/while loop bounds).
@@ -625,7 +634,7 @@ init -10 python:
         # for a target whose tree position lies strictly between open and
         # close. Its bit is the array index i itself (channel i/8, bit i%8).
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.mask_write",
                 variables="""
                     uniform sampler2D tex0;
@@ -648,7 +657,7 @@ init -10 python:
             )
             for _name, _n, _tiled in (("ss.partcolor_mask", 24, False),
                                       ("ss.partcolor_mask_tiled", 96, True)):
-                renpy.register_shader(
+                _ss_register_shader(
                     _name,
                     variables=_ss_mask_replay_variables(_n, _tiled),
                     vertex_300="""
@@ -670,7 +679,7 @@ init -10 python:
         # holds the helpers, each fragment body inserts its effect between the
         # (un-premultiplied) input sample and the PartColor composite.
         #
-        # Dialect adaptations vs the Godot originals (Ren'Py GL2 is GLSL ES 1.00 /
+        # Dialect adaptations vs the Godot originals (these parts are GLSL ES 1.00 /
         # 120, premultiplied-alpha textures):
         #   * ss_input_texture(TEXTURE, uv) -> ss_texs(tex0, uv): sample + UN-
         #     premultiply to straight colour (the SS6 math — luminance / HSB /
@@ -966,7 +975,7 @@ init -10 python:
         try:
             for _nm, (_cell, _fns, _body) in _SS_USER_FRAG.items():
                 _sh = "ss.user_" + _nm
-                renpy.register_shader(
+                _ss_register_shader(
                     _sh,
                     variables=(_SS_USER_VARS_CELL if _cell else _SS_USER_VARS),
                     vertex_300=_SS_USER_VERT,

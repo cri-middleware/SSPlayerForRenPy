@@ -627,7 +627,7 @@ Object.assign(sb, {
     SSRuntimeEffectSlot: {create: () => stub()},
   },
   ssruntime_wasm: {memory: {buffer: new ArrayBuffer(64)}},
-  Module: {HEAPU8: new Uint8Array(64), HEAPF64: new Float64Array(8)},
+  HEAPU8: new Uint8Array(64), HEAPF64: new Float64Array(8),
 });
 vm.createContext(sb);
 process.stdout.write(JSON.stringify(scripts.map((src) => {
