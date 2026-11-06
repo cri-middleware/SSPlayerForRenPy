@@ -86,6 +86,10 @@ _SOA = (
 # side owns) rather than spliced into the source: V8 caches an eval by its
 # source, so a source that stays the same frame after frame is not compiled
 # again. args[0..2] are a call's inputs, args[3] the result of an update.
+#
+# Scripts reach the heap as the bare HEAPU8 and HEAPF64: renpy.js declares them
+# at its top level and replaces them when memory grows, and run_script is a
+# direct eval. The Emscripten of Ren'Py 8.6 doesn't put them on Module.
 _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
                % ", ".join("'%s'" % stem for stem, _ in _SOA)) + """
     if (!window.ss_bufs) window.ss_bufs = {};
@@ -96,7 +100,7 @@ _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
     // frame is not evaluated a second time.
     window.ss_copy_frame = function (id) {
         var b = window.ss_bufs[id], c = window.ss_ctxs[id], n = b.lens;
-        var heap = Module.HEAPU8, mem = window.ssruntime_wasm.memory.buffer;
+        var heap = HEAPU8, mem = window.ssruntime_wasm.memory.buffer;
         var fits = true;
         if (n[0] > 0) {
             if (n[0] <= b.frame[1]) heap.set(new Uint8Array(mem, c.get_frame_data_buf(), n[0]), b.frame[0]);
@@ -117,7 +121,7 @@ _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
     // "frame,soa0,soa1,...", with a leading '!' when a buffer was too small.
     window.ss_frame = function (id) {
         var b = window.ss_bufs[id], c = window.ss_ctxs[id];
-        var frame_no = Module.HEAPF64[b.args >> 3], len = 0;
+        var frame_no = HEAPF64[b.args >> 3], len = 0;
         // Out-of-range / NaN frame_no: the wasm-bindgen API THROWS
         // (SSRuntimeError::InvalidParameter) where the native C-API
         // silently returns a null buffer. Mirror native:
@@ -136,14 +140,14 @@ _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
     };
 
     window.ss_update = function (id) {
-        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        var o = window.ss_bufs[id].args >> 3, a = HEAPF64;
         a[o + 3] = window.ss_ctxs[id].update(a[o]);
     };
 
     // The step fetches the parent's active event itself and frees it once
     // the step, which only borrows it, returns.
     window.ss_instance_step = function (id, part, slot, child, looped) {
-        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        var o = window.ss_bufs[id].args >> 3, a = HEAPF64;
         var ev = window.ss_ctxs[id].get_active_event_instance(part);
         var s = window.ss_instances[slot];
         var visible = s.step(ev, window.ss_ctxs[child], a[o], a[o + 1], looped === 1);
@@ -164,12 +168,12 @@ _JS_HELPERS = ("window.ss_soa_stems = [%s];\n"
         var len = s.get_draw_plan_len();
         if (len <= 0) return 0;
         if (len > b.plan[1]) return -len;
-        Module.HEAPU8.set(new Uint8Array(window.ssruntime_wasm.memory.buffer, s.get_draw_plan_buf(), len), b.plan[0]);
+        HEAPU8.set(new Uint8Array(window.ssruntime_wasm.memory.buffer, s.get_draw_plan_buf(), len), b.plan[0]);
         return len;
     };
 
     window.ss_effect_step = function (id, part, slot, looped, y_flip, stride, draw) {
-        var o = window.ss_bufs[id].args >> 3, a = Module.HEAPF64;
+        var o = window.ss_bufs[id].args >> 3, a = HEAPF64;
         var ev = window.ss_ctxs[id].get_active_effect_event(part);
         var s = window.ss_effects[slot];
         var visible = s.step(ev, a[o], a[o + 1], a[o + 2], looped === 1, y_flip === 1, stride, draw === 1);
@@ -361,7 +365,7 @@ class _WebRuntime:
                 var res;
                 try {{
                     res = new window.ssruntime.SSRuntimeResource(
-                        Module.HEAPU8.subarray({addr}, {addr + n}));
+                        HEAPU8.subarray({addr}, {addr + n}));
                 }} catch (e) {{
                     return 'ss_resource_create failed: ' + ((e && e.message) || String(e));
                 }}
