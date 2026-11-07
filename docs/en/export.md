@@ -12,10 +12,8 @@ Ren'Py's own documentation.
 Common to every platform: `game/spritestudio/libs/` already holds the player's
 native library for every platform. Ren'Py packages the ones a desktop or Web build needs with
 your game; for Android and iOS you place it once by hand, as below. Your
-**assets** are your game's own content, so classify them in your own
-`options.rpy`: `build.classify('**.ssab', 'all')`, `build.classify('**.ssqb', 'all')`
-for sequence packs, and `'**.wav'` / `'**.mp3'` if your animations play SS Audio
-events. The Web export in particular drops unknown extensions unless you do.
+**assets** (`.ssab`, `.ssqb`, textures, sounds) ship with your game like any other
+file in `game/`. The projects under `SpriteStudio_Source/` do not.
 
 ## Desktop Export (Windows / macOS / Linux)
 
@@ -23,16 +21,14 @@ Standard Ren'Py [Build Distributions](https://www.renpy.org/doc/html/build.html)
 nothing to add for this player. For distribution, code-sign and notarize per
 Ren'Py's docs (unsigned `.dylib`s are blocked by Gatekeeper).
 
-**Optional — pack assets into a `.rpa`:** register the archive *before* your
-`**.ssab` / audio classify rules, since `build.classify` uses the first rule that
-matches:
+**Optional — pack assets into a `.rpa`:** register the archive *before* any
+classify rule of your own that also matches them, since `build.classify` uses the
+first rule that matches:
 
 ```renpy
 init python:
     build.archive("ssdata", "all")
     build.classify("game/ss_assets/**", "ssdata")
-    build.classify('**.ssab', 'all')
-    build.classify('**.ssqb', 'all')
 ```
 
 ## Android Export

@@ -74,13 +74,10 @@ init -20 python:
         build.archive("ssdata", "all")            # "all" tag: in every package
         build.classify("game/ss_assets/**", "ssdata")
 
-    # Ren'Py's web build drops uncompressed audio and unknown extensions (incl. the
-    # `.ssab` / `.ssqb` SpriteStudio pack formats), so classify the demo's assets
-    # explicitly. These are the GAME's own content — not the reusable library's
-    # files — so they live here, not in spritestudio.rpy. Registered AFTER the
-    # archive above so assets under game/ss_assets/ still land in ssdata.rpa when
-    # the toggle is on. A downstream game must add `**.ssab` / `**.ssqb` to its own
-    # options.rpy (and the `**.wav` / `**.mp3` lines too if it plays SS Audio events).
+    # The demo's packs and sounds, wherever they sit. These are the GAME's own
+    # content — not the reusable library's files — so they live here, not in
+    # spritestudio.rpy. Registered AFTER the archive above so assets under
+    # game/ss_assets/ still land in ssdata.rpa when the toggle is on.
     build.classify('**.ssab', 'all')          # the SpriteStudio pack format
     build.classify('**.ssqb', 'all')          # the SpriteStudio sequence pack
     build.classify('**.wav', 'all')

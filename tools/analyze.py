@@ -109,12 +109,12 @@ def audit_pack(lib, path: str) -> dict:
 
         # --- verdict ---
         seen = set(kinds_seen)
-        supported = seen & framedata.M1_RENDERABLE_KINDS
-        unsupported = seen - framedata.M1_RENDERABLE_KINDS
+        supported = seen & framedata.RENDERABLE_KINDS
+        unsupported = seen - framedata.RENDERABLE_KINDS
         if not seen:
             result["verdict"] = "no draw batches"
         elif not unsupported:
-            result["verdict"] = "FULL — M1 renders everything"
+            result["verdict"] = "FULL — the Normal path renders everything"
         elif supported:
             need = ", ".join(sorted(framedata.KIND_NAMES.get(k, str(k))
                                     for k in unsupported))
@@ -177,7 +177,7 @@ def main(argv: list[str]) -> int:
 
     lib = ssruntime.load_library()
     print(f"== Displayability audit: {len(paths)} packs "
-          f"(M1 renders kinds={sorted(framedata.M1_RENDERABLE_KINDS)} = Normal)\n")
+          f"(the Normal path renders kinds={sorted(framedata.RENDERABLE_KINDS)} = Normal)\n")
     full = partial = none = 0
     for p in paths:
         r = audit_pack(lib, p)

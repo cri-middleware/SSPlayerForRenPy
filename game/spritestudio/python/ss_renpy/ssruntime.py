@@ -19,7 +19,6 @@ ORIGIN_CENTER = 0
 ORIGIN_TOP_LEFT = 1
 
 UNIT_PIXEL = 0
-UNIT_DOT = 1
 
 # playback_direction
 DIRECTION_FORWARD = 0

@@ -29,7 +29,7 @@ import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 
 from ss_renpy import host_state, ssruntime  # noqa: E402
-from ss_renpy.host_state import PAUSED, PLAYING, STOPPED, ShowClock  # noqa: E402
+from ss_renpy.host_state import FINISHED, PAUSED, PLAYING, STOPPED, ShowClock  # noqa: E402
 from ss_renpy.player import SSInternalPlayer  # noqa: E402
 from ss_renpy.resource import RecordingResourceManager, filesystem_pack_reader  # noqa: E402
 
@@ -76,6 +76,11 @@ def check_show_clock() -> bool:
         ("shown afresh after a gap",
          [[2.0], [], [], [0.0]],
          [(0.0, False), (0.0, True)]),
+        # A rollback brings back a player it had hidden: its st ran on, but
+        # none of that time was on screen.
+        ("back from a rollback",
+         [[1.0], [1.016], [], [], [5.0], [5.016]],
+         [(0.0, False), (0.016, False), (0.0, False), (0.016, False)]),
         # Only the first render of a frame moves the animation.
         ("drawn twice in a frame",
          [[1.0, 1.0], [1.016, 1.016]],
@@ -194,11 +199,13 @@ def check_restore(lib) -> bool:
     print("### restore  a rebuilt core picks up where the dropped one stood")
     ok = True
 
-    def rebuild(rec, section=None, frame_skip=True, frame_rate=None):
+    def rebuild(rec, section=None, frame_skip=True, frame_rate=None,
+                remaining=None):
         anim, frame, loop, state = rec
         q = _ringo(lib)
         host_state.apply_kept(q, frame_skip, frame_rate)
-        restored = host_state.restore(q, anim, 1.0, loop, frame, state, section)
+        restored = host_state.restore(q, anim, 1.0, loop, frame, state, section,
+                                      remaining)
         return q, restored
 
     # Playing, inside a section, at a frame-rate override: both cores then
@@ -252,12 +259,15 @@ def check_restore(lib) -> bool:
             if stop:
                 stop(p)
             rec = _record(p)
-            want = PAUSED if state_name == "paused" else STOPPED
+            want = {"paused": PAUSED, "stopped": STOPPED}.get(state_name, FINISHED)
             if rec[3] != want:
                 print(f"    FAIL: {state_name} read as {rec[3]!r}"); ok = False
             q, _ = rebuild(rec)
             held = [q.update(dt_ms) for _ in range(5)]
-            if _record(q) != rec:
+            # A rebuilt core cannot be finished: it reads as stopped there, and
+            # SSPlayer keeps the completion.
+            back = STOPPED if want == FINISHED else want
+            if _record(q) != rec[:3] + (back,):
                 print(f"    FAIL: {state_name}: restored {_record(q)}, saved {rec}")
                 ok = False
             if any(abs(h.frame_no - rec[1]) > _EPS for h in held):
@@ -312,6 +322,73 @@ def check_restore(lib) -> bool:
         p.close()
         if q:
             q.close()
+
+    # Saved in the last of three cycles: what is left is one cycle, not three,
+    # and only the next play() starts over from three.
+    p = _ringo(lib)
+    q = None
+    try:
+        host_state.start_initial(p, "attack1", 3, 1.0, pack=_RINGO)
+        dt_ms = 1000.0 / (p.frame_rate or 30)
+        for _ in range(2000):
+            if p.remaining_loops == 1:
+                break
+            p.update(dt_ms)
+        rec = _record(p)
+        q, _ = rebuild(rec, remaining=p.remaining_loops)
+        if (q.remaining_loops, q.loop_count) != (1, 3):
+            print(f"    FAIL: restored {q.remaining_loops} left of {q.loop_count}")
+            ok = False
+        left_p = left_q = 0
+        for left, c in ((0, p), (1, q)):
+            n = 0
+            while not c.update(dt_ms).finished and n < 2000:
+                n += 1
+            if left:
+                left_q = n
+            else:
+                left_p = n
+        if abs(left_p - left_q) > 1:
+            print(f"    FAIL: finished {left_q} updates on, the original {left_p}")
+            ok = False
+        q.play()
+        if (q.remaining_loops, q.loop_count) != (3, 3):
+            print(f"    FAIL: play() re-armed {q.remaining_loops} of {q.loop_count}")
+            ok = False
+    finally:
+        p.close()
+        if q:
+            q.close()
+
+    # On a frame with keys: they were reported before the save, not after it.
+    ud = "ss_assets/overall/UserData.ssab"
+    ud_abs = os.path.join(_GAME, ud)
+    data = open(ud_abs, "rb").read()
+
+    def userdata():
+        return SSInternalPlayer(data, lib=lib, base_dir=os.path.dirname(ud),
+                                resource_manager=RecordingResourceManager(),
+                                pack_reader=filesystem_pack_reader(
+                                    os.path.dirname(ud_abs)))
+
+    p = userdata()
+    q = userdata()
+    try:
+        host_state.start_initial(p, None, -1, 1.0, pack=ud)
+        dt_ms = 1000.0 / (p.frame_rate or 30)
+        for _ in range(100):
+            if p.update(dt_ms).events:
+                break
+        anim, frame, loop, state = _record(p)
+        if not host_state.restore(q, anim, 1.0, loop, frame, state):
+            print("    FAIL: restore refused UserData's animation"); ok = False
+        plan = q.update(0.0)
+        if plan.events:
+            print(f"    FAIL: the restore reported frame {frame} again: "
+                  f"{[fe.frame_index for fe in plan.events]}"); ok = False
+    finally:
+        p.close()
+        q.close()
 
     # Frame skipping off: one frame per update, however long the update.
     q = _ringo(lib)

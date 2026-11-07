@@ -57,7 +57,6 @@ ORIGIN_CENTER = 0
 ORIGIN_TOP_LEFT = 1
 
 UNIT_PIXEL = 0
-UNIT_DOT = 1
 
 # playback_direction
 DIRECTION_FORWARD = 0
@@ -303,6 +302,8 @@ _U32_SOA = [_P, C.POINTER(C.POINTER(C.c_uint32)), C.POINTER(_size)]
 
 _REQUIRED = (
     ("ss_runtime_set_log_callback", [_LOG_CB_TYPE], None),
+    ("ss_runtime_get_last_error", [_P], _i32),
+    ("ss_runtime_error_message", [_i32], C.c_char_p),
 
     # resource lifecycle, and the .ssab schema version this runtime reads
     ("ss_resource_create_copy", [_str, _size], _P),
@@ -737,8 +738,15 @@ class _NativeRuntime:
         self._lib.ss_runtime_stop(self._ctx)
 
     def set_loop_count(self, loop_count: int):
-        self._lib.ss_runtime_set_loop_count(self._ctx, loop_count)
+        self._lib.ss_runtime_set_loop_count(self._ctx, int(loop_count))
         return self
+
+    def last_error_message(self) -> str:
+        """The Brain's reason for the call that just failed, on this context, or
+        "" for none. Read it before making another call: the next one replaces it."""
+        code = self._lib.ss_runtime_get_last_error(self._ctx)
+        text = self._lib.ss_runtime_error_message(code)
+        return text.decode("utf-8", "replace") if text else ""
 
     def set_speed_scale(self, rate: float):
         self._lib.ss_runtime_set_speed_scale(self._ctx, rate)

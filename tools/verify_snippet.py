@@ -55,6 +55,24 @@ def main() -> int:
     check("screen + add path", 'screen logo_screen():' in s
           and 'add SSPlayer("ss_assets/ui/Logo.ssab")' in s)
 
+    print("### names a show statement or a define cannot spell")
+    check("space -> _ in the tag", snippet.image_tag("BG art w pink") == "bg_art_w_pink")
+    check("bracket -> _ in the tag", snippet.image_tag("[NG]_medal DANCE") == "_ng__medal_dance")
+    check("hyphen and Japanese stay", snippet.image_tag("My-リンゴ") == "my-リンゴ")
+    s = snippet.build_snippet("x/My-Ringo.ssab", "character", ["a"])
+    check("hyphen: image keeps it, define does not",
+          'image my-ringo = SSPlayer(' in s and 'define my_ringo_chr = ' in s
+          and 'image="my-ringo"' in s)
+    s = snippet.build_snippet("x/My-Ringo.ssab", "ui", ["a"])
+    check("hyphen: screen does not", 'screen my_ringo_screen():' in s)
+    s = snippet.build_snippet("x/BG art w pink.ssab", "oneshot", ["a"])
+    check("space: one tag, not a tag and attributes", 'image bg_art_w_pink = SSPlayer(' in s)
+    s = snippet.build_snippet("x/01_title.ssab", "character", ["a"])
+    check("digit first: define takes a prefix",
+          'image 01_title = SSPlayer(' in s and 'define ss_01_title_chr = ' in s)
+    s = snippet.build_snippet("x/[NG]_medal DANCE.ssab", "character", ["a"])
+    check("bracket: Character text is escaped", 'Character("[[NG]_medal DANCE"' in s)
+
     print("### robustness")
     s = snippet.build_snippet("x/Foo.ssab", "character", [])
     check("empty anims still builds", 'image foo = SSPlayer(' in s)

@@ -18,7 +18,7 @@
 # `define ss_auto_images = False` turns this off; so does deleting this file.
 
 init 999 python:
-    import re as _ss_re
+    from ss_renpy.snippet import image_tag as _ss_image_tag
 
     def _ss_register_images():
         if not getattr(store, "ss_auto_images", True):
@@ -32,7 +32,7 @@ init 999 python:
                     rp == r or rp.startswith(r + "/") for r in roots):
                 continue
             stem = rp.rsplit("/", 1)[-1][:-len(".ssab")]
-            tag = _ss_re.sub(u"[^-0-9a-z_ -�]", "_", stem.lower())
+            tag = _ss_image_tag(stem)
             if tag in taken:
                 # A tag the game defined is the game's to keep. A second pack
                 # spelling a tag this registered is worth a line, since

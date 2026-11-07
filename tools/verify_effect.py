@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+from types import SimpleNamespace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _GAME = os.path.join(os.path.dirname(_HERE), "game")
@@ -26,6 +27,7 @@ import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 
 from ss_renpy import ssruntime, effectplan  # noqa: E402
+from ss_renpy.effect import EffectRig  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 
@@ -153,11 +155,34 @@ def check_pack(lib, path: str) -> bool:
         rt.close()
 
 
+def check_part_seeds() -> bool:
+    """Parts on one effect get a seed each, or they throw the same particles."""
+    class FakeRt:
+        def __init__(self):
+            self.seeds = []
+
+        def effect_slot_create(self, effect_name_hash, seed=0):
+            self.seeds.append(seed)
+            return len(self.seeds)
+
+    class FakeMeta:
+        @staticmethod
+        def effect_parts():
+            return [SimpleNamespace(index=i, ref_effect_name_hash=0xDEADBEEF)
+                    for i in (1, 2)]
+
+    rt = FakeRt()
+    EffectRig(rt, FakeMeta)
+    ok = len(set(rt.seeds)) == 2 and all(0 <= s <= 0xFFFFFFFF for s in rt.seeds)
+    print(f"### part seeds  {rt.seeds}  -> {'PASS' if ok else 'FAIL'}\n")
+    return ok
+
+
 def main(argv) -> int:
     targets = argv[1:] or [os.path.join(_GAME, "ss_assets", "overall", "Effect.ssab")]
     lib = ssruntime.load_library()
     print("== Effect playback verification ==\n")
-    allok = True
+    allok = check_part_seeds()
     for t in targets:
         allok &= check_pack(lib, t)
         print()

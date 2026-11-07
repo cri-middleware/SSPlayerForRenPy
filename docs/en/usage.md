@@ -195,11 +195,11 @@ if ringo.ss_is_track_finished(1):
 
 | Call | What it does |
 |---|---|
-| `ss_crossfade(track, name, duration)` | Fade the track over to another animation |
+| `ss_crossfade(track, name, duration)` | Fade the track over to another animation, in `duration` seconds (above 0) |
 | `ss_set_track_animation(track, name)` | Lay an animation on the track, without a fade |
 | `ss_clear_track(track)` / `ss_track_count()` | Empty a track / how many tracks there are |
 | `ss_set_track_alpha(track, alpha)` | How strongly the track applies, `0.0`–`1.0` |
-| `ss_fade_track(track, alpha, duration)` | Fade the track's alpha |
+| `ss_fade_track(track, alpha, duration)` | Fade the track's alpha, in `duration` seconds (above 0) |
 | `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | How far the fade in flight has got (`0.0`–`1.0`, `None` when not fading) / stop it there |
 | `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX` (default) or `TRACK_BLEND_ADDITIVE` |
 | `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE` (from the top, default) or `TRACK_SYNC_START` (in step with track 0) |
@@ -209,7 +209,7 @@ if ringo.ss_is_track_finished(1):
 | `ss_add_track_source(track, name, weight)` | Add another animation to a track; returns its handle |
 | `ss_set_source_weight(source, weight)` / `ss_set_source_frame(source, frame)` / `ss_set_source_event_threshold(source, threshold)` | One source's weight, playhead, and the weight from which it fires events |
 
-The settings read back through the matching `ss_get_*` (`ss_is_track_frame_skip_enabled()` for frame skip). A setter returns `False` when it is refused — an unknown animation, a track or handle that does not exist — and a getter returns `None` where there is nothing to read.
+The settings read back through the matching `ss_get_*` (`ss_is_track_frame_skip_enabled()` for frame skip). A setter returns `False` when it is refused — an unknown animation, a track or handle that does not exist, a `duration` of 0 — and a getter returns `None` where there is nothing to read.
 
 ---
 

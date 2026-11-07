@@ -37,6 +37,8 @@ import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 
 from ss_renpy import ssruntime, events  # noqa: E402
+from ss_renpy.player import SSInternalPlayer  # noqa: E402
+from ss_renpy.resource import RecordingResourceManager, filesystem_pack_reader  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 _OVERALL = os.path.join(_GAME, "ss_assets", "overall")
@@ -208,6 +210,96 @@ def verify_pack(pack: str) -> list[str]:
     return fails
 
 
+def _player(data: bytes) -> SSInternalPlayer:
+    return SSInternalPlayer(data, lib=_SS_LIB, base_dir="ss_assets/overall",
+                            resource_manager=RecordingResourceManager(),
+                            pack_reader=filesystem_pack_reader(_OVERALL))
+
+
+def check_inactive_signal() -> list[str]:
+    """A Signal switched off in the editor is not delivered."""
+    path = os.path.join(_OVERALL, "Signal.ssab")
+    if not os.path.exists(path):
+        return ["Signal.ssab: file not found"]
+    data = bytearray(open(path, "rb").read())
+    anim = events.EventResolver(bytes(data))._anims[0]
+    off = None
+    total = 0
+    for i in range(anim.EventsLength()):
+        epf = anim.Events(i)
+        for k in range(epf.SignalsLength()):
+            value = epf.Signals(k).Value()
+            total += 1
+            slot = value._tab.Offset(4)      # PartAttributeSignal.active
+            if off is None and slot and value.Active():
+                off = value.CommandId().decode("utf-8")
+                data[value._tab.Pos + slot] = 0
+    if off is None or total < 2:
+        return [f"Signal.ssab: wants two active signals to switch one off ({total})"]
+    p = _player(bytes(data))
+    try:
+        p.set_animation(None)
+        p.set_loop_count(1)
+        p.play()
+        got = []
+        for _ in range(400):
+            for fe in p.update(1000.0 / 30).events:
+                got.extend(s.command_id for s in fe.signals)
+            if p.is_finished():
+                break
+    finally:
+        p.close()
+    print(f"  inactive signal: switched off {off!r}, delivered {got}")
+    if off in got or len(got) != total - 1:
+        return [f"inactive signal: delivered {got} with {off!r} off"]
+    return []
+
+
+def check_landing() -> list[str]:
+    """A section change or a source seek reports the frame it lands on as a seek,
+    and a host holding the pose can leave that report unheard."""
+    path = os.path.join(_OVERALL, "Sound.ssab")
+    if not os.path.exists(path):
+        return ["Sound.ssab: file not found"]
+    data = open(path, "rb").read()
+    anim = SsabMeta(data).animations()[0]
+    resolver = events.EventResolver(data, anim.name)
+    # The last audio key: the head has to move to reach it.
+    frame = max(fe.frame_index for fe in map(resolver.resolve,
+                                             range(resolver.events_length))
+                if fe is not None and fe.audios)
+    fails = []
+    p = _player(data)
+    try:
+        p.set_animation(anim.name)
+        p.set_animation_section(frame, anim.end_frame)
+        plan = p.update(0.0)
+        if ([fe.frame_index for fe in plan.events] != [frame]
+                or plan.seek_frame != frame):
+            fails.append(f"section: reported {plan.events} seek={plan.seek_frame}, "
+                         f"want frame {frame} as a seek")
+        p.set_animation_section(frame, anim.end_frame)
+        p.stop()
+        p.discard_landing()
+        plan = p.update(0.0)
+        if plan.events or plan.seek_frame != -1:
+            fails.append(f"held: reported {plan.events} seek={plan.seek_frame}")
+        # Playing from there is the head reaching the frame, and it sounds.
+        p.play()
+        plan = p.update(0.0)
+        if [fe.frame_index for fe in plan.events] != [frame] or plan.seek_frame != -1:
+            fails.append(f"play: reported {plan.events} seek={plan.seek_frame}")
+        p.set_source_frame(p.track_main_source(0), frame)
+        plan = p.update(0.0)
+        if plan.seek_frame != frame:
+            fails.append(f"source seek: seek={plan.seek_frame}, want {frame}")
+    finally:
+        p.close()
+    print(f"  landing: frame {frame} of {anim.name!r}: "
+          f"{'PASS' if not fails else 'FAIL'}")
+    return fails
+
+
 def main(argv) -> int:
     global _SS_LIB
     try:
@@ -223,6 +315,9 @@ def main(argv) -> int:
     print("verify_events: timeline events (UserData / Signal / Audio)")
     for pack in packs:
         all_fails.extend(verify_pack(pack))
+    if len(argv) <= 1:
+        all_fails.extend(check_inactive_signal())
+        all_fails.extend(check_landing())
 
     print()
     if all_fails:

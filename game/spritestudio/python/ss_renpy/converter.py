@@ -1,5 +1,7 @@
 """ctypes bindings for libssconverter — background .sspj -> .ssab conversion (no renpy import)."""
 
+from __future__ import annotations
+
 import ctypes as C
 import os
 import platform

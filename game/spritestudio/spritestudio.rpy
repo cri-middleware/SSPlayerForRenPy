@@ -39,8 +39,8 @@ init -10 python:
 
     # Packaging (build.classify): the library classifies only its OWN files — its
     # per-platform native libraries (below). The `.ssab` / `.ssqb` pack formats hold
-    # the GAME's own assets, so shipping those is the game's responsibility, done in
-    # its options.rpy alongside the audio rules (see game/options.rpy) — NOT here.
+    # the GAME's own assets, which ship as any file of the game does; routing them
+    # is up to its options.rpy, NOT here.
     # build.classify is FIRST-MATCH-WINS by registration order, and this runs at
     # init -10, so a game can override any of it from an EARLIER init in options.rpy.
 
@@ -60,6 +60,8 @@ init -10 python:
     build.classify('**/spritestudio/docs/**', None)
     build.classify('**/spritestudio/libs/macos/**', 'mac')
     build.classify('**/spritestudio/libs/windows/x86_64/**', 'windows')
+    # Ren'Py has no package for Windows on Arm, so this would land in all of them.
+    build.classify('**/spritestudio/libs/windows/arm64/**', None)
     build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')
     build.classify('**/spritestudio/libs/linux/aarch64/**', 'linux_arm')
     # Android: the Brain ships in the APK's lib/<abi>/ (jniLibs) — staged there at
@@ -197,9 +199,6 @@ init -10 python:
     SS_ENABLE_MASK = True
     SS_MASK_COVERAGE_MAX_DIM = 2048
     SS_MASK_COVERAGE_SUPERSAMPLE = 2.0
-    # Deprecated no-op retained for compatibility; mask-edge antialiasing is
-    # controlled solely by SS_MASK_COVERAGE_SUPERSAMPLE.
-    SS_MASK_ANTIALIAS = True
 
     # User-shader effects (SS6 ss-* family: sepia / outline / bmask / hsb / step /
     # move / wave / noise / blur / pix / scatter / circle / spot). Needs the mesh
@@ -1234,7 +1233,8 @@ init -10 python:
             _SS_INDEX = None
 
     def ss_list_assets():
-        """Dev/discovery helper: {pack_name: [animation, ...]} for each pack."""
+        """Dev/discovery helper: {pack_name: [animation, ...]} for each primary
+        pack (one no other pack plays as an instance)."""
         idx = _ss_get_index()
         return {r.stem: list(r.anim_names)
                 for r in idx.records() if r.is_primary}
@@ -1432,11 +1432,17 @@ init -10 python:
             self._audio_last_render = 0.0
             # The current frame + loop count to restore on rollback/reshow, plus
             # whether playback was live at that point ("playing" / "paused" /
-            # "stopped"): restoring a paused, stopped or naturally finished
-            # player must NOT silently resume it (see host_state.restore).
+            # "stopped" / "finished"): restoring a paused, stopped or naturally
+            # finished player must NOT silently resume it (see
+            # host_state.restore). What the run had left is read as a save is
+            # written; see __getstate__.
             self._saved_frame = -1.0
             self._saved_loop = self._initial_loop
+            self._saved_remaining = None
             self._saved_state = host_state.PLAYING
+            # Whether the run has completed. A rebuilt core comes back stopped,
+            # not finished, so ss_is_finished reads this as well as the Brain.
+            self._finished = False
             # The playback section the game set on the current animation, as
             # (start, end), or None. The Brain resets it on every animation
             # change, so this goes back to None with each one; a rebuilt core
@@ -1489,6 +1495,8 @@ init -10 python:
             """Drop the native-backed core + caches for pickling/saves; they are
             rebuilt lazily on the next render (re-applying the animation)."""
             state = self.__dict__.copy()
+            if self._core is not None:
+                state["_saved_remaining"] = self._core.remaining_loops
             state["_core"] = None
             state["_rm"] = None
             state["_texpath"] = {}
@@ -1501,17 +1509,6 @@ init -10 python:
             state["_box_rect"] = False         # re-read from the pack; see _canvas_box
             return state
 
-        def after_setstate(self):
-            # Saves from earlier releases hold _duplicatable = True on every
-            # player. Kept, it makes a loaded `add ringo` show a copy that the
-            # script's ringo.ss_* calls never reach.
-            if self.__dict__.get("_duplicatable") is True:
-                del self.__dict__["_duplicatable"]
-            # What the render clock was before _clock replaced it; always None
-            # in a save, and read by nothing now.
-            self.__dict__.pop("_last_st", None)
-            self.__dict__.pop("_drawn_frame", None)
-
         # -- equality: what lets a screen keep its player -------------------
         def __eq__(self, o):
             """Equal to a player built from the same arguments.
@@ -1523,10 +1520,7 @@ init -10 python:
             in a new player that starts over at frame 0, so an animation in a
             screen never gets past its first moments while the game is read,
             nor past its first frame while it is skipped."""
-            if not self._equals(o):
-                return False
-            spec = getattr(self, "_spec", None)   # absent in older saves
-            return spec is not None and spec == getattr(o, "_spec", None)
+            return self._equals(o) and self._spec == o._spec
 
         # Hashing stays by identity. Two copies of one image are equal, and
         # _audio_live must still hold each of them while it sounds.
@@ -1574,14 +1568,17 @@ init -10 python:
             takes the ImageReference.find_target path instead). Every required
             attribute must name one of our animations or aliases, or be
             `still`, else this image does not match. The required attributes
-            fully determine what plays, so stale `optional` (previous)
-            attributes are dropped."""
+            fully determine what plays, so they replace the ones shown
+            (`optional`); a show that names none (`show ringo at left`, an ATL
+            block) keeps those, as it does for any image."""
             valid = set(self._get_available_animations())
             valid.update(self.aliases.keys())
             valid.add(_SS_STILL)
             for a in required:
                 if a not in valid:
                     return None
+            if not required:
+                return tuple(a for a in optional if a in valid)
             return tuple(required)
 
         def _duplicate(self, args):
@@ -1613,6 +1610,7 @@ init -10 python:
             loop = self._initial_loop
             still = False
             picked = []
+            unknown = []
             if args and getattr(args, "args", None):
                 names = self._get_available_animations()
                 for attr in args.args:
@@ -1624,14 +1622,20 @@ init -10 python:
                         picked.append(attr)
                     elif attr == _SS_STILL:
                         still = True
-                    elif getattr(args, "lint", False) and names:
-                        # Lint asks by calling this and treats a raise as "no
-                        # such image" — the answer `show ringo typo` gets when
-                        # it runs, from _choose_attributes. Without it every
-                        # attribute passes lint. A pack whose names cannot be
-                        # read has its path reported by _ss_lint instead.
+                    elif names:
+                        # A pack whose names cannot be read has its path
+                        # reported by _ss_lint instead.
+                        unknown.append(attr)
+                if unknown:
+                    # Lint asks by calling this and treats a raise as "no such
+                    # image"; without it every attribute passes lint.
+                    if getattr(args, "lint", False):
                         raise Exception("%r is not an animation or alias of %s"
-                                        % (attr, self.ssab))
+                                        % (unknown[0], self.ssab))
+                    # Ren'Py's rule for an attribute an image does not take: an
+                    # error in developer mode, ignored in a release. Without it
+                    # `show ringo typo` plays the first animation without a word.
+                    args.copy(args=tuple(unknown)).extraneous()
             if picked:
                 target_anim = picked[0] if len(picked) == 1 else picked
                 if still:
@@ -1646,9 +1650,9 @@ init -10 python:
                 loop=loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
-                frame_skip=getattr(self, "_frame_skip", True),
+                frame_skip=self._frame_skip,
                 size=self._size,
-                attachments=self._attach_list(),
+                attachments=self._attachments,
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
@@ -1667,7 +1671,7 @@ init -10 python:
             rv._overrides = self._permanent_overrides()
             # The template's box, not the chosen animation's: every attribute of
             # one image then lays out on the same canvas.
-            rv._box_anim = getattr(self, "_box_anim", None)
+            rv._box_anim = self._box_anim
             if still and not picked:
                 rv._still = True
                 # Built from the same arguments as a plain `show <tag>`, so
@@ -1677,11 +1681,6 @@ init -10 python:
 
         # -- lazy native setup ---------------------------------------------
         def _ensure(self):
-            # A save written before per-part overrides existed restores a
-            # __dict__ without `_overrides`, and every override path runs
-            # through here first — so seed it before the early return.
-            if not hasattr(self, "_overrides"):
-                self._overrides = {}
             if self._core is not None:
                 return
             # Read the .ssab through Ren'Py's loader so it works loose or in a
@@ -1730,9 +1729,7 @@ init -10 python:
             # still have to be put back once (below, after the restore, since
             # set_animation would otherwise be the thing carrying a value that
             # is not there yet).
-            host_state.apply_kept(self._core,
-                                  getattr(self, "_frame_skip", True),
-                                  getattr(self, "_frame_rate", None))
+            host_state.apply_kept(self._core, self._frame_skip, self._frame_rate)
 
             # Starting the animation can fail -- a constructor animation the
             # pack lacks -- and that is reported once, from here: the next
@@ -1746,21 +1743,18 @@ init -10 python:
                 # pickling) puts back the exact animation, frame and state.
                 # The loop count is the one the core last ran with (see
                 # _record_playback), so a runtime ss_set_loop_count /
-                # ss_play(loop=...) survives too. A save written before
-                # _saved_state existed restores as "playing", as it did then.
+                # ss_play(loop=...) survives too.
                 restored = False
-                if getattr(self, "_saved_frame", -1.0) >= 0.0:
-                    anim = getattr(self, "animation", None)
+                if self._saved_frame >= 0.0:
+                    anim = self.animation
                     if not anim:
                         anim = self._initial_animation
                         if isinstance(anim, (list, tuple)) and anim:
                             anim = anim[0]
                     restored = host_state.restore(
-                        self._core, anim, self.speed,
-                        getattr(self, "_saved_loop", self._initial_loop),
-                        self._saved_frame,
-                        getattr(self, "_saved_state", host_state.PLAYING),
-                        getattr(self, "_section", None))
+                        self._core, anim, self.speed, self._saved_loop,
+                        self._saved_frame, self._saved_state, self._section,
+                        self._saved_remaining)
                 if not restored:
                     # Never shown, or the saved animation is gone (the pack
                     # was re-exported since the save): start afresh rather
@@ -1786,7 +1780,7 @@ init -10 python:
             # before load (constructor attachments=, or an ss_attach while the
             # core was dropped) that targets a bone-skinned mesh part — the same
             # non-blocking hint ss_attach gives once the core is live.
-            for _rec in self._attach_list():
+            for _rec in self._attachments:
                 self._warn_if_skinned_target(_rec["part"])
             if setup_error is not None:
                 raise setup_error
@@ -1802,7 +1796,13 @@ init -10 python:
             start the constructor's animation afresh."""
             self._saved_frame = core.frame_no
             self._saved_loop = core.loop_count
-            self._saved_state = host_state.playback_state(core)
+            state = self._saved_state = host_state.playback_state(core)
+            # STOPPED says nothing about the run: that is what a rebuilt core
+            # reads after it finished.
+            if state == host_state.FINISHED:
+                self._finished = True
+            elif state != host_state.STOPPED:
+                self._finished = False
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -1814,10 +1814,11 @@ init -10 python:
             `show <tag> still` is held by pausing; see host_state.start_initial."""
             # The setup resets the section, whether or not it succeeds.
             self._section = None
+            self._finished = False
             self._anim_queue = host_state.start_initial(
                 self._core, self._initial_animation, self._initial_loop,
                 self.speed, start_frame=start_frame,
-                still=getattr(self, "_still", False), pack=self.ssab)
+                still=self._still, pack=self.ssab)
             self.animation = self._core.current_animation
 
         def _texture_path(self, thash):
@@ -2121,10 +2122,9 @@ init -10 python:
             """The authored canvas of `_box_anim` as (x, y, w, h), origin-relative
             and y-down, or None when the pack has no usable one. Read once and
             kept, so rendering stays allocation-free."""
-            if getattr(self, "_box_rect", False) is False:
+            if self._box_rect is False:
                 try:
-                    self._box_rect = self._core.meta.canvas_rect(
-                        getattr(self, "_box_anim", None))
+                    self._box_rect = self._core.meta.canvas_rect(self._box_anim)
                 except Exception:
                     self._box_rect = None
             return self._box_rect
@@ -2139,7 +2139,7 @@ init -10 python:
             # of a frame moves the animation, by how far its place moved on;
             # the others draw that same frame. A render no place from the last
             # frame accounts for is a re-show. See host_state.ShowClock.
-            clock = getattr(self, "_clock", None)
+            clock = self._clock
             if clock is None:
                 clock = self._clock = host_state.ShowClock()
             dt = clock.advance(renpy.config.frames, st)
@@ -2169,7 +2169,7 @@ init -10 python:
             # on, so the render that wakes it (ss_play, ss_resume, a crossfade
             # from a finished animation) must not hand the runtime that gap:
             # the playhead would jump, and a fade would be over in one frame.
-            if again or getattr(self, "_idle", False):
+            if again or self._idle:
                 dt = 0.0
             # Advance the engine-independent core (it takes milliseconds) and get
             # this frame's z-ordered, world-space draw plan.
@@ -2240,7 +2240,7 @@ init -10 python:
             # translation-only case stays allocation-free. See ss_attach.
             # Compositing here, in the pass that computed this frame's pose, is
             # what keeps a child from lagging the animation by a frame.
-            _recs = self._attach_list()
+            _recs = self._attachments
             if _recs:
                 for _i, _rec in enumerate(_recs):
                     try:
@@ -3040,7 +3040,7 @@ init -10 python:
             # first frame one is drawn stalls on decode+upload — the very hitch
             # _prewarm_textures exists to avoid — and Ren'Py could not manage
             # their lifecycle either.
-            return [_r["child"] for _r in self._attach_list()]
+            return [_r["child"] for _r in self._attachments]
 
         # -- hide / destroy: stop this player's audio -----------------------
         def _handles_event(self, event):
@@ -3082,13 +3082,16 @@ init -10 python:
                 return True
             if not self._core.set_animation(name):
                 self._warn_once(("anim", name),
-                                "setup_animation(%r) failed" % name)
+                                "%s has no animation %r (it has: %s)"
+                                % (self.ssab, name,
+                                   ", ".join(self._core.animation_names())))
                 return False
             self._loop_after_switch()
             # setup_animation dropped the Brain's visibility + non-Permanent
             # overrides and the section; keep our restore record in step with it.
             self._prune_overrides_for_new_animation()
             self._section = None
+            self._finished = False
             self.animation = self._core.current_animation
             self._record_playback(self._core)
             renpy.redraw(self, 0)
@@ -3122,10 +3125,13 @@ init -10 python:
             """Start playback (optionally switching animation / loop first).
 
             ``start_frame >= 0`` begins at that frame; otherwise resumes from the
-            section start. Re-arms Instance/Effect slots so they re-fire."""
+            section start. Re-arms Instance/Effect slots so they re-fire.
+
+            False, leaving what plays as it is, for an ``animation`` the pack
+            lacks; True otherwise."""
             self._ensure()
-            if animation:
-                self.ss_set_animation(animation)
+            if animation and not self.ss_set_animation(animation):
+                return False
             if loop is not None:
                 self.loop = loop
                 self._core.set_loop_count(loop)
@@ -3137,6 +3143,7 @@ init -10 python:
             self._record_playback(self._core)
             self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
+            return True
 
         # These act on the playback itself, so like ss_play they build the core
         # first: a player not drawn yet (or since a load) has none, and the
@@ -3196,13 +3203,14 @@ init -10 python:
             Not `not ss_is_playing()`: a commanded `ss_stop()` also stops
             playing but is **not** a completion, so only this one tells "the run
             ended on its own" from "something stopped it". Never True under an
-            infinite loop count, and False before the core exists.
+            infinite loop count. A save keeps it: a player that had finished
+            reads True after a load.
 
             It follows the **sequence**, not each clip in it: chaining to the
             next animation re-arms the Brain's flag, so this reads True once the
             sequence is spent — the same moment `on_animation_finished` fires.
             """
-            return bool(self._core and self._core.is_finished())
+            return self._finished or bool(self._core and self._core.is_finished())
 
         def ss_get_frame_no(self):
             return self._core.frame_no if self._core else 0.0
@@ -3331,15 +3339,12 @@ init -10 python:
             itself, so an animation switch needs nothing -- but
             pickling drops the native core entirely and the replacement starts
             from the runtime defaults, which no amount of retention reaches.
-            A save written before these existed restores a __dict__ without
-            them, hence getattr.
             """
             if not self._core:
                 return
-            _dir = getattr(self, "_playback_direction", 0)
-            _sty = getattr(self, "_playback_style", 0)
-            if _dir or _sty:
-                self._core.set_playback_direction(_dir, _sty)
+            if self._playback_direction or self._playback_style:
+                self._core.set_playback_direction(self._playback_direction,
+                                                  self._playback_style)
 
         def ss_set_playback_direction(self, direction, style=0):
             """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
@@ -3356,14 +3361,13 @@ init -10 python:
             """The configured direction (0=forward, 1=reverse) — the setting, not
             the instantaneous heading: on a ping-pong return leg this still
             reads forward."""
-            # getattr: a save written before these existed unpickles without them.
             return (self._core.playback_direction if self._core
-                    else getattr(self, "_playback_direction", 0))
+                    else self._playback_direction)
 
         def ss_get_playback_style(self):
             """The configured style (0=normal, 1=ping-pong)."""
             return (self._core.playback_style if self._core
-                    else getattr(self, "_playback_style", 0))
+                    else self._playback_style)
 
         def ss_set_frame_skip_enabled(self, enabled):
             """Toggle frame skipping (default on).
@@ -3380,8 +3384,7 @@ init -10 python:
                 self._core.set_frame_skip_enabled(self._frame_skip)
 
         def ss_is_frame_skip_enabled(self):
-            return (self._core.frame_skip_enabled if self._core
-                    else getattr(self, "_frame_skip", True))
+            return self._core.frame_skip_enabled if self._core else self._frame_skip
 
         def ss_set_frame_rate(self, fps):
             """Play at ``fps`` whatever the animation's own rate; 0 clears it.
@@ -3429,7 +3432,13 @@ init -10 python:
             animation."""
             self._loop_after_switch()
             self._section = None
+            self._finished = False
             self.animation = self._core.current_animation
+
+        def _why(self):
+            """The Brain's reason for the call that just failed, for a log line."""
+            reason = self._core.last_error_message()
+            return ": " + reason if reason else ""
 
         def _mix_drawn(self, ok):
             # Every track setter ends here, and several move what a save keeps:
@@ -3464,7 +3473,8 @@ init -10 python:
             core = self._mixer()
             if not core.crossfade(track, name, float(duration) * 1000.0):
                 self._warn_once(("crossfade", track, name),
-                                "crossfade(%r, %r) failed" % (track, name))
+                                "crossfade(%r, %r, %r) failed%s"
+                                % (track, name, duration, self._why()))
                 return False
             if _ss_is_track_zero(track):
                 self._track_zero_switched()
@@ -3518,7 +3528,11 @@ init -10 python:
             return self._core.track_speed(track) if self._core else None
 
         def ss_set_track_frame_rate(self, track, fps):
-            return self._mixer().set_track_frame_rate(track, fps)
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_frame_rate(fps)
+                return True
+            return core.set_track_frame_rate(track, fps)
 
         def ss_get_track_frame_rate(self, track):
             return self._core.track_frame_rate(track) if self._core else None
@@ -3586,8 +3600,13 @@ init -10 python:
 
         def ss_fade_track(self, track, alpha, duration):
             """Fade the track's alpha to ``alpha`` in ``duration`` seconds."""
-            return self._mix_drawn(self._mixer().fade_track(
-                track, alpha, float(duration) * 1000.0))
+            core = self._mixer()
+            if not core.fade_track(track, alpha, float(duration) * 1000.0):
+                self._warn_once(("fade-track", track),
+                                "fade_track(%r, %r, %r) failed%s"
+                                % (track, alpha, duration, self._why()))
+                return False
+            return self._mix_drawn(True)
 
         def ss_track_fade_progress(self, track):
             return self._core.track_fade_progress(track) if self._core else None
@@ -3758,25 +3777,6 @@ init -10 python:
                                 "anchor": (0.5, 0.5), "angle": 0.0})
             return out
 
-        def _attach_list(self):
-            """The attachment records — the single accessor every path uses.
-
-            Migrates state unpickled from a save written before attachments
-            became a record list: back then the attribute did not exist at all,
-            or held ``None`` / the ``{part: child}`` dict. Without this, a loaded
-            save would hit ``None.append`` in ss_attach, ``len(None)`` in
-            ss_clear_attachments, and a dict walk in render() that yields part
-            NAMES where records are expected (silently dropping every child).
-            Also seeds the non-pickled Transform cache render() reads."""
-            recs = getattr(self, "_attachments", None)
-            if not isinstance(recs, list):
-                recs = self._init_attachments(recs)
-                self._attachments = recs
-                self._xform_cache = {}
-            elif not hasattr(self, "_xform_cache"):
-                self._xform_cache = {}
-            return recs
-
         def _invalidate_attachments(self):
             """Drop the Transform cache: it is keyed by record index, so any
             attach/detach shifts it. Cheap — it refills on the next render."""
@@ -3807,12 +3807,12 @@ init -10 python:
             offset to lie along the fingers; -90 rotates it CCW)."""
             child = renpy.displayable(child)
             anchor = (float(anchor[0]), float(anchor[1]))
-            self._attach_list().append({"part": part, "child": child,
-                                        "drive_position": bool(drive_position),
-                                        "drive_rotation": bool(drive_rotation),
-                                        "drive_scale": bool(drive_scale),
-                                        "on_hide": on_hide, "anchor": anchor,
-                                        "angle": float(angle)})
+            self._attachments.append({"part": part, "child": child,
+                                      "drive_position": bool(drive_position),
+                                      "drive_rotation": bool(drive_rotation),
+                                      "drive_scale": bool(drive_scale),
+                                      "on_hide": on_hide, "anchor": anchor,
+                                      "angle": float(angle)})
             self._invalidate_attachments()
             self._warn_if_skinned_target(part)
             return child
@@ -3827,7 +3827,7 @@ init -10 python:
             if child is not None:
                 child = renpy.displayable(child)
             keep, removed = [], 0
-            for rec in self._attach_list():
+            for rec in self._attachments:
                 match_child = child is None or rec["child"] is child \
                     or rec["child"] == child
                 match_part = part is None or rec["part"] == part
@@ -3842,7 +3842,7 @@ init -10 python:
 
         def ss_clear_attachments(self):
             """Remove every attachment; returns the count removed."""
-            n = len(self._attach_list())
+            n = len(self._attachments)
             self._attachments = []
             if n:
                 self._invalidate_attachments()
@@ -3850,7 +3850,7 @@ init -10 python:
 
         def ss_attachments(self):
             """Current attachments as a list of ``(part_name, child)`` tuples."""
-            return [(r["part"], r["child"]) for r in self._attach_list()]
+            return [(r["part"], r["child"]) for r in self._attachments]
 
         # -- part overrides ------------------------------------------------
         # Per-part runtime overrides: "make this part this colour / cell /
@@ -3947,10 +3947,9 @@ init -10 python:
 
             Colour is ``(packed, blend_op, priority)`` and cell is
             ``(cellmap, cell, priority)`` — priority last in both; visibility has
-            none and is always dropped. Tolerates a state unpickled before
-            overrides existed (no ``_overrides`` attribute)."""
+            none and is always dropped."""
             return {key: args
-                    for key, args in getattr(self, "_overrides", {}).items()
+                    for key, args in self._overrides.items()
                     if key[1] != "visibility"
                     and args[2] == ssruntime.PRIORITY_PERMANENT}
 
@@ -3965,6 +3964,17 @@ init -10 python:
             """
             self._overrides = self._permanent_overrides()
 
+        def _override_refused(self, call, part):
+            """Say once that a per-part override was refused; False, for the
+            caller to return. A part the pack lacks never reaches the Brain."""
+            if self._core.resolve_part(part) < 0:
+                why = "%s has no such part" % self.ssab
+            else:
+                why = "the runtime refused the values given"
+            self._warn_once(("override", call, part),
+                            "%s(%r) failed: %s" % (call, part, why))
+            return False
+
         def ss_set_part_visibility_override(self, part, hide=True, cascade=False):
             """Force-hide ``part``, or revert it to the animation (``hide=False``).
 
@@ -3973,7 +3983,7 @@ init -10 python:
             animation clears it."""
             self._ensure()
             if not self._core.set_part_visibility_override(part, hide, cascade):
-                return False
+                return self._override_refused("ss_set_part_visibility_override", part)
             # hide=False IS the revert (the runtime drops the entry), so record
             # it as a clear rather than as an override worth restoring.
             self._record_override(
@@ -3986,7 +3996,7 @@ init -10 python:
             """Clear a part's visibility override (revert to the animation)."""
             self._ensure()
             if not self._core.clear_part_visibility_override(part):
-                return False
+                return self._override_refused("ss_clear_part_visibility_override", part)
             self._record_override(part, "visibility", None)
             renpy.redraw(self, 0)
             return True
@@ -4002,7 +4012,7 @@ init -10 python:
             packed = self._norm_color(color)
             if not self._core.set_part_color_override(part, packed, blend_op,
                                                       priority):
-                return False
+                return self._override_refused("ss_set_part_color_override", part)
             if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
                 self._record_override(part, "color", (packed, blend_op, priority))
             renpy.redraw(self, 0)
@@ -4016,11 +4026,14 @@ init -10 python:
             self._ensure()
             cols = list(corners) if corners is not None else []
             if len(cols) != 4:
+                self._warn_once(("override-corners", part),
+                                "ss_set_part_color_override_corners(%r) failed: it "
+                                "takes four colours, not %d" % (part, len(cols)))
                 return False
             packed = tuple(self._norm_color(c) for c in cols)
             if not self._core.set_part_color_override_corners(
                     part, packed, blend_op, priority):
-                return False
+                return self._override_refused("ss_set_part_color_override_corners", part)
             if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
                 self._record_override(part, "color", (packed, blend_op, priority))
             renpy.redraw(self, 0)
@@ -4030,7 +4043,7 @@ init -10 python:
             """Clear a part's colour override (revert to the animation)."""
             self._ensure()
             if not self._core.clear_part_color_override(part):
-                return False
+                return self._override_refused("ss_clear_part_color_override", part)
             self._record_override(part, "color", None)
             renpy.redraw(self, 0)
             return True
@@ -4046,7 +4059,7 @@ init -10 python:
             self._ensure()
             if not self._core.set_part_cell_override(part, cellmap_name,
                                                      cell_name, priority):
-                return False
+                return self._override_refused("ss_set_part_cell_override", part)
             if not cellmap_name and not cell_name:
                 self._record_override(part, "cell", None)   # the revert sentinel
             elif priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
@@ -4059,7 +4072,7 @@ init -10 python:
             """Clear a part's cell override (revert to the animation)."""
             self._ensure()
             if not self._core.clear_part_cell_override(part):
-                return False
+                return self._override_refused("ss_clear_part_cell_override", part)
             self._record_override(part, "cell", None)
             renpy.redraw(self, 0)
             return True
@@ -4068,6 +4081,9 @@ init -10 python:
             """Clear every per-part override on this player."""
             self._ensure()
             if not self._core.clear_all_part_overrides():
+                self._warn_once("override-clear-all",
+                                "ss_clear_all_part_overrides() failed: the runtime "
+                                "refused it")
                 return False
             self._overrides = {}
             renpy.redraw(self, 0)
@@ -4136,9 +4152,6 @@ init -10 python:
             if not path:
                 return None
             return self._tex_override.get(path)
-
-    # Backwards-compatible alias for the original public class name.
-    SpriteStudioDisplayable = SSPlayer
 
     def _ss_lint():
         """Lint the players lint can reach — every image, and every player held

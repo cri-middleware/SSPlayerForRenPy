@@ -51,7 +51,7 @@ BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub", 4: "Mulalpha",
                9: "Div2", 10: "Screen2", 11: "Overlay2"}
 
 # Kinds the Normal render path can emit.
-M1_RENDERABLE_KINDS = frozenset({KIND_NORMAL})
+RENDERABLE_KINDS = frozenset({KIND_NORMAL})
 
 MASK_INFLUENCE = 0x01  # DrawBatch.flags bit
 
@@ -1226,9 +1226,9 @@ def classify_frame(fd: FrameData) -> dict:
         slot["batches"] += 1
         slot["parts"] += batch.Count()
     renderable = sum(v["parts"] for k, v in by_kind.items()
-                     if k in M1_RENDERABLE_KINDS)
+                     if k in RENDERABLE_KINDS)
     unsupported = sum(v["parts"] for k, v in by_kind.items()
-                      if k not in M1_RENDERABLE_KINDS)
+                      if k not in RENDERABLE_KINDS)
     by_kind["renderable_parts"] = renderable
     by_kind["unsupported_parts"] = unsupported
     return by_kind

@@ -7,14 +7,15 @@
 #     #     show ringo
 #     #     ringo "Hello!"
 #
-# It registers an `image` for the pack (tag = the .ssab filename stem, lower-
-# cased, e.g. "ringo") and returns a Ren'Py `Character` whose callback drives
+# It registers an `image` for the pack (the tag the pack has as an image, e.g.
+# "ringo") and returns a Ren'Py `Character` whose callback drives
 # lip-flap via the blessed attribute-reshow pattern. No per-line Python.
 #
 # Runs at init -9 (after spritestudio.rpy at -10 defines SSPlayer, before the
 # default `define` pass at 0). Drop this file to remove the helper.
 
 init -9 python:
+    from ss_renpy.snippet import display_name as _ss_display_name, image_tag as _ss_image_tag
 
     def SSCharacter(ssab, talk=None, idle=None, who=None, tag=None,
                     aliases=None, size=None,
@@ -25,7 +26,7 @@ init -9 python:
         `ssab`         : gamedir-relative .ssab path.
         `talk` / `idle`: animation names played while speaking / when idle.
         `who`          : display name (default: the .ssab filename stem).
-        `tag`          : image tag to register + drive (default: stem, lower-cased).
+        `tag`          : image tag to register + drive (default: the pack's image tag).
         `aliases`      : extra attribute->animation aliases for the image
                          (e.g. emotions). An emotion shown via an attribute is
                          replaced by `talk` while speaking and comes back when
@@ -46,9 +47,9 @@ init -9 python:
         stem = ssab.replace("\\", "/").rsplit("/", 1)[-1]
         if stem.endswith(".ssab"):
             stem = stem[:-len(".ssab")]
-        tag = tag or stem.lower()
+        tag = tag or _ss_image_tag(stem)
         if who is None:
-            who = stem
+            who = _ss_display_name(stem)
 
         al = dict(aliases or {})
         if talk is not None:

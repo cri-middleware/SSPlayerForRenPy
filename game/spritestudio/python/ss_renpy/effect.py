@@ -21,8 +21,11 @@ class EffectRig:
         self._rt = rt
         self._slots = {}   # part_index -> slot handle (or None on create failure)
         for p in meta.effect_parts():
+            # One seed per part, or parts on one effect would throw the same
+            # particles in the same places.
             self._slots[p.index] = rt.effect_slot_create(
-                p.ref_effect_name_hash, seed=0)
+                p.ref_effect_name_hash,
+                seed=(p.index ^ p.ref_effect_name_hash) & 0xFFFFFFFF)
 
     def has(self) -> bool:
         return any(self._slots.values())

@@ -559,6 +559,9 @@ class SSInternalPlayer:
         self._reset_slots()
         # play() starts from its own frame, whose keys do sound, so a seek made before it is dropped.
         self._seek_landing = -1
+        # A restore may have left the Brain counting what its run had left;
+        # play() re-arms from whatever count it holds, so it gets this Player's.
+        self._rt.set_loop_count(self._loop)
         if start_frame is not None and start_frame >= 0:
             self._rt.play_with_start_frame(start_frame)
         else:
@@ -706,6 +709,20 @@ class SSInternalPlayer:
         if self._rt:
             self._rt.set_loop_count(count)
 
+    @property
+    def remaining_loops(self) -> int:
+        """Cycles the run still has to play, this one included; ``-1`` is
+        infinite. ``0`` once it has finished."""
+        return self._rt.remaining_loops if self._rt else self._loop
+
+    def set_remaining_loops(self, remaining: int) -> None:
+        """Put a run's remaining cycles back on a rebuilt core.
+
+        :attr:`loop_count` stays what the game asked for, and the next
+        :meth:`play` starts over from it."""
+        if self._rt:
+            self._rt.set_loop_count(remaining)
+
     def set_speed_scale(self, speed: float) -> None:
         """Scale playback by ``speed``, a multiple of :attr:`frame_rate`.
 
@@ -726,7 +743,22 @@ class SSInternalPlayer:
     def set_animation_section(self, start: int, end: int) -> bool:
         """False, changing nothing, when the Brain refuses the section: both
         ends inside the animation and the end before the start."""
-        return self._rt is not None and self._rt.set_animation_section(start, end)
+        if self._rt is None or not self._rt.set_animation_section(start, end):
+            return False
+        # The head moved to the section's edge, as a seek moves it.
+        self._seek_landing = math.floor(self._rt.frame_no)
+        return True
+
+    def discard_landing(self) -> None:
+        """Consume the report of the frame the head was just put on.
+
+        A seek or a section change makes the next update report that frame's
+        events, and a head that plays on from there means it. A host that
+        restores a pose, or holds one, is not reaching the frame: one tick of no
+        time lets the Brain report it, and nobody hears."""
+        if self._rt:
+            self._rt.update_ms(0.0)
+        self._seek_landing = -1
 
     def label_table(self, animation: Optional[str] = None):
         """The :class:`~ss_renpy.ssab_meta.LabelTable` of ``animation``, the
@@ -853,6 +885,10 @@ class SSInternalPlayer:
         if t == 0:
             self._track_zero_switched(name)
         return True
+
+    def last_error_message(self) -> str:
+        """The Brain's reason for the runtime call that just failed; "" for none."""
+        return self._rt.last_error_message() if self._rt else ""
 
     def track_count(self) -> int:
         return self._rt.track_count() if self._rt else 0
@@ -1061,8 +1097,13 @@ class SSInternalPlayer:
 
     def set_source_frame(self, source, frame: float) -> bool:
         s = self._track(source)
-        return (s >= 0 and self._rt is not None
-                and self._rt.set_source_frame(s, float(frame)))
+        if not (s >= 0 and self._rt is not None
+                and self._rt.set_source_frame(s, float(frame))):
+            return False
+        # Track 0's main source is the character's playhead, so moving it is a seek.
+        if s == self._rt.track_main_source(0):
+            self._seek_landing = math.floor(self._rt.frame_no)
+        return True
 
     def source_frame(self, source) -> Optional[float]:
         s = self._track(source)
