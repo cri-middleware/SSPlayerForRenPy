@@ -11,7 +11,7 @@ Layers:
                      ``spritestudio.rpy``) wraps it for Ren'Py.
 
 All of these layers run under plain CPython (no renpy import), which is what the
-headless tools (``tools/m0_smoke.py``, ``tools/verify_internal_player.py``, ...)
+headless tools (``tools/smoke.py``, ``tools/verify_internal_player.py``, ...)
 exercise.
 
 Layout: ``ss_renpy``, the flatc-generated ``ss.*`` bindings (namespaces

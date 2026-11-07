@@ -10,7 +10,7 @@ against the SS editor.
 
 Only the ``Normal`` draw-batch kind is rendered. ``parts_color`` is applied as a
 flat (averaged) tint per part via the ``eval_partcolor`` reference formula — the
-exact per-vertex gradient is checked numerically by ``tools/verify_m2.py``.
+exact per-vertex gradient is checked numerically by ``tools/verify_geometry.py``.
 Requires Pillow (`pip install Pillow`).
 
 Usage:

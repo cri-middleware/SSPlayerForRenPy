@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the headless test suite — every ``tools/verify_*.py`` plus ``m0_smoke.py``.
+"""Run the headless test suite — every ``tools/verify_*.py`` plus ``smoke.py``.
 
 The suite these drive has always been runnable (plain CPython, no Ren'Py, no
 GUI); what it lacked was one command, and an accounting of what actually ran.
@@ -130,7 +130,7 @@ def discover() -> list[tuple[str, str]]:
     """(name, path) for every tool in the suite, in a stable order."""
     names = sorted(f for f in os.listdir(_HERE)
                    if f.startswith("verify_") and f.endswith(".py"))
-    names.append("m0_smoke.py")
+    names.append("smoke.py")
     return [(n[:-3], os.path.join(_HERE, n)) for n in names]
 
 

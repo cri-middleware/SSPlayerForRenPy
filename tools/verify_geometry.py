@@ -22,7 +22,7 @@ tool proves the engine-independent core:
 Exits non-zero if any check fails.
 
 Usage:
-    python tools/verify_m2.py [dir_or_ssab ...]   # default: game/ss_assets/overall
+    python tools/verify_geometry.py [dir_or_ssab ...]   # default: game/ss_assets/overall
 """
 
 from __future__ import annotations
@@ -217,7 +217,7 @@ def verify_pack(lib, path: str) -> dict:
                 if mp.part_index in m1:
                     for (mc, qc) in zip(mp.positions[:4], m1[mp.part_index]):
                         if abs(mc[0] - qc[0]) > 1e-3 or abs(mc[1] - qc[1]) > 1e-3:
-                            err(f"f{fr} p{mp.part_index}: M1/M2 corner mismatch")
+                            err(f"f{fr} p{mp.part_index}: quad/mesh corner mismatch")
                             break
                 # draw-plan builder <-> build_mesh_parts builder agreement
                 zp = zplan.get(mp.part_index)
@@ -284,7 +284,7 @@ def main(argv) -> int:
         print("no .ssab found")
         return 2
 
-    print("== M2 core verification ==\n")
+    print("== mesh core verification ==\n")
     fails = test_partcolor_math()
     if fails:
         print("PartColor blend math: FAIL")
