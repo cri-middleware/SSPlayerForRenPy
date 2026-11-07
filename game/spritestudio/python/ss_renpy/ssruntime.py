@@ -40,7 +40,7 @@ BLEND_SUB = 3
 # priority_mode: keyframe-vs-override precedence, for the attributes that
 # conflict with the animation (color + cell). Visibility takes none — it is a
 # plain force-hide flag that always wins and is dropped on a new animation.
-# Mirrors SS6's KindIgnoreAttribute (SDK: libs/ssruntime/src/core/override_layer.rs).
+# Mirrors SS6's KindIgnoreAttribute.
 PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0   # SS6 NON: one-shot, hands back to the keyframe
 PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1    # SS6 NOW_ANIMATION: wins for this animation
 PRIORITY_PERMANENT = 2                    # SS6 PERMANENT: survives animation changes

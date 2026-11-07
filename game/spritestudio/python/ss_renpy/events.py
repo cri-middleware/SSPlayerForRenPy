@@ -60,7 +60,7 @@ class UserDataEvent:
 
 @dataclass(frozen=True)
 class SignalEvent:
-    """A v7 Signal marker (``PartAttributeSignal``).
+    """A Signal marker (``PartAttributeSignal``).
 
     ``params`` maps ``param_id`` → decoded value (``bool`` / ``int`` / ``float``
     / ``str``); a ``None``-typed param maps to ``None``.

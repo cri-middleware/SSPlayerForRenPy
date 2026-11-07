@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0 smoke test — proves the ctypes <-> Brain wiring.
+"""Smoke test — proves the ctypes <-> Brain wiring.
 
 No Ren'Py required: runs under plain CPython. It loads libssruntime, binds a
 ``.ssab``, sets up an animation, advances a few frames, and parses the returned

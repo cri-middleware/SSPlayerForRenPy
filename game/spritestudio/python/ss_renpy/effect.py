@@ -34,8 +34,8 @@ class EffectRig:
         Only ever reached from :meth:`SSInternalPlayer.is_animating` after the
         head has stopped (playback short-circuits before it), so the per-slot
         query is off the normal render hot path. The runtime call is guarded so
-        a stale library missing the export degrades to 'keep redrawing' rather
-        than freezing a live effect."""
+        a failed query degrades to 'keep redrawing' rather than freezing a live
+        effect."""
         try:
             return any(self._rt.effect_slot_is_independent(slot)
                        for slot in self._slots.values() if slot)

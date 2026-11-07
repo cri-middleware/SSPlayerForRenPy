@@ -218,7 +218,7 @@ class SSInternalPlayer:
         self._speed = 1.0
         # Playback direction / ping-pong (0 = forward, 1 = reverse; style
         # 0 = normal, 1 = ping-pong) and frame skipping. The Brain keeps all
-        # three across setup_animation on its own (SDK #369 / #370 / #375) --
+        # three across setup_animation on its own --
         # they describe the playback, not the clip -- so nothing here re-applies
         # them. They are mirrored only so the getters below can answer before a
         # runtime exists, and so set_playback_direction works whether it is
@@ -260,9 +260,9 @@ class SSInternalPlayer:
         # Instance/Effect rigs (parts, effect definitions and the external packs
         # a child references are all pack-static, so none of it depends on which
         # animation is selected). This keeps set_animation a cheap, synchronous
-        # switch a game can call on the hot path — the same split the other ports
-        # settled on (load -> setAnimation -> play). Runs last, so the recursive
-        # child players the Instance rig builds see a fully constructed owner.
+        # switch a game can call on the hot path (load -> setAnimation -> play).
+        # Runs last, so the recursive child players the Instance rig builds see a
+        # fully constructed owner.
         self._acquire_textures(self._own_images)
         self._build_rigs()
         # Pack-static, over the whole tree below: whether anything can write a
@@ -408,7 +408,7 @@ class SSInternalPlayer:
 
     @property
     def frame_skip_enabled(self) -> bool:
-        """Whether frame skipping is on; see :meth:`set_skip_frames`."""
+        """Whether frame skipping is on; see :meth:`set_frame_skip_enabled`."""
         return self._rt.skip_frames if self._rt else self._skip_frames
 
     @property
@@ -528,7 +528,7 @@ class SSInternalPlayer:
             return False
         self._current_animation = name
         # The loop count is per-transition, so re-apply ours. Speed and frame
-        # skipping survive setup_animation on their own (SDK #369 / #370); they
+        # skipping survive setup_animation on their own; they
         # are pushed anyway, because this is the one place a value set before the
         # first setup is guaranteed to reach the Brain.
         self._rt.set_loop_count(self._loop)
@@ -539,7 +539,7 @@ class SSInternalPlayer:
         # NOT carried: the section, and only the section. It is a range of frame
         # numbers and means nothing against a different clip. The playback
         # direction and ping-pong style are host policy and survive setup on
-        # their own (SDK #375), so nothing here has to put them back.
+        # their own, so nothing here has to put them back.
         # The table an event is read from when the runtime cannot say which
         # animation fired it (a library that predates the track stack).
         if self._evt is not None:
@@ -711,8 +711,8 @@ class SSInternalPlayer:
 
         ``0.0`` and negatives are a **stop** in the Brain, not reverse playback
         (that is :meth:`set_playback_direction`); read :attr:`speed_scale`
-        to see the value that took effect. :attr:`speed` keeps what was asked
-        for, because the host layer replays it onto a rebuilt core.
+        to see the value that took effect. The host layer's ``speed`` keeps what
+        was asked for, because it replays it onto a rebuilt core.
         """
         self._speed = speed
         if self._rt:
@@ -751,8 +751,7 @@ class SSInternalPlayer:
         return (start + int(start_offset), end + int(end_offset))
 
     def set_playback_direction(self, direction: int, style: int = 0) -> None:
-        # Remember it so set_animation() can re-apply after setup_animation resets
-        # it; works whether called before or after set_animation.
+        # Mirrored so the getters answer before a runtime exists.
         self._direction = direction
         self._style = style
         if self._rt:
@@ -766,8 +765,8 @@ class SSInternalPlayer:
         update, so nothing is skipped and the animation stretches instead. See
         :meth:`ssruntime.SSRuntime.set_skip_frames`.
 
-        Remembered like direction/style — ``setup_animation`` resets it to on —
-        so it survives an animation switch, including host sequence chaining."""
+        Remembered so it reaches the runtime whichever of this call and the first
+        set_animation comes first, and so the getter answers without one."""
         self._skip_frames = bool(enabled)
         if self._rt:
             self._rt.set_skip_frames(self._skip_frames)
@@ -1100,7 +1099,7 @@ class SSInternalPlayer:
         """
         if self._parent_driven:
             # An Instance child is seeked by its parent via render_at(); its own
-            # per-tick update is a no-op (mirrors Godot's setParentDriven).
+            # per-tick update is a no-op.
             return FramePlan()
         try:
             return self._advance(dt_ms)
@@ -1225,11 +1224,10 @@ class SSInternalPlayer:
         """Whether ``name`` was hidden on the last rendered frame.
 
         ``False`` for a part this pack does not have, and ``False`` before the
-        first :meth:`update` has produced a frame — "not hidden", the same
-        answer the sibling Players give (ForFlutter's ``isPartHidden``,
-        ForGodot's ``is_part_hidden``). Answering ``True`` there reads as "this
-        part is hidden" and sends a caller down the branch for a part that does
-        not exist; use :meth:`part_index` (``-1``) to ask whether it does.
+        first :meth:`update` has produced a frame — "not hidden". Answering
+        ``True`` there reads as "this part is hidden" and sends a caller down the
+        branch for a part that does not exist; use :meth:`find_part_index`
+        (``-1``) to ask whether it does.
         """
         i = self.find_part_index(name)
         if i < 0 or self._last_hidden is None:
@@ -1263,7 +1261,7 @@ class SSInternalPlayer:
         never changes. A skinned mesh draws from its bones while its own node
         transform stays at the setup pose, so it is a poor *part-tracking*
         (``ss_attach``) target: a follower snaps to the node, not the deformed
-        art. Mirrors the sibling Players' ``is_part_skinned_mesh``; deform-only
+        art. Deform-only
         (rigid) meshes and non-mesh parts answer ``False``. Read once, from the
         per-part info the pack was parsed into at construction.
         """
@@ -1284,10 +1282,9 @@ class SSInternalPlayer:
     # drops and rebuilds the native core on save/load; that is host policy, the
     # same tier that owns sequence chaining.)
     #
-    # ``part`` is a part NAME or its integer index — the Pythonic form of the
-    # ``*_by_index`` method pairs the Godot / Unity ports carry. Indices are
+    # ``part`` is a part NAME or its integer index. Indices are
     # positional over the pack's parts and stable within one ``.ssab``, so
-    # resolve a name once with :meth:`part_index` and reuse it if you set
+    # resolve a name once with :meth:`find_part_index` and reuse it if you set
     # overrides often. Every method returns False when the part is unknown or
     # the runtime rejects the call.
     def resolve_part(self, part) -> int:

@@ -64,9 +64,8 @@ init python:
     # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
     # scaling neither rebuilds the player nor restarts the animation.
     SS_BROWSER_ZOOM_MIN = 0.2
-    # Up to 16 times the fitted size, as the Flutter player's demo allows: a
-    # canvas the size of an Animate stage fits at a few percent, and this still
-    # reaches its own pixels.
+    # Up to 16 times the fitted size: a canvas the size of an Animate stage fits
+    # at a few percent, and this still reaches its own pixels.
     SS_BROWSER_ZOOM_MAX = 16.0
     SS_BROWSER_ZOOM_STEP = 1.1       # one wheel notch
 

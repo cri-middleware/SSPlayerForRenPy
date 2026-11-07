@@ -1,12 +1,12 @@
 """ctypes bindings for libssruntime ("Brain").
 
 This is the FFI layer of the Ren'Py SSPlayer. It is intentionally free of any
-``renpy`` import so it can be exercised from plain CPython (the M0 smoke test)
-as well as from inside Ren'Py's bundled interpreter (M1+).
+``renpy`` import so it can be exercised from plain CPython as well as from
+inside Ren'Py's bundled interpreter.
 
-Signatures are transcribed from the generated C header
-``libs/ssruntime/target/ssruntime.h`` into the ``_REQUIRED`` table — that
-header is the source of truth; keep the table in sync with it.
+Signatures are transcribed from the SDK's generated C header ``ssruntime.h``
+into the ``_REQUIRED`` table — that header is the source of truth; keep the
+table in sync with it.
 :func:`load_library` refuses a library missing anything in ``_REQUIRED``, with
 one error naming what is missing, rather than letting ctypes fail on the first.
 
@@ -24,8 +24,7 @@ Lifetime rules:
     ``get_frame_data``/``effect_slot_step`` copy them into owned ``bytes`` (safe
     to retain), while ``get_frame_data_view``/``effect_slot_step_view`` return a
     zero-copy read-only ``memoryview`` over the Brain's own buffer. The view is
-    the hot path (it mirrors SSPlayerForUnity's zero-copy ``ByteBuffer`` over the
-    native pointer): it is valid only until the next invalidating Brain call on
+    the hot path: it is valid only until the next invalidating Brain call on
     the same context/slot, so parse + materialize the geometry before then and
     never stash the view across frames. ``get_frame_data`` is per-context — a
     *child* runtime's call writes a different buffer and does not invalidate the
@@ -33,8 +32,7 @@ Lifetime rules:
   * The ``.ssab`` resource is created with ``ss_resource_create_borrow`` by
     default: the Brain reads from our ``bytes`` for the resource's whole life, so
     we keep an owned, immutable reference alive (CPython never relocates a
-    ``bytes`` object — that reference is the equivalent of Unity's
-    ``GCHandle.Pinned``) and tear the resource down before dropping it.
+    ``bytes`` object) and tear the resource down before dropping it.
 """
 
 from __future__ import annotations
@@ -90,7 +88,7 @@ INVALID_HANDLE = 0xFFFFFFFF
 
 
 # --- by-value structs for the Instance / Effect slot API ------------------
-# These mirror the C structs in ``target/ssruntime.h`` *exactly* (field order
+# These mirror the C structs in ``ssruntime.h`` *exactly* (field order
 # and width). They are passed/returned BY VALUE across the FFI, so the layout
 # must match; ctypes' natural alignment matches the runtime's ``#[repr(C)]``.
 
@@ -202,9 +200,8 @@ def _is_ios() -> bool:
 def platform_subdir() -> str:
     """Per-platform/arch subdirectory under the ``libs`` dir.
 
-    Matches the layout produced by the SDK release workflow
-    (``SpriteStudio-SDK/.github/workflows/release.yml``, ``package`` job → the
-    dynamic-libs package), so a bundled release drop resolves without renaming:
+    Matches the layout of the SDK release's dynamic-libs package, so a bundled
+    release drop resolves without renaming:
 
         macos/                          (universal libssruntime.framework; no arch split)
         windows/{x86_64,arm64}          (ssruntime.dll)
@@ -509,8 +506,6 @@ def load_library(path: str | None = None, base_dir: str | None = None,
     lacks any this player calls (see ``_REQUIRED``), before anything is bound.
 
     Platform notes (see the bundle layout in :func:`platform_subdir`):
-      * **Web (WASM)** cannot be loaded through ctypes at all — that target needs
-        a separate integration, so we fail fast with a clear message.
       * **iOS** ships the runtime as a *dynamic* ``.xcframework`` that the app
         target embeds (Embed & Sign), so dyld has loaded it at launch and its
         symbols resolve through the process: when no standalone library file is
@@ -592,9 +587,7 @@ def _refusal(lib: C.CDLL, data: bytes):
 def _readonly_view(ptr, n):
     """Read-only ``memoryview`` over a Brain-owned buffer — **no copy**.
 
-    The Python analogue of SSPlayerForUnity's zero-copy path (a ``ByteBuffer``
-    pointed straight at the native pointer). ``ptr`` is a ctypes pointer, ``n``
-    the byte length. The view aliases the Brain's memory and is valid only until
+    ``ptr`` is a ctypes pointer, ``n`` the byte length. The view aliases the Brain's memory and is valid only until
     the next invalidating Brain call (see the module-level lifetime rules) — the
     caller MUST finish parsing/materializing before then and must not retain it.
     Returns an owned empty view for a NULL/empty buffer (kept truthy-false).
@@ -672,18 +665,16 @@ class _NativeRuntime:
 
         ``borrow=True`` (default) uses ``ss_resource_create_borrow``: the Brain
         keeps a pointer into ``data`` and reads from it for the resource's whole
-        lifetime (zero-copy, mirroring SSPlayerForUnity's pinned-``byte[]``
-        borrow). ``data`` therefore becomes the backing store — we keep an owned,
-        immutable reference (``self._ssab_bytes``) alive until the resource is
-        destroyed, and the bytes must never be mutated. CPython does not relocate
-        a ``bytes`` object, so holding the reference is the equivalent of Unity's
-        ``GCHandle.Pinned``; no explicit pin is required. ``borrow=False`` falls
-        back to ``ss_resource_create_copy`` (the Brain owns its own copy).
+        lifetime (zero-copy). ``data`` therefore becomes the backing store — we
+        keep an owned, immutable reference (``self._ssab_bytes``) alive until the
+        resource is destroyed, and the bytes must never be mutated. CPython does
+        not relocate a ``bytes`` object, so no explicit pin is required.
+        ``borrow=False`` falls back to ``ss_resource_create_copy`` (the Brain owns
+        its own copy).
 
         Safe re-load: the *previous* resource is destroyed only **after** the new
         one is bound, so the old borrow source is never freed while still
-        referenced — the single-threaded analogue of Unity's
-        ``destroy resource → free pin`` ordering.
+        referenced.
 
         Bytes that are not a ``.ssab``, or a pack of a schema version the
         runtime does not read, raise RuntimeError saying which before the
@@ -783,8 +774,7 @@ class _NativeRuntime:
         time, so playback keeps real-time pace and a long delta skips frames.
         Off is *Fixed*: the delta is accumulated and the head advances by
         **exactly one frame per update**, so no frame is ever skipped and a
-        stall stretches the animation instead of dropping it
-        (``libs/ssruntime/src/core/playback_controller.rs``). Either way the
+        stall stretches the animation instead of dropping it. Either way the
         frames crossed are still reported, so events do not go missing."""
         self._lib.ss_runtime_set_skip_frames(self._ctx, bool(skip))
 
@@ -810,7 +800,7 @@ class _NativeRuntime:
     def speed_scale(self) -> float:
         """The speed in effect, as a multiple of :attr:`frame_rate`.
 
-        What ``set_animation_speed`` *stored*, not what it was handed: a zero or
+        What ``set_speed_scale`` *stored*, not what it was handed: a zero or
         negative rate clamps to ``0.0`` (a stop -- reverse playback is
         ``set_playback_direction``'s business), so a host reading this back sees
         the stop it actually got instead of assuming it got reverse playback.
@@ -1118,8 +1108,7 @@ class _NativeRuntime:
         do NOT retain it across frames — copy out (``bytes(view)`` or a small
         snapshot) anything a later query needs. A *child* runtime's
         ``get_frame_data`` writes a separate buffer and does not invalidate this
-        one, so the recursive instance walk is safe. Mirrors SSPlayerForUnity's
-        zero-copy ``ConsumeFrameData``.
+        one, so the recursive instance walk is safe.
         """
         ptr, n = self._frame_data_ptr(frame_no)
         return _readonly_view(ptr, n)
@@ -1391,8 +1380,7 @@ class _NativeRuntime:
         next ``step`` on the **same** slot (see ``ss_effect_step_result`` in the
         generated ssruntime.h). ``effectplan.build_effect_batches`` drains it
         into Python lists in a single pass, so per-call use is safe; never
-        retain the view past that call. Mirrors SSPlayerForUnity's zero-copy
-        effect ``Append``.
+        retain the view past that call.
         """
         r = self._effect_slot_step_raw(slot, ev, parent_frame, delta_seconds,
                                        fps, parent_looped, y_flip, vert_stride,
@@ -1422,7 +1410,7 @@ class _NativeRuntime:
             self._res = None
         self._soa_bufs = {}
         # Release the borrow's backing bytes only after the context and resource
-        # that borrow it are gone (Unity frees the pin last, in its `finally`).
+        # that borrow it are gone.
         self._ssab_bytes = None
 
     def __enter__(self):

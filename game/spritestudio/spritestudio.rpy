@@ -172,9 +172,8 @@ init -10 python:
     #   "mesh" (default) — model-based per-vertex mesh (renpy.gl2 Mesh2) + custom
     #       shader. The only backend that reproduces shear / free-deform and the
     #       baked UV transforms (UvScale / UvTranslation / UvRotation), by sampling
-    #       the full atlas with gl_texture_wrap = REPEAT. Mirrors the reference
-    #       renderers. On any error it falls back per-part to "transform", so it
-    #       can never blank the screen.
+    #       the full atlas with gl_texture_wrap = REPEAT. On any error it falls
+    #       back per-part to "transform", so it can never blank the screen.
     #   "transform" — blit + Transform. Robust, but drops shear / free-deform to a
     #       similarity fit and renders per-vertex colour gradients as a flat tint;
     #       it also cannot represent UV scale / rotation (it crops the cell rect),
@@ -209,8 +208,8 @@ init -10 python:
     # draw those parts plainly (geometry + PartColor stay correct, the effect is
     # simply not applied). The `overall/Shader.ssab` sample pack exercises all 13.
     # A part that is BOTH masked and shadered draws masked (the mask wins); the two
-    # rarely combine. Ported from SSPlayerForGodot (ss_player/shaders/*.fs); the
-    # engine-independent half is headless-verified by tools/verify_shader.py.
+    # rarely combine. The engine-independent half is headless-verified by
+    # tools/verify_shader.py.
     SS_ENABLE_USER_SHADERS = True
 
     # Timeline events (UserData / Signal / Audio). The decoder is pure-Python and
@@ -341,9 +340,9 @@ init -10 python:
                 "Mul/Add via built-ins, other modes -> Mix" % (e,))
 
     # SS framebuffer BlendType -> gl_blend_func key. Mix (0) == normal (no
-    # override). Mirrors SSPlayerForWeb applyBlend: the "2" / alpha variants that
-    # have no GPU-native form fall back the same way (Mulalpha/Mul2 -> Mul,
-    # Screen2 -> Screen); Div2 (9) / Overlay2 (11) have no equivalent -> Mix.
+    # override). The "2" / alpha variants with no GPU-native form fall back
+    # (Mulalpha/Mul2 -> Mul, Screen2 -> Screen); Div2 (9) / Overlay2 (11) have no
+    # equivalent -> Mix.
     SS_BLEND_FUNC_KEY = {
         1: "ss_mul" if _SS_BLEND_REGISTERED else "multiply",   # Mul
         2: "ss_add" if _SS_BLEND_REGISTERED else "add",        # Add
@@ -360,8 +359,7 @@ init -10 python:
     # ss.user_* Ren'Py shader. Populated below once the variants register; stays
     # empty on an older Ren'Py without register_shader (draw code then skips the
     # user-shader path). Keyed by the Brain's own hash so it matches the draw
-    # plan's PartAttributeShader.id_hash exactly (mirrors Godot's
-    # ss_runtime_hash_string catalog).
+    # plan's PartAttributeShader.id_hash exactly.
     _SS_USER_SHADER_BY_HASH = {}
     # Which optional uniforms each variant actually references. Ren'Py's shader
     # cache PRUNES a declared-but-unused uniform from the compiled program, so we
@@ -404,8 +402,7 @@ init -10 python:
         for reliable Metal/ANGLE compilation. The mask edge is antialiased by
         SS_MASK_COVERAGE_SUPERSAMPLE instead.
 
-        This mirrors Godot's ss_library_fs.glsl ss_mask_passes(), float-emulated
-        (no integer bitwise ops in ES 1.00): writer ``i`` lives in tile i/24, at
+        Float-emulated (no integer bitwise ops in ES 1.00): writer ``i`` lives in tile i/24, at
         channel (i%24)/8, bit i%8 (mod/exp2 test). The two OPs replay into
         SEPARATE accumulators (parity for invert, counter for increment) and the
         coverage is their union — see mask.mask_passes, the CPU authority this
@@ -672,22 +669,20 @@ init -10 python:
             _ss_log("register_shader(ss.mask_*) failed: %r" % (e,))
 
         # -- User-shader effects (SS6 ss-* family) ---------------------------
-        # Ported from SSPlayerForGodot (ss_player/shaders/*.fs). Each variant is a
-        # per-part shader over the same per-vertex mesh as ss.partcolor_batched
+        # Each variant is a per-part shader over the same per-vertex mesh as
+        # ss.partcolor_batched
         # (a_tex_coord + a_ss_color + a_ss_varg), so gradients / Shape fills keep
         # their true per-vertex colour. Shared, DRY-composed GLSL: _SS_USER_FUNCS
         # holds the helpers, each fragment body inserts its effect between the
         # (un-premultiplied) input sample and the PartColor composite.
         #
-        # Dialect adaptations vs the Godot originals (these parts are GLSL ES 1.00 /
-        # 120, premultiplied-alpha textures):
-        #   * ss_input_texture(TEXTURE, uv) -> ss_texs(tex0, uv): sample + UN-
-        #     premultiply to straight colour (the SS6 math — luminance / HSB /
-        #     averaging — assumes straight rgb; Godot's canvas textures already are).
+        # These parts are GLSL ES 1.00 / 120, over premultiplied-alpha textures:
+        #   * ss_texs(tex0, uv): sample + UN-premultiply to straight colour (the
+        #     SS6 math — luminance / HSB / averaging — assumes straight rgb).
         #     Output re-premultiplies (ss_pc_out / inline).
-        #   * TEXTURE_PIXEL_SIZE -> u_texel (= 1/atlas_size, set per draw).
-        #   * PI -> SS_PI (no ES 1.00 built-in); ss_paramN -> u_ss_param.{x,y,z,w};
-        #     ss_cell_rect -> u_cell_rect (circle / spot only).
+        #   * u_texel = 1/atlas_size, set per draw.
+        #   * SS_PI (no ES 1.00 built-in); u_ss_param.{x,y,z,w} = param0..3;
+        #     u_cell_rect (circle / spot only).
         #   * ss-move's data-dependent loop bound -> constant 128 loop with an
         #     early `break` (ES 1.00 forbids non-constant loop bounds), matching
         #     the mask-replay idiom already used above.
@@ -699,7 +694,7 @@ init -10 python:
             varying vec2 v_tex_coord;
             varying vec4 v_ss_color;
             varying vec3 v_ss_varg;
-            uniform vec2 u_texel;      // 1/atlas_size (Godot TEXTURE_PIXEL_SIZE)
+            uniform vec2 u_texel;      // 1/atlas_size
             uniform vec4 u_ss_param;   // (param0, param1, param2, param3)
         """
         _SS_USER_VARS_CELL = _SS_USER_VARS + \
@@ -711,9 +706,8 @@ init -10 python:
         """
         _SS_USER_FUNCS = """
             const float SS_PI = 3.14159265358979;
-            // Ren'Py GL2 textures are premultiplied; un-premultiply to straight so
-            // the SS6 effect math matches the Godot originals (whose canvas
-            // textures are straight). Alpha is unchanged by (un)premultiply.
+            // Ren'Py GL2 textures are premultiplied; the SS6 effect math assumes
+            // straight colour. Alpha is unchanged by (un)premultiply.
             vec4 ss_texs(sampler2D t, vec2 uv) {
                 vec4 p = texture2D(t, uv);
                 return vec4(p.a > 0.0 ? p.rgb / p.a : p.rgb, p.a);
@@ -987,7 +981,7 @@ init -10 python:
                 if "u_cell_rect" in _body:
                     _SS_USER_NEEDS_CELL.add(_sh)
             # Hash via the Brain's own fnv1a so the keys match the draw plan's
-            # PartAttributeShader.id_hash byte-for-byte (mirrors Godot).
+            # PartAttributeShader.id_hash byte-for-byte.
             _SS_USER_SHADER_BY_HASH = {
                 ssruntime.hash_string(_ss): "ss.user_" + _key
                 for _ss, _key in _SS_USER_NAME_MAP
@@ -1294,9 +1288,20 @@ init -10 python:
             add SSPlayer("ss_assets/overall/Basic.ssab") xalign 0.5 yalign 0.5
 
         One instance plays one .ssab; select an animation in it by name
-        (constructor ``animation=`` or :meth:`ss_set_animation`). Renders Normal,
-        Instance (nested child animations) and Effect (particle) parts, exposing
-        a small ``ss_*`` playback / control / query API.
+        (constructor ``animation=`` or :meth:`ss_set_animation`).
+
+        ``ssab``: the pack, gamedir-relative. ``animation``: the name to start
+        on, a list to play in turn, or None for the pack's first. ``loop``: how
+        many times the last one plays, -1 for ever. ``speed``: a multiple of the
+        frame rate. ``sub_frame``: interpolate between frames. ``frame_skip``:
+        follow the clock after a stall. ``size``: the layout box, (w, h) or one
+        number; None is the authored canvas. ``attachments``: {part name:
+        displayable}, as :meth:`ss_attach` pins. ``on_user_data`` / ``on_signal``
+        / ``on_audio``: called as cb(player, frame, event).
+        ``on_animation_finished`` / ``on_animation_looped`` /
+        ``on_animation_started``: called as cb(player). ``aliases``: {attribute:
+        animation or list}, for `show` attributes. ``audio_channel``: None for
+        the shared pool, a channel name, or a callable that picks one.
         """
 
         # Players with SS audio currently sounding, read by _ss_audio_reaper to
@@ -1441,11 +1446,11 @@ init -10 python:
             # The Brain keeps it across animation changes, but not across a
             # rebuilt core.
             self._frame_rate = None
-            # Playback modes the Brain resets on every setup_animation and that
-            # a rebuilt core would lose entirely: reverse / ping-pong, and frame
-            # skipping (on by default, like `sub_frame` — both keep the runtime's
-            # own default). Plain data, so they pickle with the displayable and
-            # _ensure re-applies them to the new core.
+            # Playback modes a rebuilt core loses (the Brain keeps them across
+            # setup_animation): reverse / ping-pong, and frame skipping (on by
+            # default, like `sub_frame` — both keep the runtime's own default).
+            # Plain data, so they pickle with the displayable and _ensure
+            # re-applies them to the new core.
             self._playback_direction = 0
             self._playback_style = 0
             self._frame_skip = bool(frame_skip)
@@ -1654,13 +1659,11 @@ init -10 python:
                 audio_channel=self._audio_channel,
                 **self.kwargs
             )
-            # Carry the overrides that survive an animation change. The copy
+            # Carry the overrides that survive an animation change: the copy
             # builds its own core, whose setup_animation drops visibility and
-            # non-Permanent colour/cell overrides exactly as a creator-initiated
-            # switch does — so the Permanent ones are precisely what must ride
-            # along. Without this, an attribute switch (`show ringo talk`, or
-            # SSCharacter's lip-flap) silently threw away a costume the game had
-            # set Permanent, which docs/*/usage.md §6 promises persists.
+            # non-Permanent colour/cell overrides, so only the Permanent ones
+            # ride along. Without this, `show ringo talk` (or SSCharacter's
+            # lip-flap) would drop a Permanent costume.
             rv._overrides = self._permanent_overrides()
             # The template's box, not the chosen animation's: every attribute of
             # one image then lays out on the same canvas.
@@ -1807,8 +1810,7 @@ init -10 python:
             The pure core plays ONE animation; *sequence* policy lives here in the
             host: for a list we play the first now and keep the rest in
             ``self._anim_queue``, advancing on each ``FramePlan.finished`` in
-            render(). This mirrors the SSPlayerForGodot node owning chaining over
-            its SsInternalPlayer (the core itself has no notion of a queue).
+            render() (the core itself has no notion of a queue).
             `show <tag> still` is held by pausing; see host_state.start_initial."""
             # The setup resets the section, whether or not it succeeds.
             self._section = None
@@ -2069,10 +2071,10 @@ init -10 python:
             (e.g. a multi-megabyte atlas first referenced a hundred frames into
             a cinematic) uploads mid-playback and stalls that one frame — the
             classic first-play-only hitch that never recurs
-            (the texture stays GPU-resident across loops). The Godot / Web ports
-            never show it because they upload every cellmap at load; we do the
-            same here, spread over the first frames so neither the show frame nor
-            a mid-anim frame carries the whole cost. Idempotent; never raises."""
+            (the texture stays GPU-resident across loops). So every cellmap is
+            uploaded up front, spread over the first frames so neither the show
+            frame nor a mid-anim frame carries the whole cost. Idempotent; never
+            raises."""
             if self._prewarm_pending is None:
                 self._prewarm_pending = list(self._rm.images()) if self._rm else []
             n = 0
@@ -2228,10 +2230,10 @@ init -10 python:
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
 
-            # Attachments: draw each pinned child at its part's live transform.
-            # v1 composites translation + rotation, and scale when drive_scale;
-            # the child is always drawn in FRONT of the sprite (no z insertion
-            # between parts yet). The child's `anchor` point is pinned to the
+            # Attachments: draw each pinned child at its part's live transform:
+            # translation + rotation, and scale when drive_scale. The child is
+            # always drawn in FRONT of the sprite (no z insertion between parts).
+            # The child's `anchor` point is pinned to the
             # part and is the rotation/scale pivot. Guarded so a bad child can
             # never break the frame. Children are few, so a Transform wrap only
             # happens when the part is actually rotated/scaled — the common
@@ -2272,9 +2274,9 @@ init -10 python:
                         else:
                             # Rotate/scale about the child centre (Transform's
                             # default), then offset so the ANCHOR lands on the
-                            # part. part_transform's scale is |magnitude| (a
-                            # mirrored part reads positive), so a negative-scale
-                            # flip is a v2/matrix concern.
+                            # part. part_transform's scale is |magnitude|, so a
+                            # mirrored part reads as a rotation here; carrying
+                            # the reflection needs the pose as a matrix.
                             #
                             # The child's UNROTATED size drives the anchor
                             # vector, so it is read live (an animated child may
@@ -2439,7 +2441,7 @@ init -10 python:
                 if not drawn:
                     self._draw_transform(r, mp, ox, oy, st, at, width, height)
 
-        # -- transform backend (default, documented) -----------------------
+        # -- transform backend (fallback) ----------------------------------
         def _draw_transform(self, r, mp, ox, oy, st, at, width, height):
             tex = self._texture_path(mp.texture_hash)
             if not tex:
@@ -2521,8 +2523,7 @@ init -10 python:
             atlas, and sets ``gl_texture_wrap = REPEAT`` so UVs the runtime baked
             past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
             clamping. This is the only backend that is shear / free-deform exact
-            and honours the UV transforms — the Ren'Py-native form of what the
-            reference players do. ``parts_color`` is applied per-part
+            and honours the UV transforms. ``parts_color`` is applied per-part
             (uniform) via the ``ss.partcolor`` shader.
 
             On any error returns False so the caller falls back to the transform
@@ -2835,8 +2836,8 @@ init -10 python:
             Same per-vertex mesh as :meth:`_draw_mesh_masked` (a_tex_coord +
             a_ss_color + a_ss_varg, so gradients / Shape fills keep their true
             colour), but binds ``shader`` (e.g. ``ss.user_sepia``) with the effect
-            uniforms instead of the coverage replay: ``u_texel`` (= 1/atlas px,
-            Godot's TEXTURE_PIXEL_SIZE), ``u_ss_param`` (param0..3), and — for the
+            uniforms instead of the coverage replay: ``u_texel`` (= 1/atlas px),
+            ``u_ss_param`` (param0..3), and — for the
             cell-rect shaders (circle / spot) — ``u_cell_rect`` (the part's atlas
             cell in UV, from ``src_rect``). Returns True on success; False makes
             the caller draw the part plainly (effect skipped, never blanks)."""
@@ -2872,7 +2873,7 @@ init -10 python:
                     params[3] if len(params) > 3 else 0.0))
                 # Bind the optional uniforms only for variants that use them (an
                 # unused one is pruned from the compiled program — see
-                # _SS_USER_NEEDS_*). u_texel = 1/atlas px (Godot TEXTURE_PIXEL_SIZE);
+                # _SS_USER_NEEDS_*). u_texel = 1/atlas px;
                 # neighbour-sampling variants step by it in UV space.
                 if shader in _SS_USER_NEEDS_TEXEL:
                     rv.add_uniform("u_texel", (1.0 / tw, 1.0 / th))
@@ -3142,17 +3143,22 @@ init -10 python:
         # call would otherwise be lost. Each records what it did, for a save
         # that comes before the next draw.
         def ss_pause(self):
+            """Hold the playhead where it stands. `ss_resume()` lifts the hold;
+            `ss_play()` would head out from the section start instead."""
             self._ensure()
             self._core.pause()
             self._record_playback(self._core)
 
         def ss_resume(self):
+            """Lift an `ss_pause()`: playback carries on from where it was held."""
             self._ensure()
             self._core.resume()
             self._record_playback(self._core)
             renpy.redraw(self, 0)
 
         def ss_stop(self):
+            """Stop where the playhead stands. It does not rewind (`ss_play()`
+            does), and it is not a completion: `ss_is_finished()` stays False."""
             self._ensure()
             self._core.stop()
             self._record_playback(self._core)
@@ -3202,6 +3208,8 @@ init -10 python:
             return self._core.frame_no if self._core else 0.0
 
         def ss_set_frame_no(self, frame):
+            """Move the playhead to ``frame``. A seek lands on the frame without
+            crossing its keys, so its audio keys do not sound."""
             self._ensure()
             self._core.set_frame_no(frame)
             self._record_playback(self._core)
@@ -3320,7 +3328,7 @@ init -10 python:
             """Push the recorded direction / ping-pong style onto the core.
 
             For the rebuilt core only. A `setup_animation` carries the modes
-            itself (SDK #375), so an animation switch needs nothing -- but
+            itself, so an animation switch needs nothing -- but
             pickling drops the native core entirely and the replacement starts
             from the runtime defaults, which no amount of retention reaches.
             A save written before these existed restores a __dict__ without
@@ -3645,6 +3653,7 @@ init -10 python:
             return self._core.part_names()
 
         def ss_find_part_index(self, name):
+            """The index of the part ``name``, or -1 when the pack has none."""
             self._ensure()
             return self._core.find_part_index(name)
 
@@ -3660,8 +3669,8 @@ init -10 python:
             """Whether ``name`` is hidden on the last rendered frame.
 
             False for an unknown part, and False before anything has been
-            rendered — "not hidden", as the sibling Players answer it. Ask
-            `ss_find_part_index()` (-1) whether the part exists at all.
+            rendered — "not hidden". Ask `ss_find_part_index()` (-1) whether the
+            part exists at all.
             """
             return self._core.is_part_hidden(name) if self._core else False
 
@@ -3701,12 +3710,10 @@ init -10 python:
         # so an item follows the hand, an effect rides the head, a second SS
         # animation links to a bone. The child is ANY Ren'Py displayable — an
         # image name, "file.png", a Transform(...), even another SSPlayer — so
-        # the whole Ren'Py composition stack rides along. This is the Ren'Py
-        # form of the Godot/Unity "part tracking": there is no scene tree to
-        # push to, so the child is composited INTO this player's render at the
-        # part, which matches those ports' "child of the player" case (the
-        # accurate one). Children draw in front of the sprite (v1: no z
-        # insertion between parts). Several may ride one part.
+        # the whole Ren'Py composition stack rides along. There is no scene tree
+        # to push to, so the child is composited INTO this player's render at the
+        # part. Children draw in front of the sprite (no z insertion between
+        # parts). Several may ride one part.
         #
         #     $ ringo.ss_attach("hand_R", "sword.png")
         #     $ ringo.ss_attach("head", Transform("aura", zoom=1.2), on_hide="hide")
@@ -3786,11 +3793,9 @@ init -10 python:
             "file.png", Transform(...), another SSPlayer).
 
             ``drive_position`` and ``drive_rotation`` are on by default and
-            ``drive_scale`` is off, matching the sibling players: a follower is
-            placed *at* the part rather than *sized by* it. A disabled axis
-            contributes its identity, so the child keeps its own value for it.
-            ``drive_scale`` also
-            matches the part's scale (position + rotation always apply).
+            ``drive_scale`` is off: a follower is placed *at* the part rather
+            than *sized by* it. A disabled axis contributes its identity, so the
+            child keeps its own value for it.
             ``on_hide``: "follow" keeps drawing while the part is hidden, "hide"
             drops the child that frame. ``anchor=(ax, ay)`` is the child point
             (0..1 fraction of its size) pinned to the part and used as the
@@ -4124,8 +4129,8 @@ init -10 python:
         def ss_get_cellmap_texture(self, name):
             """The displayable currently overriding ``name`` (set by
             :meth:`ss_set_cellmap_texture`), or ``None`` when it is not
-            overridden. Like the sibling players this returns only the override
-            value, never the pack's original atlas."""
+            overridden. This returns only the override value, never the pack's
+            original atlas."""
             self._ensure()
             path = self._core.resolve_texture_name(name)
             if not path:

@@ -271,7 +271,7 @@ class _WebRuntime:
     """One animation context bound to one resource (.ssab) via JS/WASM.
 
     This class mirrors the interface of `_NativeRuntime` but uses Ren'Py's
-    `emscripten` module to call the SSPlayerForWeb JavaScript API.
+    `emscripten` module to call the SDK's wasm-bindgen API.
     """
 
     _handle_counter = 0
@@ -481,7 +481,7 @@ class _WebRuntime:
 
     @property
     def speed_scale(self) -> float:
-        """See :attr:`ss_renpy.ssruntime_native.SSRuntime.speed_scale`."""
+        """See :attr:`ss_renpy.ssruntime.SSRuntime.speed_scale`."""
         return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_speed_scale().toString()"))
 
     @property
@@ -994,7 +994,7 @@ class _WebRuntime:
                                    float(r[3]), r[4] == "1")
 
     def instance_slot_get_speed(self, slot):
-        """See :meth:`ss_renpy.ssruntime_native.SSRuntime.instance_slot_get_speed`.
+        """See :meth:`ss_renpy.ssruntime.SSRuntime.instance_slot_get_speed`.
         Kept from the last :meth:`instance_slot_step`, which reads it."""
         return self._slot_speed.get(slot, 1.0)
 

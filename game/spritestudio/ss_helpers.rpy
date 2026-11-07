@@ -57,8 +57,10 @@ init -9 python:
         `at`    : a Transform/ATL for placement/scale (e.g. Transform(xalign=.5,
                   yalign=.5, zoom=1.5) to center + scale up a full-screen cutscene).
         `tag`   : the show tag (default derived from the .ssab stem).
+        `layer` : the layer to show it on.
         `wait`  : block for the animation's run (a cutscene beat), then hide.
         `hide`  : when waiting, hide afterwards (set False to leave the last frame).
+        `speed` : a multiple of the animation's frame rate.
         `loop`  : play count (>= 1; default 1 = once). A few passes sometimes read
                   better than one; a value below 1 is clamped to 1. This helper
                   plays a *finite* run — for an endless loop show SSPlayer(loop=-1)

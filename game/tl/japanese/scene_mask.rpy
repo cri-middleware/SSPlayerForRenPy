@@ -1,5 +1,4 @@
 # Japanese translations for scene_mask.rpy (mask_demo).
-# These were missing before — the mask sample played English-only in 日本語 mode.
 
 translate japanese mask_msg1:
     "これは SpriteStudio の「マスク」サンプル（overall/Mask.ssab）です。"

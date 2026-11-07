@@ -6,9 +6,7 @@ caller whether a part is a *bone-skinned* mesh, which is the one thing that make
 a part a poor ``ss_attach`` (part-tracking) target: its vertices are drawn from
 its bound bones while its own node transform stays at the setup pose (near the
 character root), so a follower snaps to the root rather than onto the visible
-art. This is a shared-``libssruntime`` property, not a bug (SSPlayerForUnity
-_MEMO_PartTracking_Mesh_Error), so the fix is a query + a warning + docs, not a
-behaviour change.
+art. This is a property of ``libssruntime``, not a bug.
 
 The answer is read from static ``.ssab`` metadata (``PartMeshBinding`` with a
 non-empty ``influence_bone``), so there are three surfaces that must agree, and

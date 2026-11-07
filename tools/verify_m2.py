@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Headless verification of the M2 render core (plain CPython, no PIL/numpy).
+"""Headless verification of the mesh render core (plain CPython, no PIL/numpy).
 
-The M2 render core provides full-fidelity Normal rendering: shear/free-deform-exact world meshes
+The mesh render core provides full-fidelity Normal rendering: shear/free-deform-exact world meshes
 plus per-vertex ``parts_color`` and the PartColor blend modes. None of that
 needs a GUI to be *correct* — only the final on-screen GL draw does — so this
 tool proves the engine-independent core:
@@ -14,8 +14,8 @@ tool proves the engine-independent core:
      fan iff the part flags free deform / per-vertex colour;
   3. checks the alpha-not-double-applied contract (part-colour-less vertices
      carry exactly ``PartState.alpha``);
-  4. confirms M2 corner positions match the M1 :func:`build_normal_quads`
-     geometry (same world matrix x local verts), so M2 is a strict superset;
+  4. confirms the mesh corner positions match the :func:`build_normal_quads`
+     geometry (same world matrix x local verts), so the mesh is a strict superset;
   5. checks :func:`pack_pc_mesh` packs each frame's parts into the flat arrays
      the render layer hands ``Mesh2`` without losing or reordering anything.
 
@@ -157,7 +157,7 @@ def verify_pack(lib, path: str) -> dict:
             fd = framedata.parse(fb)
             res["frames"] += 1
             mesh = framedata.build_mesh_parts(rt, fd)
-            # M1 corners for cross-check (same buffers, this frame only).
+            # Quad corners for cross-check (same buffers, this frame only).
             m1 = {q.part_index: q.positions
                   for q in framedata.build_normal_quads(rt, fd)}
             # A Normal part reaches a MeshPart by TWO routes: the z-ordered draw
@@ -201,8 +201,8 @@ def verify_pack(lib, path: str) -> dict:
                     err(f"f{fr} p{mp.part_index}: color_blend={mp.color_blend}")
                 # UVs inside atlas. Slightly-out-of-bounds UVs are a property of
                 # the source .ssab (UV animation / atlas overscan), not a port
-                # bug — GL clamps/wraps and M2 passes the runtime UVs through
-                # unchanged (same as M1). Count as a warning, don't fail.
+                # bug — GL clamps/wraps and both paths pass the runtime UVs through
+                # unchanged. Count as a warning, don't fail.
                 dims = tex.get(mp.texture_hash)
                 if dims:
                     tw, th = dims
@@ -213,7 +213,7 @@ def verify_pack(lib, path: str) -> dict:
                 # free deform (non-parallelogram corner quad)
                 if not _is_parallelogram(mp.positions):
                     res["free_deform"] += 1
-                # M1 <-> M2 corner agreement
+                # quad <-> mesh corner agreement
                 if mp.part_index in m1:
                     for (mc, qc) in zip(mp.positions[:4], m1[mp.part_index]):
                         if abs(mc[0] - qc[0]) > 1e-3 or abs(mc[1] - qc[1]) > 1e-3:

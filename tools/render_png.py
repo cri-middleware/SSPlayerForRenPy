@@ -2,7 +2,7 @@
 """Software-render a .ssab animation to PNG frames + an animated GIF.
 
 This is NOT the Ren'Py renderer — it is a headless reference rasterizer that
-drives the *same* M2 render core (``framedata.build_mesh_parts``: world matrix x
+drives the *same* render core (``framedata.build_mesh_parts``: world matrix x
 local vertices, UVs and per-vertex ``parts_color`` straight from the runtime)
 and composites the Normal parts with Pillow. It exists so we can visually verify
 the data/geometry/colour path without a GUI, and so the output can be eyeballed

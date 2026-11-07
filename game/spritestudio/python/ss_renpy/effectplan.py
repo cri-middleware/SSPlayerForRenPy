@@ -8,7 +8,7 @@ arrays (verts / uvs / colors / indices). We slice those per command, apply the
 parent Effect-part's world matrix, and emit triangulated, coloured world-space
 :class:`EffectBatch` quads the Ren'Py layer can mesh.
 
-Buffer layout (``runtime/effect_draw_plan.fbs``):
+Buffer layout:
 
 * ``vert_stride`` is 2 (XY) for a 2D host like Ren'Py (we request 2).
 * ``verts``   = ``total_quads * 4 * vert_stride`` floats
@@ -74,7 +74,7 @@ def parse(buf) -> EffectDrawPlan:
 # EffectDrawCommand is a 16-byte fixed-layout FlatBuffers *struct* (CellmapHash
 # u32@0, QuadCount u32@4, ParticleOffset u32@8, Blend u8@12) in a contiguous
 # vector — decode them all in one struct call rather than per-command accessors
-# (mirrors framedata.bulk_part_states / SSPlayerForUnity's command-pointer read).
+# (mirrors framedata.bulk_part_states).
 _FX_CMD_SIZE = 16
 _FX_CMD = struct.Struct('<IIIB3x')
 _fx_fastpath = None   # None = unvalidated, True = OK, False = disabled

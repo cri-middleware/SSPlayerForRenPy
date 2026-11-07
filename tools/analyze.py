@@ -2,10 +2,10 @@
 """Displayability audit (plain CPython, no Ren'Py).
 
 For each ``.ssab`` it: parses metadata, plays the first animation through every
-frame, collects which DrawBatchKinds appear, runs the M1 Normal-quad geometry
+frame, collects which DrawBatchKinds appear, runs the Normal-quad geometry
 pipeline on a sample frame, and validates the quads against the real atlas
 size. Prints a per-pack verdict: what renders with the Normal-quad pipeline
-(M1) vs. which draw-batch kinds a pack additionally requires.
+vs. which draw-batch kinds a pack additionally requires.
 
 Usage:
     python tools/analyze.py [dir_or_ssab ...]

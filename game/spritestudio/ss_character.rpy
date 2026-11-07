@@ -41,7 +41,7 @@ init -9 python:
         `**char_kwargs`: forwarded to `Character` (e.g. who_color).
 
         Returns the `Character`. Also registers `image <tag> = SSPlayer(...)`,
-        so `show <tag>` / `ring <tag> attr` work as usual.
+        so `show <tag>` / `show <tag> attr` work as usual.
         """
         stem = ssab.replace("\\", "/").rsplit("/", 1)[-1]
         if stem.endswith(".ssab"):

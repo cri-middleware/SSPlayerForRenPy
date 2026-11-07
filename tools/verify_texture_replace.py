@@ -164,8 +164,7 @@ def check_texture_change() -> bool:
             if not path or path != want:
                 print(f"    FAIL: external {t.name!r} -> {path!r}, "
                       f"texture_hash -> {want!r}"); ok = False
-        # The ForRenPy property that spares this port ForGodot's caveat: a
-        # cellmap and the TCHG target file that names the same image collapse to
+        # A cellmap and the TCHG target file that names the same image collapse to
         # ONE resolved path, so replacing the cellmap also covers the TCHG frames
         # (both are keyed on the same path this Player overrides).
         cms = {c.name: c.image_path for c in p.meta.cellmaps()}
