@@ -327,7 +327,7 @@ _REQUIRED = (
 
     # frame data (FlatBuffers) + SoA getters
     ("ss_runtime_get_frame_data",
-     [_P, _f32, C.POINTER(C.POINTER(C.c_ubyte)), C.POINTER(_size)], None),
+     [_P, _f32, C.POINTER(C.POINTER(C.c_ubyte)), C.POINTER(_size)], _b),
     ("ss_runtime_get_world_matrices", _FLOAT_SOA, None),
     ("ss_runtime_get_local_uvs", _FLOAT_SOA, None),
     ("ss_runtime_get_cell_meta", _FLOAT_SOA, None),
