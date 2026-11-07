@@ -306,7 +306,7 @@ def check_replay() -> bool:
     # Invert writers are PARITY: an odd overlap covers, an even one does not.
     # Two overlapping inverts cancel; three cover. (Two alone cannot tell parity
     # from an "exactly one" reading — three is what distinguishes them, and
-    # SS7.5 is parity.)
+    # SpriteStudio 7.6 is parity.)
     inv2 = [(-1, 5, 0, 1), (-1, 6, 1, 1)]
     inv3 = [(-1, 5, 0, 1), (-1, 6, 1, 1), (-1, 7, 2, 1)]
     _check(mask.mask_passes(_fm(inv2), 2, False, inside, covered(0, 1)) is True,
