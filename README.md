@@ -65,7 +65,7 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    │   │   └── Ringo/             ← converted when the game launches
    │   │       ├── Ringo.ssab
    │   │       ├── Ringo.png
-│   │       └── …
+   │   │       └── …
    │   └── script.rpy
    └── SpriteStudio_Source/
        └── Ringo/                 ← your project folder, copied whole
