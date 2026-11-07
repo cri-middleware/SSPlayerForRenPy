@@ -85,6 +85,10 @@ init -9 python:
         __hash__ = object.__hash__
 
         def render(self, width, height, st, at):
+            # Before the player's first render, which would play the constructor's
+            # animation and fire the keys of that frame first.
+            if self._shown is None:
+                self._show()
             rv = super(SSButton, self).render(width, height, st, at)
             # After the player's own render, which starts the player over when
             # it is shown afresh; this frame is then drawn again.
@@ -143,6 +147,8 @@ init -9 python:
             p.ss_set_animation_section(section.start_frame, section.end_frame)
             if section.hold:
                 p.ss_stop()
+                # A held state fires nothing, and the section just moved the head.
+                p._core.discard_landing()
             else:
                 p.ss_set_loop_count(-1)
                 p.ss_play()

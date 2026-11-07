@@ -1,19 +1,18 @@
 """Walk the per-frame FrameData draw plan and build render geometry.
 
-This is the engine-independent render-data core (the equivalent of the Web
-player's ``GeometryBuilder``). It turns the Brain's FlatBuffers draw plan +
-SoA buffers into concrete quads the Ren'Py layer can blit / mesh.
+This is the engine-independent render-data core. It turns the Brain's FlatBuffers
+draw plan + SoA buffers into concrete quads the Ren'Py layer can blit / mesh.
 
 Two render paths are provided, both for the ``Normal`` draw-batch kind:
 
-* **M1 — :func:`build_normal_quads` + :func:`decompose_quad`**: resolves each
-  part to a *similarity* transform (center/rotate/scale/flip) for the blit +
-  ``Transform`` renderer. Drops shear (tracked as ``skew_err``).
-* **M2 — :func:`build_mesh_parts`**: resolves each part to a full triangulated
-  mesh (4 corners, or a 5-vertex centre fan when the part has free deform /
-  per-vertex colour) with per-vertex colour from ``parts_color`` and the
-  framebuffer + PartColor blend modes. This is what a model-based mesh renderer
-  consumes and is shear/free-deform exact.
+* :func:`build_mesh_parts` resolves each part to a full triangulated mesh (4
+  corners, or a 5-vertex centre fan when the part has free deform / per-vertex
+  colour) with per-vertex colour from ``parts_color`` and the framebuffer +
+  PartColor blend modes. This is what the mesh renderer consumes and is
+  shear/free-deform exact.
+* :func:`build_normal_quads` + :func:`decompose_quad` resolve each part to a
+  *similarity* transform (center/rotate/scale/flip). Drops shear (tracked as
+  ``skew_err``).
 
 The z-ordered walk :func:`iter_draw_plan` additionally emits Mesh(deform) and
 Shape parts (both as ``("mesh", MeshPart)`` — a Shape is a textureless
@@ -51,8 +50,8 @@ BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub", 4: "Mulalpha",
                5: "Screen", 6: "Exclusion", 7: "Invert", 8: "Mul2",
                9: "Div2", 10: "Screen2", 11: "Overlay2"}
 
-# Kinds the Normal render path (M1 blit + M2 mesh) can emit.
-M1_RENDERABLE_KINDS = frozenset({KIND_NORMAL})
+# Kinds the Normal render path can emit.
+RENDERABLE_KINDS = frozenset({KIND_NORMAL})
 
 MASK_INFLUENCE = 0x01  # DrawBatch.flags bit
 
@@ -78,8 +77,8 @@ LT, RT, LB, RB, CENTER = 0, 1, 2, 3, 4
 PC_BLEND_MIX, PC_BLEND_MUL, PC_BLEND_ADD, PC_BLEND_SUB = 0, 1, 2, 3
 PC_BLEND_NAMES = {0: "Mix", 1: "Mul", 2: "Add", 3: "Sub"}
 
-# Coefficient table from the SDK parts-color doc — (pixel_weight_adj,
-# color_weight, mul_flag). The generic formula evaluated per fragment is
+# Coefficient table — (pixel_weight_adj, color_weight, mul_flag). The generic
+# formula evaluated per fragment is
 #   out_rgb = pixel*varg.x + mix(white, pixel, varg.z) * color * varg.y
 # with varg = (1 + c.x*rate, c.y*rate, c.z). rate == 0 makes it a texel pass-
 # through for every mode, which is exactly the part-colour-less default.
@@ -92,7 +91,7 @@ _PC_COEF = (
 
 # update_flag bits that mean "this part has explicit free deform / per-vertex
 # colour" → the runtime then populates the 5th (centre) vertex and the part
-# wants a triangle fan from the centre (SCHEMA.md "PartState Identity").
+# wants a triangle fan from the centre.
 _CENTER_FLAGS = (UpdateAttributeFlags.AttributeVertex
                  | UpdateAttributeFlags.AttributePartColor)
 
@@ -130,7 +129,7 @@ def _vector(tab, slot):
     return a + 4, _U32(buf, a)[0]
 
 
-# --- Bulk struct reads (mirror SSPlayerForUnity's RawPartState* / command casts)
+# --- Bulk struct reads
 # PartState and EffectDrawCommand are fixed-layout FlatBuffers *structs* stored in
 # contiguous vectors, so the whole array decodes in ONE struct call instead of
 # N × the per-element FlatBuffers accessor chain (Offset→Get→unpack→enforce),
@@ -371,12 +370,12 @@ def normalize_uvs(uvs, tex_w, tex_h) -> list:
 
 @dataclass
 class _NormalPart:
-    """Per-part data shared by the M1 (quad) and M2 (mesh) builders.
+    """Per-part data shared by the quad and mesh builders.
 
     The common walk of the FrameData draw plan resolves this once per visible
     Normal part; both builders then project it onto their own output shape.
-    ``positions`` / ``uvs`` carry all 5 verts (LT,RT,LB,RB,CENTER) — the M1 path
-    uses the first 4, the M2 path appends the centre only when it fans.
+    ``positions`` / ``uvs`` carry all 5 verts (LT,RT,LB,RB,CENTER) — the quad path
+    uses the first 4, the mesh path appends the centre only when it fans.
     """
     part_index: int
     ps: object               # PartState (kept for Alpha/UpdateFlag/PartColor)
@@ -459,8 +458,7 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     plus matching normalized bbox coords ((0, 0) = LT .. (1, 1) = RB). Positions
     are sent through the part's world matrix (exactly like a Normal part's local
     vertices); the fill is the PartColor with ``rate`` forced to 1.0 — a shape
-    has no texel to blend against (SCHEMA.md:
-    Shape is rate-1.0), so the (white) texture
+    has no texel to blend against, so the (white) texture
     supplied by the render layer is fully replaced by the interpolated corner
     colour. Returns ``None`` for a non-shape part or a degenerate range
     (<3 valid verts, e.g. a size-collapsed shape).
@@ -486,8 +484,7 @@ def _read_shape_part(shape_soa, wm, wn, fd, ps, p, blend, mask, pcs=None):
     # with no ``parts_color`` entry gets white × hierarchical alpha (so a shape
     # still fills solid).
     #
-    # A Shape **bypasses the PartColor blend formula** (SSPlayerForWeb
-    # GeometryBuilder.buildShape): a
+    # A Shape **bypasses the PartColor blend formula**: a
     # textureless shape has no texel to blend against, so the blend mode is
     # FORCED to Mix and the rate to 1.0 — the fill is the interpolated corner
     # colour itself, regardless of the part's authored PartColor blend (Add/Sub
@@ -526,10 +523,8 @@ def _iter_visible_normal_parts(rt, fd: FrameData):
     """Yield a :class:`_NormalPart` for each visible Normal part of ``fd``.
 
     The single source of truth for walking the draw plan + reading the SoA
-    buffers (the engine-independent analogue of the reference players'
-    ``get_local_vertices`` / ``get_local_uvs`` accessors). Must be iterated right
-    after ``rt.get_frame_data`` for the same frame — the SoA pointers are valid
-    only until the next Brain call.
+    buffers. Must be iterated right after ``rt.get_frame_data`` for the same frame
+    — the SoA pointers are valid only until the next Brain call.
     """
     wm, _ = rt.world_matrices()
     lv, _ = rt.local_vertices()
@@ -572,12 +567,11 @@ def build_normal_quads(rt, fd: FrameData) -> list:
 class Placement:
     """A Normal quad decomposed into a center + similarity transform.
 
-    This is what the M1 Ren'Py renderer (blit + ``Transform``) needs: it cannot
-    express a free 2x4 quad, only translate/rotate/scale/flip about a center. SS
-    Normal parts are affine, so the only thing this *drops* is shear — captured
-    as ``skew_err`` (max corner reprojection error in px). For typical VN parts
-    ``skew_err`` is ~0; large values flag a part M1 will render slightly wrong
-    (fix in M2 via model-based mesh).
+    A blit + ``Transform`` cannot express a free 2x4 quad, only
+    translate/rotate/scale/flip about a center. SS Normal parts are affine, so the
+    only thing this *drops* is shear — captured as ``skew_err`` (max corner
+    reprojection error in px). For typical VN parts ``skew_err`` is ~0; large
+    values flag a part this form renders slightly wrong.
 
     Angles are degrees; ``rotation_deg`` is measured so that rotating the +x
     axis by it lands on the top edge (atan2 convention, in the Y-down screen
@@ -599,7 +593,7 @@ def reconstruct_corners(p: Placement) -> list:
     """Inverse of :func:`decompose_quad` for verification.
 
     Rebuilds LT, RT, LB, RB world corners from the placement. Compared against
-    the original quad, the gap is the shear M1 cannot represent.
+    the original quad, the gap is the shear this form cannot represent.
     """
     _, _, w, h = p.src_rect
     cx, cy = p.center
@@ -624,8 +618,8 @@ def reconstruct_corners(p: Placement) -> list:
 def placement_from_corners(positions, src_rect) -> tuple:
     """Similarity fit of 4 world corners (LT, RT, LB, RB) + ``src_rect``.
 
-    Pure geometry shared by :func:`decompose_quad` (M1 ``NormalQuad``) and the
-    Ren'Py Transform backend (M2 ``MeshPart`` corners). Returns
+    Pure geometry shared by :func:`decompose_quad` (``NormalQuad``) and the
+    Ren'Py Transform backend (``MeshPart`` corners). Returns
     ``(center, rotation_deg, xscale, yscale, mirror)``; shear is dropped (the
     caller measures the residual). Degenerate cells return a zero placement.
     """
@@ -647,7 +641,7 @@ def decompose_quad(q: NormalQuad) -> Placement:
     """Decompose a Normal quad into center / rotation / scale / mirror.
 
     Uses the top edge (RT-LT) and left edge (LB-LT) of the world parallelogram.
-    Records ``skew_err`` so callers know how faithful the M1 approximation is.
+    Records ``skew_err`` so callers know how faithful the approximation is.
     """
     center, rotation, xscale, yscale, mirror = placement_from_corners(
         q.positions, q.src_rect)
@@ -663,7 +657,7 @@ def decompose_quad(q: NormalQuad) -> Placement:
 
 
 # ---------------------------------------------------------------------------
-# M2 — full-fidelity mesh path (shear / free-deform exact + vertex colour)
+# Full-fidelity mesh path (shear / free-deform exact + vertex colour)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -865,7 +859,7 @@ def _avg(seq):
 def read_shader(fd: FrameData, ps) -> tuple:
     """Resolve a part's user-shader effect → ``(id_hash, params)``.
 
-    Mirrors SSPlayerForGodot's ``_resolve_part_shader_info``: the shader applies
+    The shader applies
     only when the ``AttributeShader`` flag is set and ``PartState.shader`` indexes
     a valid ``FrameData.shaders`` entry. ``id_hash`` is the runtime's fnv1a of the
     shader name (e.g. ``fnv1a("ss-sepia")``); ``params`` is the 8-float
@@ -1078,7 +1072,7 @@ def _draw_batch_list(fd: FrameData):
 def build_mesh_parts(rt, fd: FrameData) -> list:
     """Resolve every visible Normal part of ``fd`` into a coloured world mesh.
 
-    The M2 equivalent of :func:`build_normal_quads`: instead of collapsing each
+    Unlike :func:`build_normal_quads`, instead of collapsing each
     part to a similarity transform it keeps the true 4-corner world quad (so
     shear and free deform are exact) and attaches per-vertex colour. Call right
     after ``rt.get_frame_data`` for the same frame — the SoA buffers are
@@ -1222,7 +1216,7 @@ def classify_frame(fd: FrameData) -> dict:
     """Summarize one frame's draw batches by kind (for diagnostics/audit).
 
     Returns ``{kind_id: {"batches": n, "parts": m}}`` plus convenience keys
-    ``"renderable_parts"`` / ``"unsupported_parts"`` for the M1 verdict.
+    ``"renderable_parts"`` / ``"unsupported_parts"`` for the audit.
     """
     by_kind: dict[int, dict] = {}
     for b in range(fd.DrawBatchesLength()):
@@ -1232,9 +1226,9 @@ def classify_frame(fd: FrameData) -> dict:
         slot["batches"] += 1
         slot["parts"] += batch.Count()
     renderable = sum(v["parts"] for k, v in by_kind.items()
-                     if k in M1_RENDERABLE_KINDS)
+                     if k in RENDERABLE_KINDS)
     unsupported = sum(v["parts"] for k, v in by_kind.items()
-                      if k not in M1_RENDERABLE_KINDS)
+                      if k not in RENDERABLE_KINDS)
     by_kind["renderable_parts"] = renderable
     by_kind["unsupported_parts"] = unsupported
     return by_kind

@@ -1,6 +1,6 @@
 # Japanese translations for scene_helper.rpy (ringo_helper_demo).
 
-# 1. wait1 -> joy -> wait1（ナレーションで「話していない」状態を作って見せる）
+# 1. wait1 -> joy -> wait1
 translate japanese helper_msg1:
     "ナレーションが喋っている間、Ringo は話し手ではないので、SSCharacter は待機モーション（wait1）のままにしまス。"
 
@@ -10,7 +10,7 @@ translate japanese helper_msg2:
 translate japanese helper_msg3:
     "またナレーションに戻って Ringo が黙ると、wait1 に戻りまス。この idle → talk → idle こそ SSCharacter が自動でやってくれる仕事でス。"
 
-# 2. アタッチメント
+# 2. Attachments
 translate japanese helper_msg4:
     "頭の ♪ は head パーツに追従しているのです。"
 

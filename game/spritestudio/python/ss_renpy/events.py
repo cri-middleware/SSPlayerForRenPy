@@ -60,7 +60,7 @@ class UserDataEvent:
 
 @dataclass(frozen=True)
 class SignalEvent:
-    """A v7 Signal marker (``PartAttributeSignal``).
+    """A Signal marker (``PartAttributeSignal``).
 
     ``params`` maps ``param_id`` → decoded value (``bool`` / ``int`` / ``float``
     / ``str``); a ``None``-typed param maps to ``None``.
@@ -225,9 +225,11 @@ def parse_events_per_frame(epf, sound_map=None, part_names=(),
     handle of the source that fired the record, set on it and on each event."""
     users = [_user_event(epf.Users(i), part_names, source)
              for i in range(epf.UsersLength())]
-    signals = [_signal_event(epf.Signals(i), part_names, source)
-               for i in range(epf.SignalsLength())]
-    audios = [_audio_event(epf.Audios(i), sound_map, part_names, source)
+    # A Signal switched off in the editor is authoring state, not an event.
+    signals = [s for s in (_signal_event(epf.Signals(i), part_names, source)
+                           for i in range(epf.SignalsLength()))
+               if s.active]
+    audios =[_audio_event(epf.Audios(i), sound_map, part_names, source)
               for i in range(epf.AudiosLength())]
     return FrameEvents(frame_index=epf.FrameIndex(), users=users,
                        signals=signals, audios=audios, source=source)

@@ -14,6 +14,9 @@ init python:
     import os as _ss_os
     from ss_renpy import snippet as _ss_snippet
 
+    # "Save snippet" writes this into the project folder; it is not the game's.
+    build.classify('ss_snippets.txt', None)
+
     def _ss_browser_copy(text):
         """Put `text` on the system clipboard, where the platform allows it.
 
@@ -64,9 +67,8 @@ init python:
     # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
     # scaling neither rebuilds the player nor restarts the animation.
     SS_BROWSER_ZOOM_MIN = 0.2
-    # Up to 16 times the fitted size, as the Flutter player's demo allows: a
-    # canvas the size of an Animate stage fits at a few percent, and this still
-    # reaches its own pixels.
+    # Up to 16 times the fitted size: a canvas the size of an Animate stage fits
+    # at a few percent, and this still reaches its own pixels.
     SS_BROWSER_ZOOM_MAX = 16.0
     SS_BROWSER_ZOOM_STEP = 1.1       # one wheel notch
 
@@ -208,8 +210,7 @@ screen ss_browser():
                         # List EVERY discovered .ssab, not just primaries — a
                         # sub-part pack that back-references the main pack would
                         # otherwise hide the main pack (e.g. Ringo_tyu -> Ringo
-                        # demotes Ringo). ss_list_assets() stays primary-only for
-                        # name resolution / diagnostics; the browser shows all.
+                        # demotes Ringo).
                         # The LABEL is escaped, the action keeps the raw name:
                         # Ren'Py interpolates [..] / {..} in a button's text, so a
                         # pack called "[NG]_medalDANCE" would otherwise raise

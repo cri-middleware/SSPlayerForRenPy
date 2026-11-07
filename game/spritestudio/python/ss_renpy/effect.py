@@ -21,8 +21,11 @@ class EffectRig:
         self._rt = rt
         self._slots = {}   # part_index -> slot handle (or None on create failure)
         for p in meta.effect_parts():
+            # One seed per part, or parts on one effect would throw the same
+            # particles in the same places.
             self._slots[p.index] = rt.effect_slot_create(
-                p.ref_effect_name_hash, seed=0)
+                p.ref_effect_name_hash,
+                seed=(p.index ^ p.ref_effect_name_hash) & 0xFFFFFFFF)
 
     def has(self) -> bool:
         return any(self._slots.values())
@@ -34,8 +37,8 @@ class EffectRig:
         Only ever reached from :meth:`SSInternalPlayer.is_animating` after the
         head has stopped (playback short-circuits before it), so the per-slot
         query is off the normal render hot path. The runtime call is guarded so
-        a stale library missing the export degrades to 'keep redrawing' rather
-        than freezing a live effect."""
+        a failed query degrades to 'keep redrawing' rather than freezing a live
+        effect."""
         try:
             return any(self._rt.effect_slot_is_independent(slot)
                        for slot in self._slots.values() if slot)

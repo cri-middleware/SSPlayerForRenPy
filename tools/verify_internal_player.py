@@ -223,9 +223,9 @@ def check_loop_counts(lib) -> bool:
 def check_playback_modes(lib) -> bool:
     """The playback-mode knobs read back, and survive an animation switch.
 
-    ``setup_animation`` resets direction / ping-pong / frame-skip in the Brain,
-    so the core has to re-apply them — otherwise a reverse sprite silently
-    turns forward the moment a sequence chains to its next clip. Also pins the
+    The Brain keeps direction / ping-pong / frame-skip across
+    ``setup_animation``; a reverse sprite that turned forward the moment a
+    sequence chains to its next clip would mean it stopped. Also pins the
     two frame-skip modes behaviourally: Timed (on) advances by the elapsed
     time, Fixed (off) by exactly one frame per update."""
     rel = "ss_assets/overall/UserData.ssab"

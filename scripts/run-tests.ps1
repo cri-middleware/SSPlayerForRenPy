@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 #
-# Run the headless test suite (tools\verify_*.py + tools\m0_smoke.py) — the
+# Run the headless test suite (tools\verify_*.py + tools\smoke.py) — the
 # whole engine-independent layer, in plain CPython, with no Ren'Py and no GUI.
 # Windows counterpart of scripts/run-tests.sh (same key=value interface). The
 # work is tools\run_tests.py; this picks the interpreter and forwards the

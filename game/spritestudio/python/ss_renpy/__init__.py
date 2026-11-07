@@ -3,7 +3,7 @@
 Layers:
   * ``ssruntime``  — ctypes FFI to libssruntime ("Brain"). No renpy import.
   * ``ssab_meta``  — parse static .ssab metadata (anim names, texture paths).
-  * ``framedata``  — walk the per-frame FlatBuffers draw plan (M1+).
+  * ``framedata``  — walk the per-frame FlatBuffers draw plan.
   * ``resource``   — the texture / pack-reader seam the core depends on.
   * ``player``     — ``SSInternalPlayer``: engine-independent playback core
                      (set_animation / play / update -> FramePlan). The host
@@ -11,7 +11,7 @@ Layers:
                      ``spritestudio.rpy``) wraps it for Ren'Py.
 
 All of these layers run under plain CPython (no renpy import), which is what the
-headless tools (``tools/m0_smoke.py``, ``tools/verify_internal_player.py``, ...)
+headless tools (``tools/smoke.py``, ``tools/verify_internal_player.py``, ...)
 exercise.
 
 Layout: ``ss_renpy``, the flatc-generated ``ss.*`` bindings (namespaces

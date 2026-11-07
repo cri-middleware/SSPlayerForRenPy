@@ -172,8 +172,7 @@ def collect_ordered(rt, fd, instances, effects, parent_frame, dt,
     # Leftover pass: step every Instance/Effect slot the Brain dropped from
     # draw_order (Hide'd parts), so independent children keep their own clock
     # advancing instead of freezing. Stepping is driven from the full slot set,
-    # not draw_order — matching the Unity/Web ports.
-    # draw_order/visibility gate
+    # not draw_order; draw_order/visibility gate
     # *drawing* only. Each slot is stepped exactly once per frame (the walk above
     # already stepped the parts present in the plan). Guarded PER SLOT so a
     # stepping failure never discards the frame already built in ``out`` — and

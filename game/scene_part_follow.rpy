@@ -1,5 +1,4 @@
-# Part-tracking (attach) sample — the Ren'Py counterpart of the ForWeb
-# (attachToPart) and ForWGPU (partTransform) part-follow demos. It pins a plain
+# Part-tracking (attach) sample. It pins a plain
 # Ren'Py displayable (a crosshair marker) to a live part's transform so it rides
 # the animation, and — the point of this scene — it teaches WHY a bone-skinned
 # mesh part is a poor follow target, both visually and in words.
@@ -120,8 +119,7 @@ init python:
         ss_pf_apply()
 
     def ss_pf_call_text():
-        """Echo the ss_attach call the current state maps to (a teaching aid,
-        mirroring the ForWeb demo's live call readout)."""
+        """Echo the ss_attach call the current state maps to (a teaching aid)."""
         if not store.ss_pf_attached:
             return "ss_clear_attachments()"
         return ("ss_attach(%r, marker, drive_scale=%s, on_hide=%r)"

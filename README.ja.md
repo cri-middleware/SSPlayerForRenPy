@@ -56,7 +56,7 @@
    │   │   └── Ringo/             ← ゲームの起動時に変換される
    │   │       ├── Ringo.ssab
    │   │       ├── Ringo.png
-│   │       └── …
+   │   │       └── …
    │   └── script.rpy
    └── SpriteStudio_Source/
        └── Ringo/                 ← プロジェクトのフォルダをそのまま

@@ -37,9 +37,8 @@ init python:
     # SSPlayer, so changing it neither rebuilds the player nor restarts the
     # animation — the sprite keeps playing while you scale it.
     SS_PICKER_ZOOM_MIN = 0.2
-    # Up to 16 times the fitted size, as the Flutter player's demo allows: a
-    # canvas the size of an Animate stage fits at a few percent, and this still
-    # reaches its own pixels.
+    # Up to 16 times the fitted size: a canvas the size of an Animate stage fits
+    # at a few percent, and this still reaches its own pixels.
     SS_PICKER_ZOOM_MAX = 16.0
     SS_PICKER_ZOOM_STEP = 1.1        # one wheel notch
 

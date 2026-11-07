@@ -271,7 +271,7 @@ class _WebRuntime:
     """One animation context bound to one resource (.ssab) via JS/WASM.
 
     This class mirrors the interface of `_NativeRuntime` but uses Ren'Py's
-    `emscripten` module to call the SSPlayerForWeb JavaScript API.
+    `emscripten` module to call the SDK's wasm-bindgen API.
     """
 
     _handle_counter = 0
@@ -481,7 +481,7 @@ class _WebRuntime:
 
     @property
     def speed_scale(self) -> float:
-        """See :attr:`ss_renpy.ssruntime_native.SSRuntime.speed_scale`."""
+        """See :attr:`ss_renpy.ssruntime.SSRuntime.speed_scale`."""
         return float(emscripten.run_script_string(f"window.ss_ctxs[{self._ctx_id}].get_speed_scale().toString()"))
 
     @property
@@ -611,8 +611,14 @@ class _WebRuntime:
     # inside a try in JS and comes back as a bool, or a value / None.
     def _mix_set(self, js_call: str) -> bool:
         return emscripten.run_script_int(
-            f"(function(c){{try{{c.{js_call};return 1;}}catch(e){{return 0;}}}})"
+            f"(function(c){{try{{c.{js_call};window.ss_last_error='';return 1;}}"
+            f"catch(e){{window.ss_last_error=String(e&&e.message||e);return 0;}}}})"
             f"(window.ss_ctxs[{self._ctx_id}])") == 1
+
+    def last_error_message(self) -> str:
+        """Why the mixing call that just failed was refused, from the error the
+        wasm build threw; "" for none. See the native bridge's."""
+        return emscripten.run_script_string("String(window.ss_last_error||'')")
 
     def _mix_get(self, js_call: str):
         """The call's value as a float (a bool for a bool), or None.
@@ -994,7 +1000,7 @@ class _WebRuntime:
                                    float(r[3]), r[4] == "1")
 
     def instance_slot_get_speed(self, slot):
-        """See :meth:`ss_renpy.ssruntime_native.SSRuntime.instance_slot_get_speed`.
+        """See :meth:`ss_renpy.ssruntime.SSRuntime.instance_slot_get_speed`.
         Kept from the last :meth:`instance_slot_step`, which reads it."""
         return self._slot_speed.get(slot, 1.0)
 

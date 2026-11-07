@@ -19,6 +19,7 @@ from typing import List, Optional, Sequence
 PLAYING = "playing"
 PAUSED = "paused"
 STOPPED = "stopped"
+FINISHED = "finished"
 
 
 class ShowClock:
@@ -62,6 +63,11 @@ class ShowClock:
         if frame == self._frame:
             self._cur.append(st)
             return None
+        # Not drawn on the frame before, though it was still on the clock: a
+        # rollback that brings back a player it had hidden. Its st ran on all the
+        # while, but none of that time was on screen; handed to the runtime, it
+        # would fire every event of every loop it covers at once.
+        gap = self._frame is not None and frame - self._frame > 1
         self._frame = frame
         # The frame that just ended becomes the one to match against, and the
         # one before it is emptied for reuse: two lists, no allocation per frame.
@@ -79,24 +85,26 @@ class ShowClock:
         if since is None:
             self.reshown = True
             return 0.0
-        return st - since
+        return 0.0 if gap else st - since
 
 
 def playback_state(core) -> str:
-    """``PLAYING`` / ``PAUSED`` / ``STOPPED``, as `restore` should bring it back.
+    """``PLAYING`` / ``PAUSED`` / ``STOPPED`` / ``FINISHED``.
 
     Ren'Py pickles the displayable without the native core and rebuilds it
     lazily, so whether playback was live has to be carried as plain data
     alongside the frame -- otherwise every restore resumes. A naturally
-    finished one-shot reads as ``STOPPED``: the Brain parks it on its last frame
+    finished one-shot reads as ``FINISHED``: the Brain parks it on its last frame
     with ``is_playing`` false, and restoring it as playing would fire the
     completion edge a second time. Never raises -- a state it cannot read
-    reports ``PLAYING``, which is what a restore did before states existed.
+    reports ``PLAYING``.
     """
     try:
         if core.is_pausing():
             return PAUSED
-        if core.is_finished() or not core.is_playing():
+        if core.is_finished():
+            return FINISHED
+        if not core.is_playing():
             return STOPPED
     except Exception:
         pass
@@ -155,27 +163,31 @@ def start_initial(core, animation, loop: int, speed: float,
 
 def restore(core, animation: Optional[str], speed: float, loop: int,
             frame: float, state: str = PLAYING,
-            section: Optional[Sequence[int]] = None) -> bool:
+            section: Optional[Sequence[int]] = None,
+            remaining: Optional[int] = None) -> bool:
     """Put a freshly built ``core`` back on ``animation`` at ``frame``.
 
     ``loop`` is the count the core last ran with, which already encodes the
-    sequence rule (1 for a clip mid-chain). ``section`` is the playback section
-    the game set on this animation, if any: the Brain resets it on every setup,
-    so a rebuilt core has to be given it again, and before the seek, since
-    setting a section moves the head. ``state`` is what `playback_state` read:
+    sequence rule (1 for a clip mid-chain). ``remaining`` is how many of those
+    cycles the run still had to play, this one included. ``section`` is the
+    playback section the game set on this animation, if any: the Brain resets it
+    on every setup, so a rebuilt core has to be given it again, and before the
+    seek, since setting a section moves the head. ``state`` is what
+    `playback_state` read:
 
-      * ``STOPPED`` (a stopped player, or a one-shot that had finished) seeks
-        without ``play()``, which would resume it and, for the one-shot, re-arm
-        the completion edge so ``on_animation_finished`` -- and the sequence
-        advance -- fired again for the same run. The setup left the head
-        parked, so the seek alone poses the frame.
+      * ``STOPPED`` / ``FINISHED`` seeks without ``play()``, which would resume
+        a stopped player and, for a one-shot that had finished, re-arm the
+        completion edge so ``on_animation_finished`` -- and the sequence advance
+        -- fired again for the same run. The setup left the head parked, so the
+        seek alone poses the frame.
       * otherwise it plays and then seeks, in that order: ``play()`` rewinds to
         the section start, so seeking first would put the head back at the
         start. ``PAUSED`` then holds that frame.
 
-    Returns False, having changed nothing that matters, when the pack no longer
-    has ``animation`` (it was re-exported since the save); the caller then
-    starts afresh rather than leave the core with nothing set up.
+    The head was already on that frame before the save, so what it lands on is
+    not reported again. Returns False, having changed nothing that matters, when
+    the pack no longer has ``animation`` (it was re-exported since the save); the
+    caller then starts afresh rather than leave the core with nothing set up.
     """
     core.set_speed_scale(speed)
     core.set_loop_count(loop)
@@ -183,11 +195,14 @@ def restore(core, animation: Optional[str], speed: float, loop: int,
         return False
     if section is not None:
         core.set_animation_section(section[0], section[1])
-    if state == STOPPED:
+    if state in (STOPPED, FINISHED):
         core.set_frame_no(frame)
     else:
         core.play()
         core.set_frame_no(frame)
+        if remaining:
+            core.set_remaining_loops(remaining)
         if state == PAUSED:
             core.pause()
+    core.discard_landing()
     return True

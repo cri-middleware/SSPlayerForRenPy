@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Run the headless test suite (tools/verify_*.py + tools/m0_smoke.py) — the
+# Run the headless test suite (tools/verify_*.py + tools/smoke.py) — the
 # whole engine-independent layer, in plain CPython, with no Ren'Py and no GUI.
 # The work is tools/run_tests.py; this picks the interpreter and forwards the
 # arguments, the way deploy-examples.sh delegates to tools/cli_convert.py.

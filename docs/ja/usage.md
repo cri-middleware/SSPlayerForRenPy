@@ -195,11 +195,11 @@ if ringo.ss_is_track_finished(1):
 
 | 呼び出し | 内容 |
 |---|---|
-| `ss_crossfade(track, name, duration)` | トラックを別のアニメーションへフェードで切り替える |
+| `ss_crossfade(track, name, duration)` | トラックを別のアニメーションへ、`duration` 秒（0 より大きい値）のフェードで切り替える |
 | `ss_set_track_animation(track, name)` | フェードせずにトラックへアニメーションを載せる |
 | `ss_clear_track(track)` / `ss_track_count()` | トラックを空にする / トラックの数 |
 | `ss_set_track_alpha(track, alpha)` | トラックの効き具合（`0.0`〜`1.0`） |
-| `ss_fade_track(track, alpha, duration)` | トラックの alpha をフェードさせる |
+| `ss_fade_track(track, alpha, duration)` | トラックの alpha を `duration` 秒（0 より大きい値）でフェードさせる |
 | `ss_track_fade_progress(track)` / `ss_cancel_track_fade(track)` | 進行中のフェードの進み具合（`0.0`〜`1.0`、フェード中でなければ `None`）/ その位置でフェードを止める |
 | `ss_set_track_blend(track, blend)` | `ssruntime.TRACK_BLEND_MIX`（既定）か `TRACK_BLEND_ADDITIVE` |
 | `ss_set_track_sync(track, sync)` | `ssruntime.TRACK_SYNC_FREE`（先頭から。既定）か `TRACK_SYNC_START`（トラック 0 に揃える） |
@@ -209,7 +209,7 @@ if ringo.ss_is_track_finished(1):
 | `ss_add_track_source(track, name, weight)` | トラックに別のアニメーションを足す。ハンドルを返す |
 | `ss_set_source_weight(source, weight)` / `ss_set_source_frame(source, frame)` / `ss_set_source_event_threshold(source, threshold)` | ソースごとの weight、再生位置、イベントを出し始める weight |
 
-設定値は対応する `ss_get_*` で読み戻せます（フレームスキップは `ss_is_track_frame_skip_enabled()`）。セッターは断られると `False` を返し（存在しないアニメーション・トラック・ハンドルなど）、ゲッターは読むものが無いと `None` を返します。
+設定値は対応する `ss_get_*` で読み戻せます（フレームスキップは `ss_is_track_frame_skip_enabled()`）。セッターは断られると `False` を返し（存在しないアニメーション・トラック・ハンドル、0 の `duration` など）、ゲッターは読むものが無いと `None` を返します。
 
 ---
 

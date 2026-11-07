@@ -22,6 +22,24 @@ init -10 python:
     except Exception:
         pass
 
+    def _ss_source_dir():
+        """The folder the importer converts from, absolute. A game moves it with
+        `define -15 ss_source_dir = ...`, relative to the project."""
+        source_dir = getattr(store, "ss_source_dir", None)
+        return os.path.abspath(os.path.join(
+            config.basedir,
+            "SpriteStudio_Source" if source_dir is None else source_dir))
+
+    # The projects the game was converted from are the creator's, PSDs and all,
+    # and Ren'Py ships whatever nothing classifies. A folder outside the project
+    # is never packaged.
+    try:
+        _ss_rel = os.path.relpath(_ss_source_dir(), config.basedir).replace("\\", "/")
+        if not _ss_rel.startswith(".."):
+            build.classify(_ss_rel + "/**", None)
+    except Exception:
+        pass
+
     def _ss_source_changed(fn):
         """A watched source file changed: reload, which re-runs the import below.
 
@@ -71,13 +89,8 @@ init -10 python:
         if not config.developer:
             return
 
-        # Safely read from store (if user defined them via `define -15 ss_source_dir = ...`)
-        source_dir = getattr(store, "ss_source_dir", None)
-        if source_dir is None:
-            source_dir = os.path.abspath(os.path.join(config.basedir, "SpriteStudio_Source"))
-        else:
-            source_dir = os.path.abspath(os.path.join(config.basedir, source_dir))
-            
+        source_dir = _ss_source_dir()
+
         out_dir = getattr(store, "ss_output_dir", None)
         if out_dir is None:
             out_dir = os.path.abspath(os.path.join(config.basedir, "game", "ss_assets"))
@@ -99,7 +112,8 @@ init -10 python:
             print(f"[SpriteStudio] Auto-importer disabled: could not load native converter ({e})")
             return
 
-        sspj_files = glob.glob(os.path.join(source_dir, "**", "*.sspj"), recursive=True)
+        sspj_files = glob.glob(os.path.join(glob.escape(source_dir), "**", "*.sspj"),
+                               recursive=True)
         if not sspj_files:
             return
 

@@ -4,20 +4,18 @@ SpriteStudio Player for Ren'Py を組み込んだゲームを各プラットフ�
 
 > このページは、標準の Ren'Py ランチャーで**自分のゲーム**をエクスポートする**ゲーム制作者**向けです。本リポジトリ内で作業する場合（デモやネイティブライブラリのビルド）は、以下の各エクスポートを自動化する開発者向けヘルパースクリプトを [ビルドガイド](development/build.md) にまとめています。
 
-全プラットフォーム共通: `game/spritestudio/libs/` には全プラットフォーム向けのネイティブライブラリが入っています。デスクトップと Web では、Ren'Py が必要なものをゲームに同梱します。Android と iOS では、後述のとおり一度だけ手で配置します。**アセット**はゲーム自身のコンテンツなので、ご自身の `options.rpy` で classify してください。`build.classify('**.ssab', 'all')`、シーケンスパックがあれば `build.classify('**.ssqb', 'all')`、アニメが SS Audio のイベントで音を鳴らすなら `'**.wav'` / `'**.mp3'` も追加します。特に Web エクスポートは、明示分類しないと未知の拡張子を落とします。
+全プラットフォーム共通: `game/spritestudio/libs/` には全プラットフォーム向けのネイティブライブラリが入っています。デスクトップと Web では、Ren'Py が必要なものをゲームに同梱します。Android と iOS では、後述のとおり一度だけ手で配置します。**アセット**（`.ssab`、`.ssqb`、テクスチャ、サウンド）は、`game/` の他のファイルと同じようにゲームに同梱されます。`SpriteStudio_Source/` の下のプロジェクトは同梱されません。
 
 ## デスクトップ向けエクスポート (Windows / macOS / Linux)
 
 Ren'Py 標準の [配布物のビルド](https://www.renpy.org/doc/html/build.html) をそのまま使います。このプレイヤーで加わる手順はありません。配布時は Ren'Py のドキュメントに従いコード署名・公証を行ってください（未署名の `.dylib` は Gatekeeper にブロックされます）。
 
-**任意 — アセットを `.rpa` にまとめる:** `build.classify` は最初に当たったルールを使うので、`**.ssab` / オーディオの classify ルールより**前**にアーカイブを登録します。
+**任意 — アセットを `.rpa` にまとめる:** `build.classify` は最初に当たったルールを使うので、同じファイルに当たるご自身の classify ルールより**前**にアーカイブを登録します。
 
 ```renpy
 init python:
     build.archive("ssdata", "all")
     build.classify("game/ss_assets/**", "ssdata")
-    build.classify('**.ssab', 'all')
-    build.classify('**.ssqb', 'all')
 ```
 
 ## Android 向けエクスポート

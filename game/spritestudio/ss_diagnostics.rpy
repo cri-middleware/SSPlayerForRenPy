@@ -15,7 +15,10 @@ init python:
         except Exception:
             pass
         try:
-            info["packs"] = sorted(ss_list_assets().keys())
+            # Every pack, as the Shift+B browser lists them: ss_list_assets()
+            # leaves out one another pack plays as an instance, and Ringo_tyu
+            # plays Ringo.
+            info["packs"] = sorted(r.stem for r in _ss_get_index().records())
         except Exception:
             pass
         return info

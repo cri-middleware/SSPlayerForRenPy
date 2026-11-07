@@ -2,7 +2,7 @@
 """Headless regression check for the `.ssab` file-identifier guard.
 
 libssruntime does not validate `.ssab` input — `ss_resource_create_borrow` is
-documented UB on crafted/corrupt bytes (SDK_UPSTREAM_ISSUES #1). Before those
+documented UB on crafted/corrupt bytes. Before those
 bytes reach Rust, `SsabMeta.__init__` positively identifies the buffer via the
 FlatBuffers `file_identifier` "SSAB" (the flatbuffers API
 `SsAnimeBinaryBufferHasIdentifier`) and raises a diagnosable `ValueError` on a
@@ -70,7 +70,7 @@ def main(argv) -> int:
         print(f"SKIP: {target} not found (run scripts/deploy-examples.* first)")
         return 0
     real = open(target, "rb").read()
-    print("== .ssab identifier-guard verification (SDK_UPSTREAM_ISSUES #1) ==\n")
+    print("== .ssab identifier-guard verification ==\n")
     ok = check_identifier_gate(real)
     print("\n== RESULT:", "ALL PASS" if ok else "FAILURES PRESENT", "==")
     return 0 if ok else 1

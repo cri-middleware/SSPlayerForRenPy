@@ -4,9 +4,8 @@ The runtime intentionally returns only a per-frame *draw plan* (FrameData) plus
 SoA buffers — it never hands back the static project structure (animation
 names, cellmap → image-path mapping, etc.). A Player needs that to:
 
-  * enumerate selectable animation names (M0/M1), and
-  * resolve ``DrawBatch.texture_hash`` to a concrete PNG file (M1/M2, Reference
-    method).
+  * enumerate selectable animation names, and
+  * resolve ``DrawBatch.texture_hash`` to a concrete PNG file.
 
 We parse it straight from the ``.ssab`` FlatBuffer using the generated
 ``ss.format.SsAnimeBinary`` bindings.
@@ -223,7 +222,7 @@ class SsabMeta:
         # ("SSAB", bytes 4-8) using the flatbuffers API — GetRootAs does NOT check
         # it. Safe on short/empty buffers (it just compares data[4:8]). Without
         # this a wrong-type / crafted buffer would reach the non-validating Rust
-        # runtime and drive an OOB read (SDK_UPSTREAM_ISSUES #1).
+        # runtime and drive an OOB read.
         if not SsAnimeBinary.SsAnimeBinaryBufferHasIdentifier(data, 0):
             raise ValueError(
                 "not a .ssab pack (missing 'SSAB' FlatBuffers file identifier)")
@@ -320,8 +319,7 @@ class SsabMeta:
 
         The cellmap is named without its ``.ssce`` extension, matching how the
         pack stores it. Together with :meth:`cellmaps` this enumerates the valid
-        targets of a per-part *cell override* (mirrors SSPlayerForUnity's
-        ``GetCellNames``).
+        targets of a per-part *cell override*.
         """
         for i in range(self._root.CellmapsLength()):
             c = self._root.Cellmaps(i)
@@ -387,9 +385,8 @@ class SsabMeta:
         A skinned mesh is drawn from its bound bones, so its own node transform
         stays put at the setup pose while the visible art deforms elsewhere —
         which makes it a poor *part-tracking* target (a follower snaps to the
-        node, not the art). See the sibling Players' ``is_part_skinned_mesh``
-        and the mirror of the existing ``is_part_hidden`` query. Deform-only
-        (rigid) meshes and every non-mesh part return ``False``.
+        node, not the art). Deform-only (rigid) meshes and every non-mesh part
+        return ``False``.
         """
         for p in self.parts():
             if p.name == name:
@@ -466,8 +463,8 @@ class SsabMeta:
         texture is a file NAME (``common.png``). They are different strings that
         hash into the two distinct spaces ``DrawBatch.texture_hash`` draws from,
         so both are listed —
-        every entry is legitimately replaceable. Mirrors the sibling players'
-        ``get_cellmap_names``; dedup guards only against a repeated name."""
+        every entry is legitimately replaceable. Dedup guards only against a
+        repeated name."""
         out: list[str] = []
         seen: set[str] = set()
         for c in self.cellmaps():
@@ -486,8 +483,7 @@ class SsabMeta:
 
         A cellmap name resolves to its ``image_path``; an external-texture name
         IS its file path. Cellmaps are searched first, then ``external_textures``
-        — the same order as :meth:`replaceable_texture_names` and the sibling
-        players' name->hash resolution."""
+        — the same order as :meth:`replaceable_texture_names`."""
         if not name:
             return ""
         for c in self.cellmaps():

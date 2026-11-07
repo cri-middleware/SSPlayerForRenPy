@@ -1,8 +1,8 @@
 """Engine-independent mask / clipping-mask core.
 
 SpriteStudio "mask" and "clipping" are two features over one stencil. Ren'Py's
-GL2 model layer does not expose a stencil buffer, so — exactly like the Godot
-port — we use the **coverage-bitmap hybrid**:
+GL2 model layer does not expose a stencil buffer, so we use the
+**coverage-bitmap hybrid**:
 
   1. Per frame, rasterize every mask *writer* into an offscreen RGBA8 bitmap,
      one bit per writer (24 packed into the RGB channels; past that the bitmap

@@ -2,10 +2,10 @@
 """Displayability audit (plain CPython, no Ren'Py).
 
 For each ``.ssab`` it: parses metadata, plays the first animation through every
-frame, collects which DrawBatchKinds appear, runs the M1 Normal-quad geometry
+frame, collects which DrawBatchKinds appear, runs the Normal-quad geometry
 pipeline on a sample frame, and validates the quads against the real atlas
 size. Prints a per-pack verdict: what renders with the Normal-quad pipeline
-(M1) vs. which draw-batch kinds a pack additionally requires.
+vs. which draw-batch kinds a pack additionally requires.
 
 Usage:
     python tools/analyze.py [dir_or_ssab ...]
@@ -109,12 +109,12 @@ def audit_pack(lib, path: str) -> dict:
 
         # --- verdict ---
         seen = set(kinds_seen)
-        supported = seen & framedata.M1_RENDERABLE_KINDS
-        unsupported = seen - framedata.M1_RENDERABLE_KINDS
+        supported = seen & framedata.RENDERABLE_KINDS
+        unsupported = seen - framedata.RENDERABLE_KINDS
         if not seen:
             result["verdict"] = "no draw batches"
         elif not unsupported:
-            result["verdict"] = "FULL — M1 renders everything"
+            result["verdict"] = "FULL — the Normal path renders everything"
         elif supported:
             need = ", ".join(sorted(framedata.KIND_NAMES.get(k, str(k))
                                     for k in unsupported))
@@ -177,7 +177,7 @@ def main(argv: list[str]) -> int:
 
     lib = ssruntime.load_library()
     print(f"== Displayability audit: {len(paths)} packs "
-          f"(M1 renders kinds={sorted(framedata.M1_RENDERABLE_KINDS)} = Normal)\n")
+          f"(the Normal path renders kinds={sorted(framedata.RENDERABLE_KINDS)} = Normal)\n")
     full = partial = none = 0
     for p in paths:
         r = audit_pack(lib, p)
