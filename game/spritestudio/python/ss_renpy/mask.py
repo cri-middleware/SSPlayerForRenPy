@@ -265,7 +265,7 @@ def child_context(tree, pinfo, start_seq) -> MaskInherit:
     Its own ``mask_influence`` / ``visible_inside_mask`` reach the
     sub-animation whether or not anything above masks, and only they do: an
     Instance part under a ``mask_influence == 0`` caller still hands down 1, so
-    the parts of a nested instance are clipped again (SpriteStudio 7.5 on
+    the parts of a nested instance are clipped again (SpriteStudio 7.6 on
     InstancePropagationTired3). ``mask_write`` takes no part — writing a mask is
     a fact about that one part.
     """
@@ -548,7 +548,7 @@ def mask_passes(frame_mask: FrameMask, seq: float, visible_inside: bool,
     invert`` covers where ``invert -> incr`` does not. Splitting them keeps
     ``mask_influence == 1`` writers on parity (odd overlap covers) and
     ``mask_influence == 0`` writers on a counter (any overlap covers); the result
-    is their **union**, which is what SS7.5 does when the two kinds overlap.
+    is their **union**, which is what SpriteStudio 7.6 does when the two kinds overlap.
     Unlike the GPU-stencil ports there is no bit budget here — these are plain
     variables — so the counter has no overlap ceiling beyond
     :data:`MAX_WRITERS`.
