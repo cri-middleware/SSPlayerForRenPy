@@ -267,8 +267,11 @@ jobs:
           tool: wasm-pack
 
       - name: Build the runtime, then the example data
+        # Two builds, as in build-pages.sh: the wasm runtime the export ships,
+        # and the host libssconverter deploy-examples.sh converts through.
         run: |
           bash scripts/build-runtime.sh platform=web build=release
+          bash scripts/build-runtime.sh build=release
           bash scripts/deploy-examples.sh
 
       - name: Fetch Ren'Py SDK, with Web support
