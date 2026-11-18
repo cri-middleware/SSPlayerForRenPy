@@ -223,6 +223,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/build-runtime.ps1 build=release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           ./scripts/deploy-examples.ps1
 
       # Each fetches the Ren'Py SDK first when renpy-sdk/ is missing.
