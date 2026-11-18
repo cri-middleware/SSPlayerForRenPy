@@ -2,7 +2,7 @@
 """Software-render a .ssab frame WITH masks applied, to a PNG (verification).
 
 A headless reference of the mask/clipping result: it drives the SAME engine-
-independent core that the Ren'Py layer uses — ``mask.build_frame_mask`` for the
+independent core that the Ren'Py layer uses — the player's frame walk for the
 writers and ``mask.mask_passes`` for the per-pixel replay (the exact CPU twin of
 the ``ss.partcolor_mask`` GLSL) — so the output proves the mask LOGIC produces
 the right shape, independent of the GPU path and of any demo background.
@@ -12,7 +12,7 @@ It rasterizes the coverage on the CPU (each writer's quad/shape, with the same
 ``mask_passes`` per pixel and clears alpha where it fails. Normal parts only
 (the Jigsaw targets + textured masks); a Mesh writer is filled by triangles.
 
-Requires Pillow (dev venv).  Usage: python tools/render_mask_png.py [pack.ssab] [anim] [--frame N] [--out f.png] [--no-mask]
+Requires Pillow (`pip install Pillow`).  Usage: python tools/render_mask_png.py [pack.ssab] [anim] [--frame N] [--out f.png] [--no-mask]
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 from ss_renpy import ssruntime, framedata, mask  # noqa: E402
 from ss_renpy.player import SSInternalPlayer  # noqa: E402
+from ss_renpy.resource import filesystem_pack_reader  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 from PIL import Image, ImageDraw  # noqa: E402
@@ -97,7 +98,7 @@ def build_coverage(fm, atlases, canvas_size, off):
 
 
 def apply_mask(layer, ap, fm, cover, off):
-    """Zero ``layer`` alpha wherever ``mask_passes`` discards (the §3-2 replay)."""
+    """Zero ``layer`` alpha wherever ``mask_passes`` discards (the per-pixel replay of the mask shader)."""
     w, h = layer.size
     px = layer.load()
     bw, bh = fm.bsize
@@ -110,7 +111,7 @@ def apply_mask(layer, ap, fm, cover, off):
             wx, wy = x - off[0], y - off[1]
             cov_uv = ((wx - bx) / bw, (wy - by) / bh)
             bits = cover[y][x]
-            keep = mask.mask_passes(fm, ap.rank, ap.visible_inside, cov_uv,
+            keep = mask.mask_passes(fm, ap.seq, ap.visible_inside, cov_uv,
                                     lambda bit, _b=bits: (_b >> bit) & 1)
             if not keep:
                 px[x, y] = (r, g, b, 0)
@@ -124,13 +125,18 @@ def render(path, anim, frame, out, use_mask=True, bg="808080"):
     atlases = load_atlases(meta, base)
 
     pl = SSInternalPlayer(data, lib=ssruntime.load_library(),
-                          base_dir=os.path.relpath(base, _GAME).replace("\\", "/"))
+                          base_dir=os.path.relpath(base, _GAME).replace("\\", "/"),
+                          pack_reader=filesystem_pack_reader(base))
+    # Instance children's packs merged their textures into the shared map.
+    for th, rel in pl._texmap.items():
+        if th not in atlases and rel and os.path.exists(os.path.join(base, rel)):
+            atlases[th] = Image.open(os.path.join(base, rel)).convert("RGBA")
     a0 = anim or meta.animation_names()[0]
     pl.set_animation(a0)
-    pl.set_loop(-1)
+    pl.set_loop_count(-1)
     pl.play()
     plan = None
-    fps = pl.fps or 30
+    fps = pl.frame_rate or 30
     for fr in range(frame + 1):
         plan = pl.update(0.0 if fr == 0 else 1000.0 / fps)
     fm = plan.frame_mask
@@ -151,7 +157,8 @@ def render(path, anim, frame, out, use_mask=True, bg="808080"):
     ch = int(math.ceil(maxy - miny)) + 2 * margin
     size = (cw, ch)
 
-    cover = build_coverage(fm, atlases, size, off) if (use_mask and fm) else None
+    cover = (build_coverage(fm, atlases, size, off) if (use_mask and fm)
+             else [[0] * cw for _ in range(ch)])
 
     canvas = Image.new("RGBA", size, (0, 0, 0, 0))
     n_masked = 0
@@ -167,7 +174,7 @@ def render(path, anim, frame, out, use_mask=True, bg="808080"):
         if avg[3] < 0.999:
             r, g, b, al = layer.split()
             layer = Image.merge("RGBA", (r, g, b, al.point(lambda v: int(v * avg[3]))))
-        if use_mask and cover is not None and mp.mask is not None:
+        if use_mask and mp.mask is not None:
             layer = apply_mask(layer, mp.mask, fm, cover, off)
             n_masked += 1
         canvas = Image.alpha_composite(canvas, layer)

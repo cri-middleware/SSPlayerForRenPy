@@ -1,23 +1,38 @@
 #!/usr/bin/env pwsh
 #
-# Convert the SpriteStudio test projects into playback data under game\sprites\
-# (.ssab + referenced textures, via ssconverter-cli). Windows counterpart of
-# scripts/deploy-examples.sh.
+# Convert the SpriteStudio test projects into playback data under
+# game\ss_assets\ (.ssab + referenced textures, via
+# tools\cli_convert.py).
 #
 # Scope: ONLY the playback data. The native libssruntime binary is the job of
-# scripts/build-runtime.ps1, not this script.
-#   game\sprites\            <- deploy-examples.ps1 (this script)
-#   game\spritestudio\libs\  <- build-runtime.ps1
+# scripts\build-runtime.{sh,ps1}, not this script.
+#   game\ss_assets\           <- deploy-examples.{sh,ps1}   (this script)
+#   game\spritestudio\libs\   <- build-runtime.{sh,ps1}
+# Both are gitignored.
 #
-# Usage: scripts\deploy-examples.ps1 [-Mode release|debug]   (ssconverter-cli build mode)
+# Usage: scripts\deploy-examples.ps1   (no options)
 #
 # SDK location: $env:SSSDK, else .\SpriteStudio-SDK (submodule), else ..\SpriteStudio-SDK.
 
-param(
-    [ValidateSet("release", "debug")] [string]$Mode = "release"
-)
-
 $ErrorActionPreference = "Stop"
+
+foreach ($arg in $args) {
+    switch -Regex -CaseSensitive ($arg) {
+        '^(-h|--help)$' {
+            # The header comment, all of it, as the .sh twin prints it.
+            foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 1)) {
+                if ($line -notmatch '^#') { break }
+                $line -replace '^# ?', ''
+            }
+            exit 0
+        }
+        default {
+            [Console]::Error.WriteLine("deploy-examples.ps1: unknown arg '$arg'")
+            exit 2
+        }
+    }
+}
+
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $GameDir = Join-Path $RootDir "game"
 
@@ -31,33 +46,32 @@ if (-not $SdkDir) {
 if (-not $SdkDir -or -not (Test-Path (Join-Path $SdkDir "Cargo.toml"))) {
     Write-Error "SpriteStudio-SDK not found (init the submodule or set `$env:SSSDK)"
 }
+# Ren'Py ships a python per platform (py3-mac-universal / py3-linux-<arch> /
+# py3-windows-x86_64). Pick the one matching THIS host and arch -- a bare py3-*
+# grabs py3-linux first, and on Linux the first arch -- as the .sh twin does.
 $pythonCmd = ""
-$RenpyLibDir = Join-Path $RootDir "renpy-sdk\lib"
+$RenpyLibDir = Join-Path $RootDir "renpy-sdk/lib"
 if (Test-Path $RenpyLibDir) {
-    # Ren'Py ships a python per platform (py3-mac-universal / py3-linux-<arch> /
-    # py3-windows-x86_64). Pick the one matching THIS host — an unfiltered py3-*
-    # grabs py3-linux first and can't execute on macOS/Windows.
-    $plat = if ($IsMacOS) { "py3-mac-*" } elseif ($IsLinux) { "py3-linux-*" } else { "py3-windows-*" }
-    $RenpyPythonDirs = Get-ChildItem -Path $RenpyLibDir -Directory -Filter $plat
-    if ($RenpyPythonDirs.Count -gt 0) {
-        $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python.exe"
-        if (-not (Test-Path $bundledPython)) {
-            $bundledPython = Join-Path $RenpyPythonDirs[0].FullName "python"
-        }
-        if (Test-Path $bundledPython) {
-            $pythonCmd = $bundledPython
+    $plat = if ($IsMacOS) { "py3-mac-*" } elseif ($IsLinux) { "py3-linux-$("$(& uname -m)".Trim())*" } else { "py3-windows-*" }
+    $RenpyPythonDir = Get-ChildItem -Path $RenpyLibDir -Directory -Filter $plat | Sort-Object Name | Select-Object -First 1
+    if ($RenpyPythonDir) {
+        foreach ($name in "python", "python.exe") {
+            $candidate = Join-Path $RenpyPythonDir.FullName $name
+            if (Test-Path -PathType Leaf $candidate) { $pythonCmd = $candidate; break }
         }
     }
 }
-
 if (-not $pythonCmd) {
-    if (Get-Command "python" -ErrorAction SilentlyContinue) {
-        $pythonCmd = "python"
-    } elseif (Get-Command "python3" -ErrorAction SilentlyContinue) {
-        $pythonCmd = "python3"
-    } else {
-        Write-Error "python/python3 not found in renpy-sdk or PATH"
+    # python3 first, as in the .sh twin -- except on Windows, where python3 is
+    # often only the Microsoft Store's stand-in and python the real interpreter.
+    $order = if ($IsMacOS -or $IsLinux) { @("python3", "python") } else { @("python", "python3") }
+    foreach ($name in $order) {
+        if (Get-Command $name -ErrorAction SilentlyContinue) { $pythonCmd = $name; break }
     }
+}
+if (-not $pythonCmd) {
+    [Console]::Error.WriteLine("deploy-examples.ps1: python/python3 not found in renpy-sdk or PATH")
+    exit 1
 }
 
 # --- convert test projects -> SpriteStudio_Source/ -> game\ss_assets\<project> ---
@@ -79,9 +93,21 @@ function Convert-Project([string]$TestFolder, [string]$ProjectName, [string]$Des
     
     $sspjPath = Join-Path $workDir "$ProjectName.sspj"
     & $pythonCmd (Join-Path $RootDir "tools\cli_convert.py") $sspjPath $Dest
+    # cli_convert.py exits 1 on conversion failure; $ErrorActionPreference does
+    # not cover native commands, so propagate explicitly (the .sh uses set -e).
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "deploy-examples.ps1: conversion failed for $ProjectName ($LASTEXITCODE)"
+    }
+    # Stamp the auto-importer freshness marker so a dev-mode launch does not
+    # reconvert this pack (cli_convert.py itself writes no marker). Non-fatal.
+    & $pythonCmd (Join-Path $RootDir "tools\ss_stamp_import.py") $sspjPath $Dest
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "deploy-examples.ps1: could not stamp import marker for $ProjectName (will reconvert on next dev launch)"
+    }
 }
 
 Convert-Project "tests/overall" "overall" (Join-Path $GameDir "ss_assets\overall")
 Convert-Project "tests/Ringo" "Ringo"     (Join-Path $GameDir "ss_assets\Ringo")
 Convert-Project "tests/ParticleEffect" "ParticleEffect" (Join-Path $GameDir "ss_assets\ParticleEffect")
-Write-Host "deploy-examples.ps1: done -> game\ss_assets\{overall,Ringo,ParticleEffect}\"
+Convert-Project "tests/Doll" "Doll" (Join-Path $GameDir "ss_assets\Doll")
+Write-Host "deploy-examples.ps1: done -> game\ss_assets\{overall,Ringo,ParticleEffect,Doll}\"

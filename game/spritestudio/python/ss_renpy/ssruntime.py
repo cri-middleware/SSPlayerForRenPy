@@ -1,7 +1,7 @@
 """Runtime routing and constants for libssruntime.
 
 This module exposes the runtime constants and dynamically delegates SSRuntime
-to either the native ctypes implementation (_NativeRuntime) or the Pyodide/JS 
+to either the native ctypes implementation (_NativeRuntime) or the emscripten/JS
 implementation (_WebRuntime) depending on the environment.
 """
 
@@ -19,15 +19,40 @@ ORIGIN_CENTER = 0
 ORIGIN_TOP_LEFT = 1
 
 UNIT_PIXEL = 0
-UNIT_DOT = 1
 
 # playback_direction
-PLAY_FORWARD = 0
-PLAY_REVERSE = 1
+DIRECTION_FORWARD = 0
+DIRECTION_BACKWARD = 1
 
 # playback_style (ss_runtime_set_playback_direction's second arg)
 STYLE_NORMAL = 0
 STYLE_PINGPONG = 1
+
+# --- Override Layer (per-part runtime overrides) --------------------------
+# blend_op of a part *color* override — the same four operations as the
+# authored PartColor blend type.
+BLEND_MIX = 0
+BLEND_MUL = 1
+BLEND_ADD = 2
+BLEND_SUB = 3
+
+# priority_mode: keyframe-vs-override precedence, for the attributes that
+# conflict with the animation (color + cell). Visibility takes none — it is a
+# plain force-hide flag that always wins and is dropped on a new animation.
+# Mirrors SS6's KindIgnoreAttribute.
+PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME = 0   # SS6 NON: one-shot, hands back to the keyframe
+PRIORITY_HOLD_UNTIL_NEXT_ANIMATION = 1    # SS6 NOW_ANIMATION: wins for this animation
+PRIORITY_PERMANENT = 2                    # SS6 PERMANENT: survives animation changes
+
+# --- Animation mixing (the track stack) -----------------------------------
+# How a track folds onto the tracks below it.
+TRACK_BLEND_MIX = 0
+TRACK_BLEND_ADDITIVE = 1
+
+# Where an animation laid on a track starts: from its top, or at track 0's
+# phase (the same fraction of its section).
+TRACK_SYNC_FREE = 0
+TRACK_SYNC_START = 1
 
 _IS_WEB = sys.platform == "emscripten"
 
@@ -50,8 +75,7 @@ def hash_string(s: str) -> int:
 
 if _IS_WEB:
     from .ssruntime_web import _WebRuntime as SSRuntime
-    def load_library(path=None, base_dir=None):
-        return None
+    from .ssruntime_web import load_library
 else:
     from .ssruntime_native import _NativeRuntime as SSRuntime
     from .ssruntime_native import load_library

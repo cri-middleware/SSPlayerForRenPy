@@ -1,78 +1,37 @@
-site_name: SpriteStudio Player for Ren'Py
-site_description: "A Ren'Py integration for SpriteStudio 7"
-site_author: "CRI Middleware Co., Ltd."
+INHERIT: ./mkdocs.base.yml
+
+docs_dir: docs/en
+site_dir: site
 site_url: "https://cri-middleware.github.io/SSPlayerForRenPy/"
-repo_name: "cri-middleware/SSPlayerForRenPy"
-repo_url: "https://github.com/cri-middleware/SSPlayerForRenPy"
-edit_uri: "edit/develop/docs/"
+site_description: "A Ren'Py integration for SpriteStudio"
 
 theme:
-  name: material
   language: en
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: blue grey
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: blue grey
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-  features:
-    - navigation.tabs
-    - navigation.sections
-    - navigation.expand
-    - content.code.copy
-
-plugins:
-  - search
-  - callouts
-  - i18n:
-      docs_structure: folder
-      languages:
-        - locale: en
-          name: English
-          default: true
-          build: true
-        - locale: ja
-          name: 日本語
-          build: true
-
-nav:
-  - Home: index.md
-  - Setup Guide: setup.md
-  - Usage Guide: usage.md
-  - Asset Import: import.md
-  - Exporting your Game: export.md
-  - Build Guide (Dev): build.md
-  - Limitations: limitations.md
-
-markdown_extensions:
-  - admonition
-  - pymdownx.details
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
 
 extra:
-  alternate:
-    - name: English
-      link: ./
-      lang: en
-    - name: 日本語
-      link: ./ja/
-      lang: ja
+  site_root_prefix: ""
+  social:
+    - icon: material/motion-play
+      link: https://cri-middleware.github.io/SpriteStudio-Docs/
+      name: SpriteStudio Docs
+    - icon: fontawesome/brands/github
+      link: https://github.com/cri-middleware
+      name: cri-middleware on GitHub
+    - icon: material/web
+      link: https://www.webtech.co.jp/spritestudio/
+      name: SpriteStudio
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/spritestudio
+      name: SpriteStudio on X
+
+nav:
+  - 🏠 Home: index.md
+  - 🚀 Setup Guide: setup.md
+  - 🗂️ Asset Import: import.md
+  - ▶️ Usage Guide: usage.md
+  - 🔘 Buttons: buttons.md
+  - 📦 Exporting your Game: export.md
+  - 🛠️ For Player & SDK Developers:
+      - Build Guide: development/build.md
+      - How the Player Is Put Together: development/architecture.md
+  - ⚠️ Limitations & Scope: limitations.md

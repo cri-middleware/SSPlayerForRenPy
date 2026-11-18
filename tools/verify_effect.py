@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Headless check for Effect-part playback (roadmap Step "Instance/Effect").
+"""Headless check for Effect-part playback.
 
 Drives ``Effect.ssab`` through every frame: creates one Effect slot per effect
 part, steps it via the C-API each frame, decodes the returned ``EffectDrawPlan``
 with :mod:`ss_renpy.effectplan`, and validates the geometry. Prints how many
 effects produced visible particles, the UV span (pixel vs normalized), the
-blend modes and cellmap hashes seen, and whether all positions/colours are
-finite. Plain CPython — no Ren'Py.
+blend modes and cellmap hashes seen, whether all positions/colours are finite,
+and whether ``pack_fx_mesh`` packs each batch as it holds it. Plain CPython —
+no Ren'Py.
 
 Usage:  python tools/verify_effect.py [pack.ssab ...]   (default: Effect.ssab)
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+from types import SimpleNamespace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _GAME = os.path.join(os.path.dirname(_HERE), "game")
@@ -25,6 +27,7 @@ import ss_renpy  # noqa: E402
 ss_renpy.bootstrap_paths()
 
 from ss_renpy import ssruntime, effectplan  # noqa: E402
+from ss_renpy.effect import EffectRig  # noqa: E402
 from ss_renpy.ssab_meta import SsabMeta  # noqa: E402
 
 
@@ -62,7 +65,7 @@ def check_pack(lib, path: str) -> bool:
         if not rt.setup_animation(a0.name):
             print(f"    FAIL: setup_animation({a0.name!r})")
             return False
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
 
         for p in eff_parts:
@@ -74,11 +77,12 @@ def check_pack(lib, path: str) -> bool:
             else:
                 slots[p.index] = slot
 
-        fps = rt.fps or a0.fps or 30
+        fps = rt.frame_rate or a0.fps or 30
         dt = 1.0 / fps
         total = max(1, a0.total_frame)
         visible_parts = set()
         bad = 0
+        packed_bad = 0
         total_quads = 0
         blends = set()
         chashes = set()
@@ -87,7 +91,7 @@ def check_pack(lib, path: str) -> bool:
             frame_no = rt.update(dt)
             rt.get_frame_data(frame_no)               # evaluate world matrices
             wm, wn = rt.world_matrices()
-            looped = rt.is_looped
+            looped = rt.just_looped
             for p in eff_parts:
                 slot = slots.get(p.index)
                 if slot is None:
@@ -95,7 +99,7 @@ def check_pack(lib, path: str) -> bool:
                 ev = rt.active_effect_event(p.index)
                 vis, buf = rt.effect_slot_step(
                     slot, ev, frame_no, dt, float(fps), looped,
-                    y_flip=True, vert_stride=2)
+                    y_flip=True, vert_stride=2, draw=True)
                 if not vis or not buf:
                     continue
                 m = _matrix_for(wm, wn, p.index)
@@ -113,6 +117,14 @@ def check_pack(lib, path: str) -> bool:
                     for (r, g, bb, a) in b.colors:
                         if not all(math.isfinite(v) for v in (r, g, bb, a)):
                             bad += 1
+                    # The batched mesh the render layer hands Mesh2.
+                    pg, pa, pix = effectplan.pack_fx_mesh(b, 3.0, 5.0)
+                    if (pg != [c for (x, y) in b.positions
+                               for c in (x + 3.0, y + 5.0)]
+                            or pa != [c for (u, v), col in zip(b.uvs, b.colors)
+                                      for c in (u, v, *col)]
+                            or pix != [i for tri in b.triangles for i in tri]):
+                        packed_bad += 1
                 mu, mv = effectplan.uv_span(batches)
                 max_u = max(max_u, mu)
                 max_v = max(max_v, mv)
@@ -130,6 +142,9 @@ def check_pack(lib, path: str) -> bool:
         if bad:
             print("    FAIL: non-finite geometry/colour")
             ok = False
+        if packed_bad:
+            print(f"    FAIL: pack_fx_mesh disagrees with {packed_bad} batch(es)")
+            ok = False
         if not visible_parts:
             print("    FAIL: no effect produced visible particles")
             ok = False
@@ -140,11 +155,34 @@ def check_pack(lib, path: str) -> bool:
         rt.close()
 
 
+def check_part_seeds() -> bool:
+    """Parts on one effect get a seed each, or they throw the same particles."""
+    class FakeRt:
+        def __init__(self):
+            self.seeds = []
+
+        def effect_slot_create(self, effect_name_hash, seed=0):
+            self.seeds.append(seed)
+            return len(self.seeds)
+
+    class FakeMeta:
+        @staticmethod
+        def effect_parts():
+            return [SimpleNamespace(index=i, ref_effect_name_hash=0xDEADBEEF)
+                    for i in (1, 2)]
+
+    rt = FakeRt()
+    EffectRig(rt, FakeMeta)
+    ok = len(set(rt.seeds)) == 2 and all(0 <= s <= 0xFFFFFFFF for s in rt.seeds)
+    print(f"### part seeds  {rt.seeds}  -> {'PASS' if ok else 'FAIL'}\n")
+    return ok
+
+
 def main(argv) -> int:
     targets = argv[1:] or [os.path.join(_GAME, "ss_assets", "overall", "Effect.ssab")]
     lib = ssruntime.load_library()
     print("== Effect playback verification ==\n")
-    allok = True
+    allok = check_part_seeds()
     for t in targets:
         allok &= check_pack(lib, t)
         print()

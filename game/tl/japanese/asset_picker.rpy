@@ -20,8 +20,17 @@ translate japanese strings:
     old "(no preview)"
     new "(プレビューなし)"
 
-    old "drag the preview to reposition"
-    new "プレビューはドラッグで移動できます"
+    old "drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]"
+    new "ドラッグで移動  ｜  ホイール（または + / -）で拡大縮小: [_zoom_disp]"
+
+    old "Fit"
+    new "全体"
+
+    old "1:1"
+    new "等倍"
+
+    old "Reset view (0)"
+    new "表示をリセット (0)"
 
     old "animation: [_cur_disp]  |  [_na] animation(s)"
     new "アニメーション: [_cur_disp]  ｜  [_na] 個"
@@ -32,8 +41,8 @@ translate japanese strings:
     old "Select a pack on the left."
     new "左のパックを選択してください。"
 
-    old "click a pack to preview | click an animation to switch | Esc to return"
-    new "パックをクリックでプレビュー ｜ アニメをクリックで切替 ｜ Esc で戻る"
+    old "click a pack to preview | click an animation to switch | drag / wheel to move / zoom | Esc to return"
+    new "パックをクリックでプレビュー ｜ アニメをクリックで切替 ｜ ドラッグ / ホイールで移動・拡大縮小 ｜ Esc で戻る"
 
     old "Close"
     new "閉じる"

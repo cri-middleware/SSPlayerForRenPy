@@ -1,6 +1,6 @@
 # SpriteStudio Player for Ren'Py — SSPlayer
 #
-# Renders a SpriteStudio 7 .ssab animation pack as a Creator-Defined Displayable.
+# Renders a SpriteStudio .ssab animation pack as a Creator-Defined Displayable.
 # One SSPlayer instance plays one .ssab and selects an animation in it by name:
 #
 #     add SSPlayer("ss_assets/Ringo/Ringo.ssab", animation="Idle") xalign 0.5 yalign 0.5
@@ -31,25 +31,37 @@ init -10 python:
     import os
     import sys, math, time
 
+    def _ss_log(msg):
+        # print(), not renpy.log(): renpy.log writes only when the project sets
+        # config.log, while stdout reaches the console and log.txt in any
+        # project, where ss_diagnostics and the auto importer report too.
+        print("[SSPlayer] " + msg)
+
     # Packaging (build.classify): the library classifies only its OWN files — its
     # per-platform native libraries (below). The `.ssab` / `.ssqb` pack formats hold
-    # the GAME's own assets, so shipping those is the game's responsibility, done in
-    # its options.rpy alongside the audio rules (see game/options.rpy) — NOT here.
+    # the GAME's own assets, which ship as any file of the game does; routing them
+    # is up to its options.rpy, NOT here.
     # build.classify is FIRST-MATCH-WINS by registration order, and this runs at
     # init -10, so a game can override any of it from an EARLIER init in options.rpy.
 
     # Native libraries: ship ONLY the target platform's binary, mirroring Ren'Py's
     # own per-platform lib tagging (renpy/common/00build.rpy). Without this a mac
     # .app would also carry the Windows .dll / Linux .so / Web .wasm — dead weight.
-    # The two `None` excludes come first (first-match-wins) so they win over the
+    # The `None` excludes come first (first-match-wins) so they win over the
     # lib patterns below:
     #  * stale __pycache__ from headless CPython test runs — never ship it;
     #  * the converter (libssconverter.*) is an import- / dev-time tool used by
-    #    auto_importer (gated on config.developer); a shipped game never loads it.
+    #    auto_importer (gated on config.developer); a shipped game never loads it;
+    #  * the README and docs/ the release zip carries are for the creator reading
+    #    them in their project, not for the player of the game.
     build.classify('**/__pycache__/**', None)
     build.classify('**/*ssconverter.*', None)
+    build.classify('**/spritestudio/README.md', None)
+    build.classify('**/spritestudio/docs/**', None)
     build.classify('**/spritestudio/libs/macos/**', 'mac')
     build.classify('**/spritestudio/libs/windows/x86_64/**', 'windows')
+    # Ren'Py has no package for Windows on Arm, so this would land in all of them.
+    build.classify('**/spritestudio/libs/windows/arm64/**', None)
     build.classify('**/spritestudio/libs/linux/x86_64/**', 'linux')
     build.classify('**/spritestudio/libs/linux/aarch64/**', 'linux_arm')
     # Android: the Brain ships in the APK's lib/<abi>/ (jniLibs) — staged there at
@@ -62,7 +74,7 @@ init -10 python:
     # it from the packaged data, or it ships twice (once embedded, once dead
     # weight under base/). Instead it is added to the Xcode target via Embed &
     # Sign — scripts/deploy-ios.sh generates the project and the demo/consumer
-    # both do that one step by hand (docs/export.md -> iOS Export).
+    # both do that one step by hand (docs/en/export.md -> iOS Export).
     build.classify('**/spritestudio/libs/ios/**', None)
     build.classify('**/spritestudio/libs/web/**', 'web')
 
@@ -107,7 +119,7 @@ init -10 python:
         sys.path.insert(0, _SS_PY)
 
     import ss_renpy
-    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver, mask
+    from ss_renpy import ssruntime, framedata, events, instance, effectplan, resolver, mask, host_state
     from ss_renpy.effect import EffectRig
     from ss_renpy.instance import InstanceRig, collect_ordered
     from ss_renpy.ssab_meta import SsabMeta
@@ -118,12 +130,14 @@ init -10 python:
     # engine-independent runtime can't tell it apart from desktop macOS on its
     # own — it would try to dlopen the macOS .dylib and fail. Only the host knows
     # the real target: Ren'Py sets renpy.ios there. Flip the SS_IOS marker that
-    # ssruntime_native._is_ios() already honors so it routes to the static
-    # xcframework (loaded via CDLL(None)) instead of libs/macos/.
+    # ssruntime_native._is_ios() already honors so it routes to the embedded
+    # dynamic xcframework (loaded via CDLL(None)) instead of libs/macos/.
     if getattr(renpy, "ios", False):
         os.environ["SS_IOS"] = "1"
 
-    # Load the native library once, from spritestudio/libs/<platform-arch>/.
+    # Load the Brain once, from spritestudio/libs/<platform-arch>/ — on the Web,
+    # the wasm module in libs/web/, read out of game.zip, so an export needs no
+    # edit to its index.html.
     _SS_LIB = ssruntime.load_library(base_dir=os.path.join(_SS_ROOT, "libs"))
 
     # --- Opt-in render profiler (in-engine) --------------------------------
@@ -160,9 +174,8 @@ init -10 python:
     #   "mesh" (default) — model-based per-vertex mesh (renpy.gl2 Mesh2) + custom
     #       shader. The only backend that reproduces shear / free-deform and the
     #       baked UV transforms (UvScale / UvTranslation / UvRotation), by sampling
-    #       the full atlas with gl_texture_wrap = REPEAT. Mirrors the reference
-    #       renderers. On any error it falls back per-part to "transform", so it
-    #       can never blank the screen.
+    #       the full atlas with gl_texture_wrap = REPEAT. On any error it falls
+    #       back per-part to "transform", so it can never blank the screen.
     #   "transform" — blit + Transform. Robust, but drops shear / free-deform to a
     #       similarity fit and renders per-vertex colour gradients as a flat tint;
     #       it also cannot represent UV scale / rotation (it crops the cell rect),
@@ -173,21 +186,19 @@ init -10 python:
 
     SS_ENABLE_BLEND = True        # apply framebuffer blend via gl_blend_func
     SS_ENABLE_PARTCOLOR = True    # apply parts_color tint (transform backend)
-    # Mask / clipping (09_mask). Needs the mesh backend + custom shaders +
-    # offscreen Render-to-texture; set False to draw masked parts plainly
-    # (geometry stays correct, the mask is simply not applied). The coverage
-    # bitmap is sized to the writers' world bbox × the supersample factor, capped
-    # at this long edge (px). The mask edge is a hard 1-bit test (no AA), so its
-    # sharpness is limited by the coverage resolution: SUPERSAMPLE > 1 renders the
-    # coverage above the bbox's world-pixel size so a scaled / high-DPI (Retina)
-    # display doesn't show blocky stair-steps along the mask boundary. 2 suits a
-    # 2× Retina display; raise it if the player is scaled up further.
+    # Mask / clipping. Needs the mesh
+    # backend + custom shaders + offscreen Render-to-texture; set False to draw
+    # masked parts plainly (geometry stays correct, the mask is simply not
+    # applied). The coverage bitmap is sized to the writers' world bbox × the
+    # supersample factor, capped at this long edge (px). The mask edge is a hard
+    # 1-bit test (no AA), so its sharpness is limited by the coverage resolution:
+    # SUPERSAMPLE > 1 renders the coverage above the bbox's world-pixel size so a
+    # scaled / high-DPI (Retina) display doesn't show blocky stair-steps along the
+    # mask boundary. 2 suits a 2× Retina display; raise it if the player is
+    # scaled up further.
     SS_ENABLE_MASK = True
     SS_MASK_COVERAGE_MAX_DIM = 2048
     SS_MASK_COVERAGE_SUPERSAMPLE = 2.0
-    # Deprecated no-op, kept so existing overrides don't error: the mask edge is
-    # antialiased solely by SS_MASK_COVERAGE_SUPERSAMPLE (above) — tune that instead.
-    SS_MASK_ANTIALIAS = True
 
     # User-shader effects (SS6 ss-* family: sepia / outline / bmask / hsb / step /
     # move / wave / noise / blur / pix / scatter / circle / spot). Needs the mesh
@@ -196,8 +207,8 @@ init -10 python:
     # draw those parts plainly (geometry + PartColor stay correct, the effect is
     # simply not applied). The `overall/Shader.ssab` sample pack exercises all 13.
     # A part that is BOTH masked and shadered draws masked (the mask wins); the two
-    # rarely combine. Ported from SSPlayerForGodot (ss_player/shaders/*.fs); the
-    # engine-independent half is headless-verified by tools/verify_shader.py.
+    # rarely combine. The engine-independent half is headless-verified by
+    # tools/verify_shader.py.
     SS_ENABLE_USER_SHADERS = True
 
     # Timeline events (UserData / Signal / Audio). The decoder is pure-Python and
@@ -207,8 +218,8 @@ init -10 python:
     # control flow (jumps, sound) prefer draining ss_poll_events() from a screen.
     SS_ENABLE_EVENTS = True
 
-    # Play SS Audio timeline events through Ren'Py's audio system (docs/11 §4 +
-    # docs/00). When on, the displayable resolves each Audio event to its sound
+    # Play SS Audio timeline events through Ren'Py's audio system. When on,
+    # the displayable resolves each Audio event to its sound
     # file (via the pack's SoundList), preloads the files at setup if the pack
     # carries any (lazy: nothing happens for packs with no audio), and plays each
     # trigger — forward playback only (reverse / ping-pong return legs and
@@ -303,7 +314,7 @@ init -10 python:
     # Register premultiplied gl_blend_func entries for the SS framebuffer
     # BlendTypes Ren'Py doesn't ship. Ren'Py's gl_blend_func gives the same raw
     # glBlendFuncSeparate/glBlendEquationSeparate access WebGL has, so we mirror
-    # SSPlayerForWeb's applyBlend (spec §7) EXACTLY — Screen / Invert / Exclusion
+    # SSPlayerForWeb's applyBlend EXACTLY — Screen / Invert / Exclusion
     # included (Godot's 4-mode CanvasItemMaterial can't express those). Tuple is
     # (rgb_eq, rgb_src, rgb_dst, alpha_eq, alpha_src, alpha_dst); the alpha half
     # is always normal "over" so coverage/alpha composites correctly. All factors
@@ -324,13 +335,13 @@ init -10 python:
         _bf["ss_exclusion"] = (GL_FUNC_ADD, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR) + _A
         _SS_BLEND_REGISTERED = True
     except Exception as e:
-        renpy.log("ss: custom gl_blend_func registration failed (%r); "
-                  "Mul/Add via built-ins, other modes -> Mix" % (e,))
+        _ss_log("custom gl_blend_func registration failed (%r); "
+                "Mul/Add via built-ins, other modes -> Mix" % (e,))
 
     # SS framebuffer BlendType -> gl_blend_func key. Mix (0) == normal (no
-    # override). Mirrors SSPlayerForWeb applyBlend: the "2" / alpha variants that
-    # have no GPU-native form fall back the same way (Mulalpha/Mul2 -> Mul,
-    # Screen2 -> Screen); Div2 (9) / Overlay2 (11) have no equivalent -> Mix.
+    # override). The "2" / alpha variants with no GPU-native form fall back
+    # (Mulalpha/Mul2 -> Mul, Screen2 -> Screen); Div2 (9) / Overlay2 (11) have no
+    # equivalent -> Mix.
     SS_BLEND_FUNC_KEY = {
         1: "ss_mul" if _SS_BLEND_REGISTERED else "multiply",   # Mul
         2: "ss_add" if _SS_BLEND_REGISTERED else "add",        # Add
@@ -347,8 +358,7 @@ init -10 python:
     # ss.user_* Ren'Py shader. Populated below once the variants register; stays
     # empty on an older Ren'Py without register_shader (draw code then skips the
     # user-shader path). Keyed by the Brain's own hash so it matches the draw
-    # plan's PartAttributeShader.id_hash exactly (mirrors Godot's
-    # ss_runtime_hash_string catalog).
+    # plan's PartAttributeShader.id_hash exactly.
     _SS_USER_SHADER_BY_HASH = {}
     # Which optional uniforms each variant actually references. Ren'Py's shader
     # cache PRUNES a declared-but-unused uniform from the compiled program, so we
@@ -357,20 +367,143 @@ init -10 python:
     _SS_USER_NEEDS_TEXEL = set()
     _SS_USER_NEEDS_CELL = set()
 
-    # PartColor shader (10_parts_color §1-4), used by the "mesh" backend. The
-    # CPU reference is framedata.eval_partcolor — keep this GLSL in step with it.
-    # Registered defensively: older Ren'Py without register_shader just skips it
-    # (the mesh backend then falls back to the transform backend).
+    def _ss_mask_replay_variables(n, tiled):
+        """Declarations of the mask-replay shader for ``n`` writers. The tiled
+        variant adds ``u_mask_tiles`` = (tiles across, tiles down)."""
+        return """
+            uniform sampler2D tex0;
+            uniform sampler2D tex1;     // coverage bitmap
+            attribute vec4 a_position;  // for the coverage UV (from the vertex position)
+            attribute vec2 a_tex_coord;
+            attribute vec4 a_ss_color;  // PER-VERTEX PartColor (not uniform)
+            attribute vec3 a_ss_varg;   // PER-VERTEX PartColor varg
+            varying vec2 v_tex_coord;
+            varying vec4 v_ss_color;
+            varying vec3 v_ss_varg;
+            uniform vec2 u_mask_origin;  // screen px of bbox min
+            uniform vec2 u_mask_size;    // bbox size (world px)
+            uniform vec2 u_cov_size;     // coverage tex px (nearest snap)
+            uniform int u_mask_count;
+            uniform float u_mask_seq;        // position in the tree
+            uniform float u_mask_inside;     // 1 = draw inside, 0 = outside
+            uniform vec4 u_mask_meta[%d];    // (open, close, op_invert, _)
+            varying vec2 v_mask_uv;
+        """ % n + ("uniform vec2 u_mask_tiles;\n" if tiled else "")
+
+    def _ss_mask_replay_fragment(n, tiled):
+        """The mask-replay fragment for ``n`` writers, then the partcolor math.
+
+        Everything that references a uniform/varying MUST live in this
+        fragment_NNN part — Ren'Py only declares variables it sees *here* (it
+        does not scan fragment_functions), so the replay is inlined.
+        SINGLE-TAP per tile by design: a multi-tap AA grid would nest with the
+        replay loop (ES 1.00 / GLSL 120 must unroll constant loops), too large
+        for reliable Metal/ANGLE compilation. The mask edge is antialiased by
+        SS_MASK_COVERAGE_SUPERSAMPLE instead.
+
+        Float-emulated (no integer bitwise ops in ES 1.00): writer ``i`` lives in tile i/24, at
+        channel (i%24)/8, bit i%8 (mod/exp2 test). The two OPs replay into
+        SEPARATE accumulators (parity for invert, counter for increment) and the
+        coverage is their union — see mask.mask_passes, the CPU authority this
+        must reproduce. The tiled variant samples each tile once, up front: the
+        tiles map the same bbox, so the same UV lands in each at its own offset.
+        """
+        if tiled:
+            sample = """
+                    vec2 tpx = u_cov_size / u_mask_tiles;   // one tile, in px
+                    vec2 tuv = (floor(uv * tpx) + 0.5) / tpx;
+                    vec4 cov0 = texture2D(tex1, tuv / u_mask_tiles);
+                    vec4 cov1 = texture2D(tex1, (tuv + vec2(1.0, 0.0)) / u_mask_tiles);
+                    vec4 cov2 = texture2D(tex1, (tuv + vec2(0.0, 1.0)) / u_mask_tiles);
+                    vec4 cov3 = texture2D(tex1, (tuv + vec2(1.0, 1.0)) / u_mask_tiles);
+            """
+            pick = """
+                        float tile = floor(fi / 24.0);
+                        fi -= tile * 24.0;
+                        vec4 cov = (tile < 0.5) ? cov0 : (tile < 1.5) ? cov1
+                                 : (tile < 2.5) ? cov2 : cov3;
+            """
+        else:
+            sample = """
+                    vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
+                    vec4 cov = texture2D(tex1, cuv);
+            """
+            pick = ""
+        return """
+            {
+                bool inside = u_mask_inside > 0.5;
+                vec2 uv = v_mask_uv;
+                if (u_mask_count <= 0 || uv.x < 0.0 || uv.x > 1.0 ||
+                    uv.y < 0.0 || uv.y > 1.0) {
+                    // No writer, or bbox-outside == no writer covers it: a
+                    // visible-inside target discards, an outside target draws.
+                    if (inside) discard;
+                } else {
+                    // snap to texel centre -> nearest sampling (the coverage
+                    // packs writer bits; linear filtering would corrupt the
+                    // per-bit decode).
+""" + sample + """
+                    // Two accumulators, never one: invert and increment do not
+                    // commute, so a shared one would make the coverage depend on
+                    // writer order.
+                    float parity = 0.0;   // mask_influence == 1: odd overlap
+                    float count = 0.0;    // mask_influence == 0: any overlap
+                    for (int i = 0; i < %d; i++) {
+                        if (i >= u_mask_count) break;
+                        vec4 m = u_mask_meta[i];
+                        if (!(u_mask_seq > m.x && u_mask_seq < m.y))
+                            continue;   // outside the writer's interval
+                        float fi = float(i);
+""" % n + pick + """
+                        float chan = floor(fi / 8.0);
+                        float b = fi - chan * 8.0;
+                        float cval = (chan < 0.5) ? cov.r
+                                   : (chan < 1.5) ? cov.g : cov.b;
+                        float byte = floor(cval * 255.0 + 0.5);
+                        if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
+                            continue;
+                        if (m.z > 0.5) parity = 1.0 - parity;     // invert
+                        else count += 1.0;                       // incr
+                    }
+                    bool masked = parity >= 0.5 || count >= 0.5; // union
+                    if (masked != inside) discard;               // inside/outside rule
+                }
+            }
+            // ss.partcolor colour math (premultiplied in/out), PER-VERTEX
+            // (v_ss_color/v_ss_varg) so a gradient / shape fill masks with its
+            // true per-vertex colour — not a flat average.
+            vec4 p = texture2D(tex0, v_tex_coord);
+            vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
+            vec3 wp = mix(vec3(1.0), s, v_ss_varg.z);
+            vec3 rgb = s * v_ss_varg.x + wp * v_ss_color.rgb * v_ss_varg.y;
+            float a = p.a * v_ss_color.a;
+            gl_FragColor = vec4(rgb * a, a);
+        """
+
+    def _ss_register_shader(name, **kwargs):
+        """Registers a part written in GLSL ES 1.00, as every part here is. From
+        Ren'Py 8.6 a part that doesn't declare its dialect follows
+        config.glsl_version, and raises on its first draw in a new game, where
+        that is 300. Earlier versions reject the glsl argument."""
+        if hasattr(renpy.config, "glsl_version"):
+            kwargs["glsl"] = 100
+        renpy.register_shader(name, **kwargs)
+
+    # PartColor shader, used by the
+    # "mesh" backend. The CPU reference is framedata.eval_partcolor — keep this
+    # GLSL in step with it. Registered defensively: older Ren'Py without
+    # register_shader just skips it (the mesh backend then falls back to the
+    # transform backend).
     if hasattr(renpy, "register_shader"):
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.partcolor",
                 variables="""
                     uniform sampler2D tex0;
                     attribute vec2 a_tex_coord;
                     varying vec2 v_tex_coord;
                     uniform vec4 u_ss_color;   // (r,g,b,a) 0..1, a = hierarchical alpha
-                    uniform vec3 u_ss_varg;    // (1+c.x*rate, c.y*rate, c.z) from §1-4-2
+                    uniform vec3 u_ss_varg;    // (1+c.x*rate, c.y*rate, c.z)
                 """,
                 vertex_300="v_tex_coord = a_tex_coord;",
                 fragment_300="""
@@ -380,7 +513,7 @@ init -10 python:
                     // opacity). Work in straight space for the PartColor formula,
                     // then re-premultiply so opacity actually dims the part.
                     vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
-                    // out_rgb = s*varg.x + mix(1, s, varg.z)*color*varg.y  (§1-4-3)
+                    // out_rgb = s*varg.x + mix(1, s, varg.z)*color*varg.y
                     vec3 wp = mix(vec3(1.0), s, u_ss_varg.z);
                     vec3 rgb = s * u_ss_varg.x + wp * u_ss_color.rgb * u_ss_varg.y;
                     float a = p.a * u_ss_color.a;
@@ -388,13 +521,13 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.partcolor) failed: %r" % (e,))
+            _ss_log("register_shader(ss.partcolor) failed: %r" % (e,))
 
         # Effect-particle shader: straight texel * (per-quad) colour. Effect
         # particle colours are RGBA 0..1 from the EffectDrawPlan (parent alpha
         # already folded in); unlike Normal parts there is no PartColor blend.
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.effect",
                 variables="""
                     uniform sampler2D tex0;
@@ -412,14 +545,14 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.effect) failed: %r" % (e,))
+            _ss_log("register_shader(ss.effect) failed: %r" % (e,))
 
         # Batched variants: per-vertex colour (and PartColor varg) so a whole
         # same-texture run / a whole effect batch draws in ONE mesh + ONE blit
-        # (docs/07 §2, 08 §2 dynamic batching). Same fragment math as the
+        # (dynamic batching). Same fragment math as the
         # per-part shaders above, but reading varyings instead of uniforms.
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.partcolor_batched",
                 variables="""
                     uniform sampler2D tex0;
@@ -444,7 +577,7 @@ init -10 python:
                     gl_FragColor = vec4(rgb * a, a);            // re-premultiply
                 """,
             )
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.effect_batched",
                 variables="""
                     uniform sampler2D tex0;
@@ -464,10 +597,10 @@ init -10 python:
                 """,
             )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.*_batched) failed: %r" % (e,))
+            _ss_log("register_shader(ss.*_batched) failed: %r" % (e,))
 
-        # -- Mask / clipping (09_mask §3-2, coverage-bitmap hybrid) ----------
-        # Two shaders implement the spec's stencil over an offscreen coverage:
+        # -- Mask / clipping (coverage-bitmap hybrid) ------------------------
+        # These shaders implement the spec's stencil over an offscreen coverage:
         #
         #   ss.mask_write   — rasterizes ONE writer into the coverage bitmap.
         #       Cuts out by the part's texture alpha vs the per-frame threshold
@@ -478,20 +611,26 @@ init -10 python:
         #
         #   ss.partcolor_mask — ss.partcolor_batched (PER-VERTEX colour) + the
         #       stencil REPLAY. Each masked target computes its coverage UV from
-        #       a_position (Live2D's mask pattern), samples the coverage (nearest,
+        #       a_position (a screen-space mask lookup), samples the coverage (nearest,
         #       emulated by snapping the
         #       UV to texel centres — Ren'Py has no per-texture nearest filter),
-        #       replays the writers in draw order and discards by the inside/
-        #       outside test. All in float math: Ren'Py shaders are GLSL ES 1.00
-        #       / 120 with NO integer bitwise ops, so `~s & 0xFF` -> `255 - s`,
-        #       `s + 1 & 0xFF` -> `mod(s + 1, 256)`, and the bit test is
-        #       `mod(floor(byte / exp2(b)), 2)`. The loop is a constant 24 with an
-        #       early `break` (ES 1.00 forbids uniform/while loop bounds).
+        #       replays the writers that hold their bit at the target's position
+        #       and discards by the inside/outside test. All in float math:
+        #       These parts are GLSL ES 1.00 / 120 with NO integer bitwise
+        #       ops, so the bit test is `mod(floor(byte / exp2(b)), 2)`. The loop
+        #       is a constant 24 with an early `break` (ES 1.00 forbids
+        #       uniform/while loop bounds).
         #
-        # mask_meta[i] = (writer_rank, op_invert, is_clipping, _); the writer's
-        # bit is the array index i itself (channel i/8, bit i%8).
+        #   ss.partcolor_mask_tiled — the same replay for up to 96 writers, the
+        #       coverage split into 2 or 2x2 tiles. Drawn only when a tree has
+        #       more than 24, so the common case keeps the small uniform array
+        #       and the short unrolled loop.
+        #
+        # mask_meta[i] = (open, close, op_invert, _): the writer holds its bit
+        # for a target whose tree position lies strictly between open and
+        # close. Its bit is the array index i itself (channel i/8, bit i%8).
         try:
-            renpy.register_shader(
+            _ss_register_shader(
                 "ss.mask_write",
                 variables="""
                     uniform sampler2D tex0;
@@ -512,116 +651,37 @@ init -10 python:
                     gl_FragColor = vec4(u_bit_color, 1.0);
                 """,
             )
-            renpy.register_shader(
-                "ss.partcolor_mask",
-                variables="""
-                    uniform sampler2D tex0;
-                    uniform sampler2D tex1;     // coverage bitmap
-                    attribute vec4 a_position;  // for the coverage UV (Live2D-style)
-                    attribute vec2 a_tex_coord;
-                    attribute vec4 a_ss_color;  // PER-VERTEX PartColor (not uniform)
-                    attribute vec3 a_ss_varg;   // PER-VERTEX PartColor varg
-                    varying vec2 v_tex_coord;
-                    varying vec4 v_ss_color;
-                    varying vec3 v_ss_varg;
-                    uniform vec2 u_mask_origin;  // screen px of bbox min
-                    uniform vec2 u_mask_size;    // bbox size (world px)
-                    uniform vec2 u_cov_size;     // coverage tex px (nearest snap)
-                    uniform int u_mask_count;
-                    uniform float u_mask_rank;
-                    uniform float u_mask_inside;     // 1 = draw inside, 0 = outside
-                    uniform vec4 u_mask_meta[24];    // (rank, op_invert, clip, _)
-                    varying vec2 v_mask_uv;
-                """,
-                vertex_300="""
-                    v_tex_coord = a_tex_coord;
-                    v_ss_color = a_ss_color;
-                    v_ss_varg = a_ss_varg;
-                    v_mask_uv = (a_position.xy - u_mask_origin) / u_mask_size;
-                """,
-                # NOTE: everything that references a uniform/varying MUST live in
-                # this fragment_NNN part — Ren'Py only declares variables it sees
-                # *here* (it does not scan fragment_functions), so the replay is
-                # inlined. SINGLE-TAP (hardened): the earlier 4-tap rotated-grid AA
-                # made this an outer×inner loop = up to 4×24 = 96 unrolled
-                # iterations (ES 1.00 / GLSL 120 must unroll constant loops), each
-                # with a texture sample — too large for reliable Metal/ANGLE
-                # compilation. Now one tap; the mask edge is antialiased instead by
-                # SS_MASK_COVERAGE_SUPERSAMPLE (coverage rendered above bbox px).
-                # This mirrors Godot's ss_library_fs.glsl ss_mask_passes() exactly,
-                # float-emulated (no integer bitwise ops in ES 1.00): the writer's
-                # bit lives in coverage channel i/8 bit i%8 (mod/exp2 test), invert
-                # is `255 - s`, increment is `mod(s + 1, 256)`.
-                fragment_300="""
-                    if (u_mask_count > 0) {
-                        bool inside = u_mask_inside > 0.5;
-                        vec2 uv = v_mask_uv;
-                        if (uv.x < 0.0 || uv.x > 1.0 ||
-                            uv.y < 0.0 || uv.y > 1.0) {
-                            // bbox-outside == no writer covers it (§3-2): a
-                            // visible-inside target discards, an outside target
-                            // draws.
-                            if (inside) discard;
-                        } else {
-                            // snap to texel centre -> nearest sampling (the
-                            // coverage packs writer bits; linear filtering would
-                            // corrupt the per-bit decode).
-                            vec2 cuv = (floor(uv * u_cov_size) + 0.5) / u_cov_size;
-                            vec4 cov = texture2D(tex1, cuv);
-                            float stencil = 0.0;
-                            for (int i = 0; i < 24; i++) {
-                                if (i >= u_mask_count) break;
-                                vec4 m = u_mask_meta[i];
-                                bool clip = m.z > 0.5;
-                                bool is_active = clip ? (u_mask_rank > m.x)
-                                                      : (u_mask_rank < m.x);
-                                if (!is_active) continue;
-                                float fi = float(i);
-                                float chan = floor(fi / 8.0);
-                                float b = fi - chan * 8.0;
-                                float cval = (chan < 0.5) ? cov.r
-                                           : (chan < 1.5) ? cov.g : cov.b;
-                                float byte = floor(cval * 255.0 + 0.5);
-                                if (mod(floor(byte / exp2(b)), 2.0) < 0.5)
-                                    continue;
-                                if (m.y > 0.5) stencil = 255.0 - stencil; // invert
-                                else stencil = mod(stencil + 1.0, 256.0); // incr
-                            }
-                            bool masked = stencil >= 0.5;
-                            if (masked != inside) discard;               // §2-4
-                        }
-                    }
-                    // ss.partcolor colour math (premultiplied in/out), PER-VERTEX
-                    // (v_ss_color/v_ss_varg) so a gradient / shape fill masks with
-                    // its true per-vertex colour — not a flat average.
-                    vec4 p = texture2D(tex0, v_tex_coord);
-                    vec3 s = p.a > 0.0 ? p.rgb / p.a : p.rgb;
-                    vec3 wp = mix(vec3(1.0), s, v_ss_varg.z);
-                    vec3 rgb = s * v_ss_varg.x + wp * v_ss_color.rgb * v_ss_varg.y;
-                    float a = p.a * v_ss_color.a;
-                    gl_FragColor = vec4(rgb * a, a);
-                """,
-            )
+            for _name, _n, _tiled in (("ss.partcolor_mask", 24, False),
+                                      ("ss.partcolor_mask_tiled", 96, True)):
+                _ss_register_shader(
+                    _name,
+                    variables=_ss_mask_replay_variables(_n, _tiled),
+                    vertex_300="""
+                        v_tex_coord = a_tex_coord;
+                        v_ss_color = a_ss_color;
+                        v_ss_varg = a_ss_varg;
+                        v_mask_uv = (a_position.xy - u_mask_origin) / u_mask_size;
+                    """,
+                    fragment_300=_ss_mask_replay_fragment(_n, _tiled),
+                )
         except Exception as e:
-            renpy.log("ss: register_shader(ss.mask_*) failed: %r" % (e,))
+            _ss_log("register_shader(ss.mask_*) failed: %r" % (e,))
 
         # -- User-shader effects (SS6 ss-* family) ---------------------------
-        # Ported from SSPlayerForGodot (ss_player/shaders/*.fs). Each variant is a
-        # per-part shader over the same per-vertex mesh as ss.partcolor_batched
+        # Each variant is a per-part shader over the same per-vertex mesh as
+        # ss.partcolor_batched
         # (a_tex_coord + a_ss_color + a_ss_varg), so gradients / Shape fills keep
         # their true per-vertex colour. Shared, DRY-composed GLSL: _SS_USER_FUNCS
         # holds the helpers, each fragment body inserts its effect between the
         # (un-premultiplied) input sample and the PartColor composite.
         #
-        # Dialect adaptations vs the Godot originals (Ren'Py GL2 is GLSL ES 1.00 /
-        # 120, premultiplied-alpha textures):
-        #   * ss_input_texture(TEXTURE, uv) -> ss_texs(tex0, uv): sample + UN-
-        #     premultiply to straight colour (the SS6 math — luminance / HSB /
-        #     averaging — assumes straight rgb; Godot's canvas textures already are).
+        # These parts are GLSL ES 1.00 / 120, over premultiplied-alpha textures:
+        #   * ss_texs(tex0, uv): sample + UN-premultiply to straight colour (the
+        #     SS6 math — luminance / HSB / averaging — assumes straight rgb).
         #     Output re-premultiplies (ss_pc_out / inline).
-        #   * TEXTURE_PIXEL_SIZE -> u_texel (= 1/atlas_size, set per draw).
-        #   * PI -> SS_PI (no ES 1.00 built-in); ss_paramN -> u_ss_param.{x,y,z,w};
-        #     ss_cell_rect -> u_cell_rect (circle / spot only).
+        #   * u_texel = 1/atlas_size, set per draw.
+        #   * SS_PI (no ES 1.00 built-in); u_ss_param.{x,y,z,w} = param0..3;
+        #     u_cell_rect (circle / spot only).
         #   * ss-move's data-dependent loop bound -> constant 128 loop with an
         #     early `break` (ES 1.00 forbids non-constant loop bounds), matching
         #     the mask-replay idiom already used above.
@@ -633,7 +693,7 @@ init -10 python:
             varying vec2 v_tex_coord;
             varying vec4 v_ss_color;
             varying vec3 v_ss_varg;
-            uniform vec2 u_texel;      // 1/atlas_size (Godot TEXTURE_PIXEL_SIZE)
+            uniform vec2 u_texel;      // 1/atlas_size
             uniform vec4 u_ss_param;   // (param0, param1, param2, param3)
         """
         _SS_USER_VARS_CELL = _SS_USER_VARS + \
@@ -645,14 +705,13 @@ init -10 python:
         """
         _SS_USER_FUNCS = """
             const float SS_PI = 3.14159265358979;
-            // Ren'Py GL2 textures are premultiplied; un-premultiply to straight so
-            // the SS6 effect math matches the Godot originals (whose canvas
-            // textures are straight). Alpha is unchanged by (un)premultiply.
+            // Ren'Py GL2 textures are premultiplied; the SS6 effect math assumes
+            // straight colour. Alpha is unchanged by (un)premultiply.
             vec4 ss_texs(sampler2D t, vec2 uv) {
                 vec4 p = texture2D(t, uv);
                 return vec4(p.a > 0.0 ? p.rgb / p.a : p.rgb, p.a);
             }
-            // PartColor composite (10_parts_color §1-4-3), straight-space.
+            // PartColor composite, straight-space.
             vec3 ss_pc_blend(vec3 rgb, vec3 color, vec3 varg) {
                 return rgb * varg.x + mix(vec3(1.0), rgb, varg.z) * color * varg.y;
             }
@@ -909,7 +968,7 @@ init -10 python:
         try:
             for _nm, (_cell, _fns, _body) in _SS_USER_FRAG.items():
                 _sh = "ss.user_" + _nm
-                renpy.register_shader(
+                _ss_register_shader(
                     _sh,
                     variables=(_SS_USER_VARS_CELL if _cell else _SS_USER_VARS),
                     vertex_300=_SS_USER_VERT,
@@ -921,7 +980,7 @@ init -10 python:
                 if "u_cell_rect" in _body:
                     _SS_USER_NEEDS_CELL.add(_sh)
             # Hash via the Brain's own fnv1a so the keys match the draw plan's
-            # PartAttributeShader.id_hash byte-for-byte (mirrors Godot).
+            # PartAttributeShader.id_hash byte-for-byte.
             _SS_USER_SHADER_BY_HASH = {
                 ssruntime.hash_string(_ss): "ss.user_" + _key
                 for _ss, _key in _SS_USER_NAME_MAP
@@ -930,8 +989,8 @@ init -10 python:
             _SS_USER_SHADER_BY_HASH = {}
             _SS_USER_NEEDS_TEXEL = set()
             _SS_USER_NEEDS_CELL = set()
-            renpy.log("ss: register_shader(ss.user_*) failed: %r; user-shader "
-                      "effects disabled" % (e,))
+            _ss_log("register_shader(ss.user_*) failed: %r; user-shader "
+                    "effects disabled" % (e,))
 
     # SS Effect blend (EmitterState.blend_type): 0=Mix (normal), 1=Add. This is
     # a *different* enum from the framebuffer BlendType used by Normal parts.
@@ -957,7 +1016,7 @@ init -10 python:
     except Exception as e:
         _SS_Mesh2 = None
         _SS_TEXTURE_LAYOUT = None
-        renpy.log("ss: gl2 Mesh2 unavailable (%r); mesh backend disabled" % (e,))
+        _ss_log("gl2 Mesh2 unavailable (%r); mesh backend disabled" % (e,))
     # REPEAT wrap so UVs the runtime baked past the atlas edge (UvScale/translate/
     # rotate) sample correctly — the analogue of every reference player's wrap.
     try:
@@ -965,8 +1024,23 @@ init -10 python:
         _SS_TEXTURE_WRAP = (_SS_GL_REPEAT, _SS_GL_REPEAT)
     except Exception:
         _SS_TEXTURE_WRAP = None
+    # An atlas over the texture limit is loaded as a Render of tiles rather than
+    # one texture, which no model can bind — see SSPlayer._atlas_render.
+    from renpy.display.render import Render as _SS_Render
 
-    # Batch draw (docs/07 §2, 08 §2): pack per-vertex colour into custom Mesh2
+    def _ss_texture_limit():
+        """Ren'Py's per-texture limit as ``"WxH"`` (for the oversized-atlas
+        warning): the live drawer value if it is visible, else what the config
+        asks for — the drawer clamps that to what the GPU reports and logs the
+        result as "Maximum texture size"."""
+        loader = getattr(renpy.display.draw, "texture_loader", None)
+        w = getattr(loader, "max_texture_width", None)
+        h = getattr(loader, "max_texture_height", None)
+        if not w or not h:
+            w, h = renpy.config.max_texture_size
+        return "%dx%d" % (w, h)
+
+    # Batch draw: pack per-vertex colour into custom Mesh2
     # vertex layouts so a run of same-texture Normal parts — and a whole effect
     # batch's particles — go through one Mesh2 + one blit instead of one each.
     #   ss.partcolor (Normal): a_tex_coord(2) + a_ss_color(4) + a_ss_varg(3)
@@ -988,7 +1062,7 @@ init -10 python:
     except Exception as e:
         _SS_PC_LAYOUT = None
         _SS_FX_LAYOUT = None
-        renpy.log("ss: batch-draw layouts unavailable (%r); per-part draw" % (e,))
+        _ss_log("batch-draw layouts unavailable (%r); per-part draw" % (e,))
 
     def _ss_blend_property(blend_type):
         """Return a (key, value) for Render.add_property('gl_blend_func', …) or None."""
@@ -1069,6 +1143,10 @@ init -10 python:
             if predicting:
                 renpy.display.predict.predicting = True
 
+    # Instance packs already reported missing, and Instance parts already
+    # reported unbuilt: said once, not by every player.
+    _SS_MISSING_PACKS = set()
+
     def _ss_renpy_pack_reader(base_rel):
         """Reader for external-instance packs: <base_rel>/<pack>.ssab via loader."""
         def read(pack_name):
@@ -1076,7 +1154,17 @@ init -10 python:
                 else (pack_name + ".ssab")
             try:
                 return _ss_open_bytes(rel)
-            except Exception:
+            except Exception as e:
+                # The Instance parts that play this pack draw nothing, and the
+                # rest of the animation plays on — so without a word here, the
+                # only sign is a character missing a limb. The converter writes
+                # every instance pack beside the one that uses it; this happens
+                # when a pack is moved or copied away from its folder.
+                if config.developer and rel not in _SS_MISSING_PACKS:
+                    _SS_MISSING_PACKS.add(rel)
+                    print("[SSPlayer] instance pack %r not found at %s, so the "
+                          "parts that play it draw nothing. Keep a converted "
+                          "folder's .ssab files together. [%s]" % (pack_name, rel, e))
                 return b""
         return read
 
@@ -1086,11 +1174,34 @@ init -10 python:
     # and cached; rebuilt each dev reload (the library lives in one init block).
     _SS_INDEX = None
 
+    def _ss_index_roots():
+        """Gamedir-relative folders the index scans: `ss_asset_dirs` when the
+        game sets it, else ss_assets/ and the folder `ss_output_dir` sends the
+        auto importer's output to. Without the second, moving the output — as the
+        import guide shows how to — leaves every pack the importer writes out of
+        the browser and the startup summary."""
+        dirs = getattr(store, "ss_asset_dirs", None)
+        if dirs:
+            return [r.replace("\\", "/").strip("/") for r in dirs]
+        roots = ["ss_assets"]
+        out = getattr(store, "ss_output_dir", None)
+        if out:
+            # basedir-relative, as the importer reads it; outside game/ it is
+            # nothing Ren'Py can load, so there is nothing to list either (on
+            # another Windows drive there is not even a relative path to it).
+            try:
+                rel = os.path.relpath(os.path.join(config.basedir, out),
+                                      config.gamedir).replace("\\", "/").strip("/")
+            except ValueError:
+                rel = ".."
+            if rel not in (".", "..") and not rel.startswith("../"):
+                roots.append(rel)
+        return roots
+
     def _ss_get_index():
         global _SS_INDEX
         if _SS_INDEX is None:
-            roots = [r.replace("\\", "/").strip("/")
-                     for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+            roots = _ss_index_roots()
             rels = []
             for p in renpy.list_files():
                 rp = p.replace("\\", "/")
@@ -1111,8 +1222,7 @@ init -10 python:
         global _SS_INDEX
         if _SS_INDEX is None:
             return
-        roots = [r.replace("\\", "/").strip("/")
-                 for r in (getattr(store, "ss_asset_dirs", None) or ["ss_assets"])]
+        roots = _ss_index_roots()
         current = set()
         for p in renpy.list_files():
             rp = p.replace("\\", "/")
@@ -1123,10 +1233,18 @@ init -10 python:
             _SS_INDEX = None
 
     def ss_list_assets():
-        """Dev/discovery helper: {pack_name: [animation, ...]} for each pack."""
+        """Dev/discovery helper: {pack_name: [animation, ...]} for each primary
+        pack (one no other pack plays as an instance)."""
         idx = _ss_get_index()
         return {r.stem: list(r.anim_names)
                 for r in idx.records() if r.is_primary}
+
+    def _ss_is_track_zero(track):
+        """Whether ``track`` names track 0, the one ss_set_animation sets up."""
+        try:
+            return int(track) == 0
+        except (TypeError, ValueError):
+            return False
 
     class RenPyResourceManager(ResourceManager):
         """Ren'Py-backed texture cache injected into ``SSInternalPlayer``.
@@ -1134,8 +1252,9 @@ init -10 python:
         The core asks us to ``acquire`` each texture path (gamedir-relative) an
         animation needs; we back that with Ren'Py ``Image`` displayables, which
         Ren'Py's own image / texture cache then loads and predicts. ``images()``
-        feeds the displayable's ``visit`` so textures are preloaded (no first-
-        playback stutter). The core never frees anything — Ren'Py owns lifetime.
+        feeds the displayable's incremental texture prewarm
+        (``_prewarm_textures``) so atlases are GPU-resident before first use.
+        The core never frees anything — Ren'Py owns lifetime.
         """
         def __init__(self):
             self._cache = {}    # path -> Image
@@ -1157,35 +1276,11 @@ init -10 python:
         def images(self):
             return list(self._cache.values())
 
-    def _ss_pack_pc_mesh(parts, ox, oy, tw, th):
-        """Pack a run of Normal / Shape parts into flat (geometry, attributes,
-        indices) arrays for the ``_SS_PC_LAYOUT`` mesh (a_tex_coord + a_ss_color +
-        a_ss_varg) — the per-vertex build shared by the batched, masked and
-        user-shader mesh draws (previously copy-pasted in all three).
-
-        Per vertex: world position offset to screen px by (ox, oy); UV normalized
-        by the atlas size (tw, th); per-corner PartColor RGBA + the shader ``varg``
-        triple. Triangles are rebased by the running vertex count, so ``parts`` may
-        be a single part (masked / user-shader draw) or a whole same-texture run
-        (batched draw). Returns ``(geometry, attributes, indices, nverts)``.
-        """
-        geometry = []
-        attributes = []
-        indices = []
-        base = 0
-        for mp in parts:
-            nuv = framedata.normalize_uvs(mp.uvs, tw, th)
-            for idx in range(len(mp.positions)):
-                x, y = mp.positions[idx]
-                geometry += [ox + x, oy + y]
-                u, v = nuv[idx]
-                c = mp.colors[idx]
-                vx, vy, vz = framedata.partcolor_varg(mp.color_blend, mp.rates[idx])
-                attributes += [u, v, c[0], c[1], c[2], c[3], vx, vy, vz]
-            for (i, j, k) in mp.triangles:
-                indices += [base + i, base + j, base + k]
-            base += len(mp.positions)
-        return geometry, attributes, indices, base
+    # The image attribute that stops a player, named as Ren'Py's built-in
+    # animation support names its own: `show ringo dead still` plays dead once and holds its last frame,
+    # and `show ringo still` holds the first frame of the animation the image
+    # starts on. A pack's own animation or alias of this name plays instead.
+    _SS_STILL = "still"
 
     class SSPlayer(renpy.Displayable):
         """Play one SpriteStudio .ssab pack. Place it in a screen or `show` it.
@@ -1193,9 +1288,20 @@ init -10 python:
             add SSPlayer("ss_assets/overall/Basic.ssab") xalign 0.5 yalign 0.5
 
         One instance plays one .ssab; select an animation in it by name
-        (constructor ``animation=`` or :meth:`ss_set_animation`). Renders Normal,
-        Instance (nested child animations) and Effect (particle) parts, exposing
-        a small ``ss_*`` playback / control / query API.
+        (constructor ``animation=`` or :meth:`ss_set_animation`).
+
+        ``ssab``: the pack, gamedir-relative. ``animation``: the name to start
+        on, a list to play in turn, or None for the pack's first. ``loop``: how
+        many times the last one plays, -1 for ever. ``speed``: a multiple of the
+        frame rate. ``sub_frame``: interpolate between frames. ``frame_skip``:
+        follow the clock after a stall. ``size``: the layout box, (w, h) or one
+        number; None is the authored canvas. ``attachments``: {part name:
+        displayable}, as :meth:`ss_attach` pins. ``on_user_data`` / ``on_signal``
+        / ``on_audio``: called as cb(player, frame, event).
+        ``on_animation_finished`` / ``on_animation_looped`` /
+        ``on_animation_started``: called as cb(player). ``aliases``: {attribute:
+        animation or list}, for `show` attributes. ``audio_channel``: None for
+        the shared pool, a channel name, or a callable that picks one.
         """
 
         # Players with SS audio currently sounding, read by _ss_audio_reaper to
@@ -1205,21 +1311,33 @@ init -10 python:
         # a store global) so it is never saved/rolled back with the game state.
         _audio_live = set()
 
-        def __init__(self, ssab, animation=None, sprites_subdir=None,
-                     loop=-1, speed=1.0, sub_frame=True, size=None,
-                     attachments=None,
+        def __init__(self, ssab, animation=None,
+                     loop=-1, speed=1.0, sub_frame=True, frame_skip=True,
+                     size=None, attachments=None,
                      on_user_data=None, on_signal=None, on_audio=None,
-                     on_finished=None, on_looped=None, on_started=None,
+                     on_animation_finished=None, on_animation_looped=None, on_animation_started=None,
                      aliases=None, audio_channel=None, **kwargs):
             super(SSPlayer, self).__init__(**kwargs)
             self.ssab = ssab
             self.kwargs = kwargs
             self.aliases = aliases or {}
-            self._duplicatable = True
             self._available_animations = None
-            
+            # The arguments as given, which is what __eq__ compares. Kept apart
+            # from the live fields because ss_set_speed_scale() and the other
+            # setters change those, and a player is still the one its screen
+            # asked for after them.
+            self._spec = (ssab,
+                          tuple(animation) if isinstance(animation, list) else animation,
+                          loop, speed, sub_frame, frame_skip, size,
+                          attachments, on_user_data, on_signal, on_audio,
+                          on_animation_finished, on_animation_looped,
+                          on_animation_started, aliases, audio_channel, kwargs)
+
             self._initial_animation = animation
             self._initial_loop = loop
+            # Set by _duplicate for `show <tag> still`: the copy starts paused on
+            # its first frame (see _start_initial).
+            self._still = False
 
             if isinstance(animation, (list, tuple)) and len(animation) > 0:
                 self._anim_queue = list(animation)
@@ -1230,15 +1348,10 @@ init -10 python:
                 self.animation = animation
                 self.loop = loop
 
-            self.sprites_subdir = sprites_subdir
             # Textures and external-instance packs are exported co-located with
             # the .ssab, so the directory that holds the .ssab is the single base
-            # for all of them — the caller does not need a separate sprites_subdir.
-            # `sprites_subdir`, when given, is just a legacy prefix kept for
-            # backwards compatibility; the base is always re-derived from the
-            # resolved .ssab path below.
-            _relpath = (sprites_subdir.rstrip("/\\") + "/" + ssab) if sprites_subdir else ssab
-            _relpath = _relpath.replace("\\", "/").lstrip("/")
+            # for all of them.
+            _relpath = ssab.replace("\\", "/").lstrip("/")
             self._ssab_relpath = _relpath
             if "/" in _relpath:
                 self._base_dir, self._ssab_name = _relpath.rsplit("/", 1)
@@ -1247,35 +1360,58 @@ init -10 python:
             self.speed = speed
             # Sub-frame interpolation: when off the frame handed
             # to the Brain for *display* is floored; the playback
-            # head stays a raw float either way (docs/06). Defaults to on.
+            # head stays a raw float either way. Defaults to on.
             self._sub_frame = bool(sub_frame)
             # Layout size. Given as (w, h) (or a single number for a square),
-            # render() reports a box of that size and centers the animation
-            # within it, so `xalign` / `xpos` / `pos` and container layout work
-            # like a normal image. None (default) keeps the legacy behaviour of
-            # filling the whole offered area (then position with xoffset/yoffset).
-            # `zoom` / Transform still scale the rendered result either way.
+            # render() reports a box of that size with the animation's origin at
+            # its centre, so `xalign` / `xpos` / `pos` and container layout work
+            # like a normal image. None (default) makes the box the authored
+            # canvas instead, with the origin where the pivot puts it — see
+            # _canvas_box. `zoom` / Transform still scale the rendered result
+            # either way.
             if size is None:
                 self._size = None
             elif isinstance(size, (int, float)):
                 self._size = (int(size), int(size))
             else:
                 self._size = (int(size[0]), int(size[1]))
-            # Optional attachments: {part_name: displayable}. Drawn at each named
-            # part's current position every frame (e.g. a speech bubble on the
-            # head, an item in the hand). v1 is translation-only.
-            self._attachments = dict(attachments) if attachments else None
-            # Optional event callbacks (docs/06 §4 recommended Player API). Each
-            # is invoked as cb(self, frame_index, event) for the per-part events
+            # The animation whose canvas is this player's box: the one it starts
+            # on, kept when the animation changes afterwards — including through
+            # _duplicate, so `show ringo dead` does not move a left-aligned
+            # sprite when `dead` was authored on a wider canvas. None is the
+            # pack's first animation, as it is for `animation`.
+            self._box_anim = self.animation
+            self._box_rect = False   # not read yet; see _canvas_box
+            # Optional attachments: displayables pinned to a named part's live
+            # transform every frame (e.g. an item in the hand, an effect over the
+            # head, a second SS animation linked to a bone). Stored as a list of
+            # plain records
+            #   {"part": name, "child": displayable,
+            #    "drive_position": bool, "drive_rotation": bool,
+            #    "drive_scale": bool, "on_hide": "follow"|"hide"}
+            # so several children can ride one part and the whole list pickles
+            # with the displayable (child displayables are picklable). The
+            # constructor also takes the ergonomic {part_name: child} dict;
+            # ss_attach / ss_detach edit the list at runtime. render() does the
+            # compositing (translation + rotation, scale when drive_scale).
+            self._attachments = self._init_attachments(attachments)
+            # Per-attachment Transform cache (rotated/scaled children only),
+            # keyed by record index and rebuilt only when the part's angle/scale
+            # actually changes — kept OFF the record so it never pickles. Any
+            # attach/detach invalidates it (indices shift). See render().
+            self._xform_cache = {}
+            # Optional event callbacks (the recommended Player API).
+            # Each is invoked as
+            # cb(self, frame_index, event) for the per-part events
             # and cb(self) for started/finished/looped, guarded so a raising
             # callback can never break rendering. Prefer module-level functions /
             # store methods (lambdas/locals defeat rollback pickling).
             self.on_user_data = on_user_data
             self.on_signal = on_signal
             self.on_audio = on_audio
-            self.on_finished = on_finished
-            self.on_looped = on_looped
-            self.on_started = on_started
+            self.on_animation_finished = on_animation_finished
+            self.on_animation_looped = on_animation_looped
+            self.on_animation_started = on_animation_started
             # How SS Audio events pick a Ren'Py channel (when SS_ENABLE_AUDIO):
             #   None      -> the shared parallel pool (ss_audio_*, sfx mixer):
             #                simultaneous sounds get distinct channels. Default.
@@ -1294,32 +1430,101 @@ init -10 python:
             # Last render time while audio was live — the off-screen reaper reads
             # it to tell an on-screen player (kept redrawing) from a swapped-out one.
             self._audio_last_render = 0.0
+            # The current frame + loop count to restore on rollback/reshow, plus
+            # whether playback was live at that point ("playing" / "paused" /
+            # "stopped" / "finished"): restoring a paused, stopped or naturally
+            # finished player must NOT silently resume it (see
+            # host_state.restore). What the run had left is read as a save is
+            # written; see __getstate__.
+            self._saved_frame = -1.0
+            self._saved_loop = self._initial_loop
+            self._saved_remaining = None
+            self._saved_state = host_state.PLAYING
+            # Whether the run has completed. A rebuilt core comes back stopped,
+            # not finished, so ss_is_finished reads this as well as the Brain.
+            self._finished = False
+            # The playback section the game set on the current animation, as
+            # (start, end), or None. The Brain resets it on every animation
+            # change, so this goes back to None with each one; a rebuilt core
+            # would lose it altogether, so _ensure puts it back.
+            self._section = None
+            # The frame-rate override (ss_set_frame_rate), or None for none set.
+            # The Brain keeps it across animation changes, but not across a
+            # rebuilt core.
+            self._frame_rate = None
+            # Playback modes a rebuilt core loses (the Brain keeps them across
+            # setup_animation): reverse / ping-pong, and frame skipping (on by
+            # default, like `sub_frame` — both keep the runtime's own default).
+            # Plain data, so they pickle with the displayable and _ensure
+            # re-applies them to the new core.
+            self._playback_direction = 0
+            self._playback_style = 0
+            self._frame_skip = bool(frame_skip)
             # Delegation: the engine-independent playback core (built lazily on
             # first render) owns the runtime, metadata, rigs and timeline events.
             # This displayable is the Ren'Py adapter around it.
             self._core = None       # ss_renpy.player.SSInternalPlayer
             self._rm = None         # RenPyResourceManager (Ren'Py texture cache)
             self._texpath = {}      # texture_hash -> gamedir-rel image path (cache)
-            self._last_st = None
+            self._clock = None      # host_state.ShowClock, made on first render
+            self._idle = False       # the last render asked for no redraw
             self._warned = set()
             self._mask_white = None  # cached white tex0 for textureless writers
             # Atlases still to force onto the GPU (see _prewarm_textures): None
             # until the first render snapshots them, then drained a few per frame.
             self._prewarm_pending = None
+            # Per-part overrides this game has set: {(part_index, kind): args}.
+            # The Brain owns the live table, but Ren'Py drops the native core on
+            # pickling and rebuilds it lazily, so the overrides would vanish on
+            # save/load without this record. Plain data (ints, strings, tuples),
+            # so it pickles with the displayable. See _reapply_overrides.
+            self._overrides = {}
+            # Runtime texture replacements: {resolved_path -> displayable}. A
+            # Player-side override,
+            # NOT the per-part Override Layer above. Keyed by the SAME path
+            # _texture_path() yields, so _base_image() shadows the pack's atlas
+            # wherever that texture binds; a cleared key falls back to the pack's
+            # own image. Both texture_hash spaces (cellmap name / TCHG file name)
+            # collapse to one path here, so one entry covers both. The path keys
+            # are rebuild-stable, so this survives pickling (unlike the caches
+            # __getstate__ drops); the values are displayables Ren'Py can save.
+            # See ss_set_cellmap_texture.
+            self._tex_override = {}
 
         def __getstate__(self):
             """Drop the native-backed core + caches for pickling/saves; they are
             rebuilt lazily on the next render (re-applying the animation)."""
             state = self.__dict__.copy()
+            if self._core is not None:
+                state["_saved_remaining"] = self._core.remaining_loops
             state["_core"] = None
             state["_rm"] = None
             state["_texpath"] = {}
-            state["_last_st"] = None
+            state["_clock"] = None              # st of this session's renders only
             state["_warned"] = set()
             state["_prewarm_pending"] = None   # GPU textures are gone too; re-warm
             state["_audio_preloaded"] = False  # core is rebuilt; preload re-runs
             state["_audio_channels_used"] = set()
+            state["_xform_cache"] = {}         # pure render cache; rebuild lazily
+            state["_box_rect"] = False         # re-read from the pack; see _canvas_box
             return state
+
+        # -- equality: what lets a screen keep its player -------------------
+        def __eq__(self, o):
+            """Equal to a player built from the same arguments.
+
+            A screen evaluates `add SSPlayer(...)` again on every interaction,
+            and keeps the player it already shows only when the new one is equal
+            to the one it was given before — the comparison Ren'Py's own
+            displayables implement too. Without it, each line of dialogue swaps
+            in a new player that starts over at frame 0, so an animation in a
+            screen never gets past its first moments while the game is read,
+            nor past its first frame while it is skipped."""
+            return self._equals(o) and self._spec == o._spec
+
+        # Hashing stays by identity. Two copies of one image are equal, and
+        # _audio_live must still hold each of them while it sounds.
+        __hash__ = object.__hash__
 
         # -- image attributes (_duplicate, _list_attributes) ---------------
         def _get_available_animations(self):
@@ -1335,10 +1540,20 @@ init -10 python:
             return self._available_animations
 
         def _list_attributes(self, tag, attributes):
-            """Tell Ren'Py what attributes (animations/aliases) this displayable accepts."""
-            available = set(self._get_available_animations())
-            available.update(self.aliases.keys())
-            return list(available)
+            """Tell Ren'Py which attributes (animations, aliases and `still`)
+            go with `attributes`.
+
+            The Interactive Director keeps just what this returns for the
+            attribute a creator picks. An animation goes only with itself and
+            `still`, so picking another one replaces the one shown — a `show`
+            that names several plays them in turn, but the Director picks one.
+            `still` goes with every animation, so it toggles on and off without
+            replacing the one shown."""
+            names = set(self._get_available_animations())
+            names.update(self.aliases.keys())
+            still = [] if _SS_STILL in names else [_SS_STILL]
+            chosen = [a for a in attributes if a in names]
+            return (chosen or list(names)) + still
 
         def _choose_attributes(self, tag, required, optional):
             """Resolve `show <tag> <attr>` to a canonical name when the pack was
@@ -1351,64 +1566,117 @@ init -10 python:
             callback) finds no matching image and the sprite never switches — it
             only works when the FIRST show already carried an attribute (which
             takes the ImageReference.find_target path instead). Every required
-            attribute must name one of our animations or aliases, else this
-            image does not match. SSPlayer plays one animation at a time, so the
-            required attribute(s) fully determine it; stale `optional` (previous)
-            attributes are dropped."""
+            attribute must name one of our animations or aliases, or be
+            `still`, else this image does not match. The required attributes
+            fully determine what plays, so they replace the ones shown
+            (`optional`); a show that names none (`show ringo at left`, an ATL
+            block) keeps those, as it does for any image."""
             valid = set(self._get_available_animations())
             valid.update(self.aliases.keys())
+            valid.add(_SS_STILL)
             for a in required:
                 if a not in valid:
                     return None
+            if not required:
+                return tuple(a for a in optional if a in valid)
             return tuple(required)
 
         def _duplicate(self, args):
-            """Spawn a FRESH SSPlayer instance for `show ssplayer [attributes]`.
+            """A fresh player for an image's attributes; this one otherwise.
 
-            Always returns a NEW copy (never `self`), even with no attributes.
-            The registered template must never be the instance actually shown:
-            Ren'Py marks a shown displayable unique (``_duplicatable = False``)
-            via ``_unique()``, so if `show <tag>` (no attribute) returned the
-            template itself, the template would be poisoned and every later
-            `show <tag> <attr>` would call ``_duplicate`` on a now-non-
-            duplicatable template and get `self` back — never switching the
-            animation. (This silently broke SSCharacter lip-flap: showing the
-            character with no attribute, then switching to ``talk``, kept
-            replaying the idle template instead of playing ``talk``.)"""
-            if not getattr(self, "_duplicatable", True):
+            Ren'Py resolves `show ringo` / `show ringo talk` by calling this on
+            the registered image with the attributes (``args``), whether or not
+            the displayable is duplicatable — that is the copy each show gets,
+            and the registered template is never itself on screen. Every other
+            caller asks with ``args=None`` to copy a displayable once per use,
+            and a player is not copied for that, following Ren'Py's own rule
+            that a displayable whose state the game manipulates is never
+            copied: `add ringo` in a screen and `show expression ringo at left`
+            show the very player the script's `ringo.ss_*` calls reach. (Those
+            callers only ask a duplicatable displayable, and SSPlayer leaves
+            Ren'Py's default of not being one, so this is the backstop.)"""
+            if args is None:
                 return self
 
             # Start from the template's original spec (may be a list = sequence),
-            # then let any attribute(s) pick the alias / animation to play.
+            # then let the attributes pick what to play: every alias and
+            # animation they name, in the order given, as one sequence — the
+            # order Ren'Py's built-in animation support plays its motions in.
             target_anim = self._initial_animation
+            # The template's ORIGINAL loop — self.loop is mutated to 1 while a
+            # sequence is queued, and copying that would make the copy's final
+            # animation play once and freeze instead of honouring the
+            # constructor's loop.
+            loop = self._initial_loop
+            still = False
+            picked = []
+            unknown = []
             if args and getattr(args, "args", None):
+                names = self._get_available_animations()
                 for attr in args.args:
                     if attr in self.aliases:
-                        target_anim = self.aliases[attr]
-                    elif attr in self._get_available_animations():
-                        target_anim = attr
+                        alias = self.aliases[attr]
+                        picked.extend(alias if isinstance(alias, (list, tuple))
+                                      else [alias])
+                    elif attr in names:
+                        picked.append(attr)
+                    elif attr == _SS_STILL:
+                        still = True
+                    elif names:
+                        # A pack whose names cannot be read has its path
+                        # reported by _ss_lint instead.
+                        unknown.append(attr)
+                if unknown:
+                    # Lint asks by calling this and treats a raise as "no such
+                    # image"; without it every attribute passes lint.
+                    if getattr(args, "lint", False):
+                        raise Exception("%r is not an animation or alias of %s"
+                                        % (unknown[0], self.ssab))
+                    # Ren'Py's rule for an attribute an image does not take: an
+                    # error in developer mode, ignored in a release. Without it
+                    # `show ringo typo` plays the first animation without a word.
+                    args.copy(args=tuple(unknown)).extraneous()
+            if picked:
+                target_anim = picked[0] if len(picked) == 1 else picked
+                if still:
+                    # `still` after animations: the last one plays once and
+                    # stays on its final frame.
+                    loop = 1
 
             # Return a copy configured for the chosen animation.
             rv = SSPlayer(
                 self.ssab,
                 animation=target_anim,
-                sprites_subdir=self.sprites_subdir,
-                loop=self.loop,
+                loop=loop,
                 speed=self.speed,
                 sub_frame=self._sub_frame,
+                frame_skip=self._frame_skip,
                 size=self._size,
                 attachments=self._attachments,
                 on_user_data=self.on_user_data,
                 on_signal=self.on_signal,
                 on_audio=self.on_audio,
-                on_finished=self.on_finished,
-                on_looped=self.on_looped,
-                on_started=self.on_started,
+                on_animation_finished=self.on_animation_finished,
+                on_animation_looped=self.on_animation_looped,
+                on_animation_started=self.on_animation_started,
                 aliases=self.aliases,
                 audio_channel=self._audio_channel,
                 **self.kwargs
             )
-            rv._duplicatable = False
+            # Carry the overrides that survive an animation change: the copy
+            # builds its own core, whose setup_animation drops visibility and
+            # non-Permanent colour/cell overrides, so only the Permanent ones
+            # ride along. Without this, `show ringo talk` (or SSCharacter's
+            # lip-flap) would drop a Permanent costume.
+            rv._overrides = self._permanent_overrides()
+            # The template's box, not the chosen animation's: every attribute of
+            # one image then lays out on the same canvas.
+            rv._box_anim = self._box_anim
+            if still and not picked:
+                rv._still = True
+                # Built from the same arguments as a plain `show <tag>`, so
+                # mark it apart for __eq__: a held player is not that one.
+                rv._spec = rv._spec + (_SS_STILL,)
             return rv
 
         # -- lazy native setup ---------------------------------------------
@@ -1426,22 +1694,115 @@ init -10 python:
                     "e.g. \"ss_assets/Ringo/Ringo.ssab\") and that the file ships "
                     "with the game. [%s]" % (self.ssab, e))
             # Build the engine-independent core; the RenPyResourceManager we hand
-            # it backs texture loading with Ren'Py's image cache (set_animation
-            # acquires this pack's textures), and the pack_reader resolves external
-            # instance packs co-located with the .ssab (also archive-aware).
+            # it backs texture loading with Ren'Py's image cache (constructing the
+            # core acquires this pack's textures), and the pack_reader resolves
+            # external instance packs co-located with the .ssab (also archive-aware).
             self._rm = RenPyResourceManager()
-            self._core = SSInternalPlayer(
-                data, lib=_SS_LIB, base_dir=self._base_dir,
-                resource_manager=self._rm,
-                pack_reader=_ss_renpy_pack_reader(self._base_dir),
-                sub_frame=self._sub_frame,
-                enable_events=SS_ENABLE_EVENTS,
-            )
-            self._start_initial()
-            # Preload this pack's audio once, at setup, if it has any (docs/11 §4
-            # "事前ロード" + lazy init: no-op for packs with no sound). Done here,
-            # before the first update() fires any Audio event.
+            try:
+                self._core = SSInternalPlayer(
+                    data, lib=_SS_LIB, base_dir=self._base_dir,
+                    resource_manager=self._rm,
+                    pack_reader=_ss_renpy_pack_reader(self._base_dir),
+                    sub_frame=self._sub_frame,
+                    enable_events=SS_ENABLE_EVENTS,
+                )
+            except Exception as e:
+                # Keep the message diagnosable: a corrupt/truncated pack would
+                # otherwise surface as a bare struct.error from the FlatBuffers
+                # walk with no hint of which file caused it.
+                self._core = None
+                raise Exception(
+                    "ss: cannot load .ssab %r — the pack data is invalid "
+                    "(re-export it from the .sspj). [%s]" % (self.ssab, e))
+            # An Instance part whose pack would not load (a stale one) draws
+            # nothing while the rest plays on, as for a pack not found, so it
+            # is said the same way.
+            if config.developer:
+                for _msg in self._core.instance_problems:
+                    if (self.ssab, _msg) not in _SS_MISSING_PACKS:
+                        _SS_MISSING_PACKS.add((self.ssab, _msg))
+                        print("[SSPlayer] %s: %s" % (self.ssab, _msg))
+
+            # Frame skipping and the frame-rate override survive
+            # setup_animation, so they can go on now. So do the playback modes
+            # -- but this core is a fresh one with runtime defaults, so they
+            # still have to be put back once (below, after the restore, since
+            # set_animation would otherwise be the thing carrying a value that
+            # is not there yet).
+            host_state.apply_kept(self._core, self._frame_skip, self._frame_rate)
+
+            # Starting the animation can fail -- a constructor animation the
+            # pack lacks -- and that is reported once, from here: the next
+            # render finds the core built and draws nothing. So the rest of
+            # the setup below runs first, or a game that recovers with
+            # ss_set_animation() would get a core without its playback modes,
+            # overrides or audio.
+            setup_error = None
+            try:
+                # Restoring from a saved state (a load, or a core dropped on
+                # pickling) puts back the exact animation, frame and state.
+                # The loop count is the one the core last ran with (see
+                # _record_playback), so a runtime ss_set_loop_count /
+                # ss_play(loop=...) survives too.
+                restored = False
+                if self._saved_frame >= 0.0:
+                    anim = self.animation
+                    if not anim:
+                        anim = self._initial_animation
+                        if isinstance(anim, (list, tuple)) and anim:
+                            anim = anim[0]
+                    restored = host_state.restore(
+                        self._core, anim, self.speed, self._saved_loop,
+                        self._saved_frame, self._saved_state, self._section,
+                        self._saved_remaining)
+                if not restored:
+                    # Never shown, or the saved animation is gone (the pack
+                    # was re-exported since the save): start afresh rather
+                    # than leave the core with nothing set up.
+                    self._start_initial()
+            except Exception as e:
+                setup_error = e
+
+            # Ren'Py drops the native core on pickling and rebuilds it with the
+            # runtime defaults, so a reverse / ping-pong sprite needs its modes
+            # put back once. From here on the Brain carries them itself.
+            self._apply_playback_modes()
+            # Restore the per-part overrides the game had set before this core
+            # was dropped (save/load, rollback, re-show). Runs AFTER
+            # _start_initial / the saved-state restore: setup_animation clears the
+            # Brain's override table, so applying them earlier would be undone by it.
+            self._reapply_overrides()
+            # Preload this pack's audio once, at setup, if it has any (lazy:
+            # no-op for packs with no sound). Done here, before the first
+            # update() fires any Audio event.
             self._preload_audio()
+            # Now that the pack is parsed, warn for any attachment registered
+            # before load (constructor attachments=, or an ss_attach while the
+            # core was dropped) that targets a bone-skinned mesh part — the same
+            # non-blocking hint ss_attach gives once the core is live.
+            for _rec in self._attachments:
+                self._warn_if_skinned_target(_rec["part"])
+            if setup_error is not None:
+                raise setup_error
+
+        def _record_playback(self, core):
+            """Record what a rebuilt core is put back on: the head, the loop
+            count the core runs with, and whether it plays (host_state.restore).
+
+            render() records it every frame, and so does each call that moves
+            it. A save can come before the player is drawn again -- one that is
+            not on screen is not drawn at all -- and a load would otherwise put
+            back what it was before the call, or, for a player never drawn,
+            start the constructor's animation afresh."""
+            self._saved_frame = core.frame_no
+            self._saved_loop = core.loop_count
+            state = self._saved_state = host_state.playback_state(core)
+            # STOPPED says nothing about the run: that is what a rebuilt core
+            # reads after it finished.
+            if state == host_state.FINISHED:
+                self._finished = True
+            elif state != host_state.STOPPED:
+                self._finished = False
 
         def _start_initial(self, start_frame=-1.0):
             """Set up + play the constructor's animation (or sequence) on the core.
@@ -1449,31 +1810,16 @@ init -10 python:
             The pure core plays ONE animation; *sequence* policy lives here in the
             host: for a list we play the first now and keep the rest in
             ``self._anim_queue``, advancing on each ``FramePlan.finished`` in
-            render(). This mirrors the SSPlayerForGodot node owning chaining over
-            its SsInternalPlayer (the core itself has no notion of a queue)."""
-            core = self._core
-            core.set_speed(self.speed)
-            anim = self._initial_animation
-            if isinstance(anim, (list, tuple)) and anim:
-                seq = list(anim)
-                first = seq.pop(0)
-                self._anim_queue = seq
-                core.set_loop(1 if seq else self._initial_loop)
-                ok = core.set_animation(first)
-            else:
-                self._anim_queue = []
-                core.set_loop(self._initial_loop)
-                ok = core.set_animation(anim)   # anim may be None -> first available
-            if not ok:
-                raise Exception(
-                    "ss: animation %r not found in %s (have: %s)"
-                    % (anim, self.ssab,
-                       ", ".join(core.animation_names()) or "(none)"))
-            if start_frame is not None and start_frame >= 0:
-                core.play(start_frame=start_frame)
-            else:
-                core.play()
-            self.animation = core.animation
+            render() (the core itself has no notion of a queue).
+            `show <tag> still` is held by pausing; see host_state.start_initial."""
+            # The setup resets the section, whether or not it succeeds.
+            self._section = None
+            self._finished = False
+            self._anim_queue = host_state.start_initial(
+                self._core, self._initial_animation, self._initial_loop,
+                self.speed, start_frame=start_frame,
+                still=self._still, pack=self.ssab)
+            self.animation = self._core.current_animation
 
         def _texture_path(self, thash):
             # Resolve via the core (which owns the cellmap → image map, merged
@@ -1486,13 +1832,46 @@ init -10 python:
             return path
 
         def _base_image(self, tex_path):
-            # Image lifetime is owned by the RenPyResourceManager (Ren'Py cache).
+            # A runtime texture replacement (ss_set_cellmap_texture) shadows the
+            # pack's own atlas for this resolved path; otherwise the image
+            # lifetime is owned by the RenPyResourceManager (Ren'Py cache). This
+            # is the one chokepoint every draw path funnels through (transform /
+            # mesh / shape / mask writer / effect), so a single lookup here makes
+            # the swap take effect everywhere the texture binds.
+            ov = self._tex_override.get(tex_path)
+            if ov is not None:
+                return ov
             return self._rm.image(tex_path)
 
         def _warn_once(self, key, msg):
             if key not in self._warned:
                 self._warned.add(key)
-                renpy.log("ss: " + msg)
+                _ss_log(msg)
+
+        def _warn_if_skinned_target(self, part):
+            """Log once if an attachment targets a bone-skinned mesh part.
+
+            A skinned mesh draws from its bones while its own transform stays at
+            the setup node (near the character root), so a follower snaps there
+            rather than onto the deformed art — a shared-libssruntime property,
+            not a bug. Non-blocking (the attach still stands); it only points at
+            the NULL-part workaround. Silent until the core is built — the sweep
+            in _ensure catches constructor / pre-load attachments — and only for
+            a real skinned target, so a rigid mesh or a good part says nothing."""
+            try:
+                if self._core is None or not isinstance(part, str):
+                    return
+                if self._core.is_part_skinned_mesh(part):
+                    self._warn_once(
+                        ("skinned_attach", part),
+                        "ss_attach target %r is a bone-skinned mesh part; its "
+                        "transform stays at the setup pose, so the child follows "
+                        "the character root, not the visible art. Place a NULL "
+                        "part at that spot in SpriteStudio and attach to that "
+                        "instead (ss_is_part_skinned_mesh() reports this)."
+                        % (part,))
+            except Exception:
+                pass   # a diagnostic must never break an attach
 
         # -- timeline events (UserData / Signal / Audio) -------------------
         def _dispatch_plan(self, plan):
@@ -1507,28 +1886,30 @@ init -10 python:
             try:
                 if SS_ENABLE_EVENTS:
                     for fe in plan.events:
-                        self._dispatch_frame_events(fe)
+                        self._dispatch_frame_events(fe, plan.seek_frame)
                 if plan.looped:
-                    self._call_cb(self.on_looped)
+                    self._call_cb(self.on_animation_looped)
             except Exception as e:
                 self._warn_once("event-pump",
                                 "event dispatch failed (%r); events disabled "
                                 "this frame" % (e,))
 
-        def _dispatch_frame_events(self, fe):
+        def _dispatch_frame_events(self, fe, seek_frame=-1):
             for u in fe.users:
                 self._call_cb(self.on_user_data, fe.frame_index, u)
             for s in fe.signals:
                 self._call_cb(self.on_signal, fe.frame_index, s)
             for a in fe.audios:
-                # Play it ourselves (docs/11 §4: the Player, not the runtime,
-                # plays audio) AND notify: on_audio stays a notification hook so a
-                # game can react (subtitles, ...) without owning playback.
-                if SS_ENABLE_AUDIO:
+                # Play it ourselves (the Player, not the runtime, plays audio)
+                # AND notify: on_audio stays
+                # a notification hook so a game can react (subtitles, ...)
+                # without owning playback. A seek lands on a frame without
+                # crossing its keys, so those are not sounded.
+                if SS_ENABLE_AUDIO and fe.frame_index != seek_frame:
                     self._play_audio(fe.frame_index, a)
                 self._call_cb(self.on_audio, fe.frame_index, a)
 
-        # -- audio (docs/11 §4 + docs/00) ----------------------------------
+        # -- audio ---------------------------------------------------------
         def _audio_full_path(self, file_ref):
             """Join an ssab-relative sound reference with this pack's base dir
             (like a texture path) and confirm Ren'Py can load it; "" if not."""
@@ -1543,7 +1924,7 @@ init -10 python:
             return path
 
         def _preload_audio(self):
-            """Warm this pack's sound files at setup, once (docs/11 §4 preload).
+            """Warm this pack's sound files at setup, once.
 
             Ren'Py streams + decodes audio on `play`; there is no public API to
             pre-decode a sound, so "preload" here means resolving each file and
@@ -1575,18 +1956,18 @@ init -10 python:
                                     "audio preload failed for %r (%r)" % (path, e))
 
         def _play_audio(self, frame, audio):
-            """Play one SS Audio timeline event (docs/11 §4 + docs/00). Never raises.
+            """Play one SS Audio timeline event. Never raises.
 
-            Forward-only: skip when the effective direction is backward — the
-            runtime's is_playing_forward (direction + ping-pong leg) XOR a
-            negative speed (docs/00: most decoders can't play audio in reverse).
+            Forward-only: skip when the head is walking backward (the runtime's
+            is_playing_forward, which already accounts for the direction and the
+            ping-pong leg), because most decoders cannot play audio in reverse.
+            The *speed* has no say
+            in it: the Brain clamps a negative rate to a stop rather than to
+            reverse playback, so nothing advances and no event reaches here.
             ``loop_num`` is a *play count* (SS has no infinite loop), realised by
             queueing the file that many times on the channel."""
             try:
-                forward = self._core.is_playing_forward()
-                if self.speed < 0:
-                    forward = not forward
-                if not forward:
+                if not self._core.is_playing_forward():
                     return
                 path = self._audio_full_path(audio.file_path)
                 if not path:
@@ -1658,9 +2039,24 @@ init -10 python:
             ``.frame_index`` and ``.users`` / ``.signals`` / ``.audios``). This is
             the rollback-safe, render-thread-safe way to consume events from a
             screen / interaction (vs the callbacks, which fire inside render()).
+
+            The queue behind it is bounded, so a caller that polls far less often
+            than the animation emits loses the OLDEST events. That would be
+            invisible — the returned list just quietly starts at the tail — so
+            warn once here (the core counts the evictions; nothing else could
+            tell a slow poller from a callback-only game, which drops nothing it
+            wanted).
             """
             self._ensure()
-            return self._core.poll_events()
+            events = self._core.poll_events()
+            if self._core.events_dropped:
+                self._warn_once(
+                    "event-overflow",
+                    "the event queue overflowed (%d dropped): ss_poll_events() "
+                    "is being drained slower than %s emits. Poll every "
+                    "interaction, or use the on_user_data / on_signal callbacks."
+                    % (self._core.events_dropped, self.ssab))
+            return events
 
         # -- texture prewarm ------------------------------------------------
         def _prewarm_textures(self, width, height, st, at, budget=2):
@@ -1673,13 +2069,13 @@ init -10 python:
             we animate we ``renpy.redraw`` every frame, so the interaction never
             idles for Ren'Py to drain it in the background. The upshot: a large
             atlas a long animation doesn't reference until deep into its timeline
-            (fire_sword's character atlas ``fire_sword.png`` is 4.9 MB and first
-            becomes visible at cinema frame ~108) uploads mid-playback and stalls
-            that one frame — the classic first-play-only hitch that never recurs
-            (the texture stays GPU-resident across loops). The Godot / Web ports
-            never show it because they upload every cellmap at load; we do the
-            same here, spread over the first frames so neither the show frame nor
-            a mid-anim frame carries the whole cost. Idempotent; never raises."""
+            (e.g. a multi-megabyte atlas first referenced a hundred frames into
+            a cinematic) uploads mid-playback and stalls that one frame — the
+            classic first-play-only hitch that never recurs
+            (the texture stays GPU-resident across loops). So every cellmap is
+            uploaded up front, spread over the first frames so neither the show
+            frame nor a mid-anim frame carries the whole cost. Idempotent; never
+            raises."""
             if self._prewarm_pending is None:
                 self._prewarm_pending = list(self._rm.images()) if self._rm else []
             n = 0
@@ -1688,7 +2084,7 @@ init -10 python:
                 try:
                     # A throwaway render drives the full upload path (decode +
                     # ready_one_texture); the atlas then lives in Ren'Py's texture
-                    # cache, so the real draw — this frame or frame 108 — is free.
+                    # cache, so the real draw — this frame or much later — is free.
                     renpy.render(img, width, height, st, at)
                 except Exception:
                     pass
@@ -1697,16 +2093,71 @@ init -10 python:
                 # Keep draining even if playback goes idle before we finish.
                 renpy.redraw(self, 0)
 
+        # -- sequence chaining (host playback policy) ----------------------
+        def _advance_to_next_in_sequence(self, core):
+            """Pop the queue to the next playable clip and start it; True if one
+            started, False when the sequence is spent.
+
+            Skips (with a one-time warning) any queued name the pack lacks —
+            otherwise a typo'd entry would silently replay the previous clip with
+            no diagnostics. Loop count is 1 for a mid-sequence clip and the
+            original request for the final one."""
+            while self._anim_queue:
+                cand = self._anim_queue.pop(0)
+                core.set_loop_count(1 if self._anim_queue else self._initial_loop)
+                if core.set_animation(cand):
+                    core.play()
+                    # As in ss_set_animation: the Brain dropped visibility +
+                    # non-Permanent overrides and the section, so drop them
+                    # from the record too.
+                    self._prune_overrides_for_new_animation()
+                    self._section = None
+                    return True
+                self._warn_once(("chain", cand),
+                                "sequence animation %r not found; skipped"
+                                % (cand,))
+            return False
+
+        def _canvas_box(self):
+            """The authored canvas of `_box_anim` as (x, y, w, h), origin-relative
+            and y-down, or None when the pack has no usable one. Read once and
+            kept, so rendering stays allocation-free."""
+            if self._box_rect is False:
+                try:
+                    self._box_rect = self._core.meta.canvas_rect(self._box_anim)
+                except Exception:
+                    self._box_rect = None
+            return self._box_rect
+
         # -- per-frame render ----------------------------------------------
         def render(self, width, height, st, at):
             self._ensure()
 
-            # Detect re-show (time went backwards) -> restart from the top
-            # (resets the animation sequence too).
+            # One player can be drawn from several places at once — every
+            # particle of a SnowBlossom, or `show expression ringo` under two
+            # tags — and each place hands it its own st. Only the first render
+            # of a frame moves the animation, by how far its place moved on;
+            # the others draw that same frame. A render no place from the last
+            # frame accounts for is a re-show. See host_state.ShowClock.
+            clock = self._clock
+            if clock is None:
+                clock = self._clock = host_state.ShowClock()
+            dt = clock.advance(renpy.config.frames, st)
+            again = dt is None
+
+            # Re-show -> restart from the top (resets the animation sequence
+            # too).
             core = self._core
-            if self._last_st is not None and st < self._last_st:
+            if clock.reshown:
+                self._saved_frame = -1.0
                 self._start_initial(start_frame=0)
-                self._call_cb(self.on_started)
+                # A re-show restarts the animation, and that setup_animation
+                # dropped the Brain's visibility + non-Permanent overrides —
+                # mirror it. (The _ensure() rebuild path also goes through
+                # _start_initial but must NOT prune: it is restoring, not
+                # switching, which is why this lives here and not in there.)
+                self._prune_overrides_for_new_animation()
+                self._call_cb(self.on_animation_started)
 
             # Pre-upload atlases so a large one first drawn deep in a long
             # timeline doesn't stall that frame (first-play hitch). See above.
@@ -1714,44 +2165,63 @@ init -10 python:
                 self._prewarm_textures(width, height, st, at)
 
             _t0 = time.perf_counter() if SS_PROFILE else 0.0
-            dt = 0.0 if self._last_st is None else max(0.0, st - self._last_st)
-            self._last_st = st
+            # A player that went idle stopped asking for redraws while st ran
+            # on, so the render that wakes it (ss_play, ss_resume, a crossfade
+            # from a finished animation) must not hand the runtime that gap:
+            # the playhead would jump, and a fade would be over in one frame.
+            if again or self._idle:
+                dt = 0.0
             # Advance the engine-independent core (it takes milliseconds) and get
             # this frame's z-ordered, world-space draw plan.
             _tg = time.perf_counter() if SS_PROFILE else 0.0
             plan = core.update(dt * 1000.0)
             _geom = (time.perf_counter() - _tg) if SS_PROFILE else 0.0
-            self.animation = core.animation
-            self._dispatch_plan(plan)            # timeline events + on_looped
-            # Sequence chaining is the host's playback policy: when the core
-            # reports the play->stop edge, advance to the next queued animation
-            # (e.g. an alias like ["attack1", "wait1"]) or fire on_finished. The
-            # switch happens HERE, between updates — so every frame's draw plan
-            # stays consistent with a single animation (no mid-update frame skew).
+            self.animation = core.current_animation
+            self._dispatch_plan(plan)            # timeline events + on_animation_looped
+            # Sequence chaining is the host's playback policy: on the core's
+            # completion edge (FramePlan.finished = the is_finished rising edge),
+            # advance to the next queued clip (e.g. an alias like ["attack1",
+            # "wait1"]) or fire on_animation_finished once the sequence is spent. The switch
+            # happens HERE, between updates — so every frame's draw plan stays
+            # consistent with a single animation (no mid-update frame skew).
             if plan.finished:
-                if self._anim_queue:
-                    nxt = self._anim_queue.pop(0)
-                    core.set_loop(1 if self._anim_queue else self._initial_loop)
-                    core.set_animation(nxt)
-                    core.play()
-                    self.animation = core.animation
-                    self._call_cb(self.on_started)
+                if self._advance_to_next_in_sequence(core):
+                    self.animation = core.current_animation
+                    self._call_cb(self.on_animation_started)
                     renpy.redraw(self, 0)
                 else:
-                    self._call_cb(self.on_finished)
+                    self._call_cb(self.on_animation_finished)
+
+            # Rollback / save snapshot, taken AFTER the chaining block: on a
+            # chain-advance frame the head has just moved to the NEW clip's
+            # section start, and snapshotting before would pair the new
+            # animation with the OLD clip's last frame — an out-of-range seek
+            # whenever the next clip is shorter. Read from the core rather than
+            # `plan` so a degraded (exception) frame still records the true head.
+            self._record_playback(core)
 
             _draw = 0.0
-            # With an explicit `size`, report a box of that size and center the
-            # animation within it, so xalign / xpos / pos position us like a
-            # normal image; otherwise fill the whole offered area (legacy).
-            rw, rh = self._size if self._size else (width, height)
+            # The box Ren'Py lays us out by, and where the animation's origin
+            # sits in it. An explicit `size` is a box of that size with the
+            # origin at its centre; otherwise it is the authored canvas, the
+            # frame the artist composed in, so the default transform and
+            # xalign / `at left` place us the way they place an image. A pack
+            # with no usable canvas fills the offered area, origin at its centre.
+            box = None if self._size else self._canvas_box()
+            if box is not None:
+                bx, by, rw, rh = box
+                ox, oy = -bx, -by
+            else:
+                rw, rh = self._size if self._size else (width, height)
+                ox, oy = rw / 2.0, rh / 2.0
+            self._draw_origin = (ox, oy)
             r = renpy.Render(rw, rh)
-            ox, oy = rw / 2.0, rh / 2.0   # SS center -> box center
             if plan.items:
                 _td = time.perf_counter() if SS_PROFILE else 0.0
                 # Mask: rasterize each distinct coverage once before drawing the
-                # targets that sample it (09_mask §3-2). Failure leaves the dict
-                # empty so masked parts simply draw unmasked.
+                # targets that sample it. Failure leaves the dict empty: masked
+                # parts then draw as with no mask — plainly, or not at all for
+                # one that shows only inside a mask.
                 cov_by_id = {}
                 if SS_ENABLE_MASK:
                     self._build_coverages(cov_by_id, plan.items, ox, oy, st, at,
@@ -1760,19 +2230,88 @@ init -10 python:
                 if SS_PROFILE:
                     _draw = time.perf_counter() - _td
 
-            # Attachments: draw each {part_name: displayable} at that part's
-            # current position (v1 = translation only). Guarded so it can never
-            # break rendering; nudge with the child's own offset if needed.
-            if self._attachments:
-                for _pname, _child in self._attachments.items():
+            # Attachments: draw each pinned child at its part's live transform:
+            # translation + rotation, and scale when drive_scale. The child is
+            # always drawn in FRONT of the sprite (no z insertion between parts).
+            # The child's `anchor` point is pinned to the
+            # part and is the rotation/scale pivot. Guarded so a bad child can
+            # never break the frame. Children are few, so a Transform wrap only
+            # happens when the part is actually rotated/scaled — the common
+            # translation-only case stays allocation-free. See ss_attach.
+            # Compositing here, in the pass that computed this frame's pose, is
+            # what keeps a child from lagging the animation by a frame.
+            _recs = self._attachments
+            if _recs:
+                for _i, _rec in enumerate(_recs):
                     try:
+                        _pname = _rec["part"]
                         _t = core.part_transform(_pname)
                         if _t is None:
                             continue
-                        _cr = renpy.render(_child, rw, rh, st, at)
-                        _cw, _ch = _cr.get_size()
-                        r.blit(_cr, (int(ox + _t["x"] - _cw / 2.0),
-                                     int(oy + _t["y"] - _ch / 2.0)))
+                        if _rec["on_hide"] == "hide" and \
+                                core.is_part_hidden(_pname):
+                            continue
+                        _child = _rec["child"]
+                        # Part rotation plus the child's fixed rest offset; both
+                        # the Transform wrap and the anchor math below use this
+                        # total, so the anchor rides the offset child too.
+                        # Each axis is opt-out: a disabled one contributes its
+                        # identity, so the child keeps its own value for it.
+                        _ang = (_t["rotation"] if _rec["drive_rotation"] else 0.0) \
+                            + _rec["angle"]
+                        _sx, _sy = (_t["xscale"], _t["yscale"]) \
+                            if _rec["drive_scale"] else (1.0, 1.0)
+                        _ax, _ay = _rec["anchor"]
+                        _tx, _ty = (ox + _t["x"], oy + _t["y"]) \
+                            if _rec["drive_position"] else (ox, oy)
+                        if abs(_ang) < 1e-3 and abs(_sx - 1.0) < 1e-3 \
+                                and abs(_sy - 1.0) < 1e-3:
+                            # Pure translation: pin the anchor point directly.
+                            _cr = renpy.render(_child, rw, rh, st, at)
+                            _cw, _ch = _cr.get_size()
+                            r.blit(_cr, (int(_tx - _ax * _cw),
+                                         int(_ty - _ay * _ch)))
+                        else:
+                            # Rotate/scale about the child centre (Transform's
+                            # default), then offset so the ANCHOR lands on the
+                            # part. part_transform's scale is |magnitude|, so a
+                            # mirrored part reads as a rotation here; carrying
+                            # the reflection needs the pose as a matrix.
+                            #
+                            # The child's UNROTATED size drives the anchor
+                            # vector, so it is read live (an animated child may
+                            # resize); Ren'Py caches renders per
+                            # (displayable, w, h, st, at), and the Transform
+                            # renders the same child at the same st, so this is
+                            # a cache hit rather than a second real render.
+                            _c0 = renpy.render(_child, rw, rh, st, at)
+                            _cw, _ch = _c0.get_size()
+                            # Hot path: reuse the Transform while the part's
+                            # angle/scale hold steady (a fixed rest angle, an
+                            # idle pose), so the common case allocates nothing
+                            # per frame. A continuously rotating part genuinely
+                            # needs new parameters, and rebuilding beats
+                            # mutating a live displayable Ren'Py may have cached.
+                            _key = (_ang, _sx, _sy)
+                            _xf = self._xform_cache.get(_i)
+                            if _xf is None or _xf[0] != _key:
+                                _xf = (_key, Transform(_child, rotate=_ang,
+                                                       xzoom=_sx, yzoom=_sy))
+                                self._xform_cache[_i] = _xf
+                            _cr = renpy.render(_xf[1], rw, rh, st, at)
+                            _rw2, _rh2 = _cr.get_size()
+                            # Vector centre->anchor, transformed the SAME way
+                            # Transform did (rotate clockwise-positive, y-down),
+                            # so the anchor rides the rotated bar. Coupled to
+                            # _ang: flip the rotate sign and the anchor follows.
+                            _th = math.radians(_ang)
+                            _cos, _sin = math.cos(_th), math.sin(_th)
+                            _vx = (_ax - 0.5) * _cw
+                            _vy = (_ay - 0.5) * _ch
+                            _px = _sx * _vx * _cos - _sy * _vy * _sin
+                            _py = _sx * _vx * _sin + _sy * _vy * _cos
+                            r.blit(_cr, (int(_tx - _rw2 / 2.0 - _px),
+                                         int(_ty - _rh2 / 2.0 - _py)))
                     except Exception:
                         pass
 
@@ -1787,9 +2326,10 @@ init -10 python:
             # Keep requesting redraws only while something is actually moving; an
             # idle sprite (paused / stopped / play-once finished, no live rigs)
             # renders an identical frame, so we let it go quiescent until a
-            # control method (ss_play/ss_resume/ss_set_frame/ss_stop/...) re-arms
+            # control method (ss_play/ss_resume/ss_set_frame_no/ss_stop/...) re-arms
             # it. is_animating() stays True while effects / instances run.
-            if core.is_animating():
+            self._idle = not core.is_animating()
+            if not self._idle:
                 renpy.redraw(self, 0)
             elif self._audio_channels_used:
                 # Animation is idle but a sound is still playing: keep the
@@ -1825,6 +2365,13 @@ init -10 python:
                     ap = payload.mask
                     cov = (cov_by_id.get(id(ap.frame_mask))
                            if ap is not None and cov_by_id else None)
+                    if (SS_ENABLE_MASK and ap is not None and cov is None
+                            and ap.visible_inside):
+                        # Shows only inside a mask, and there is none to test it
+                        # against: the tree has no writer this frame, or the
+                        # coverage could not be built. Left out, as with no
+                        # mask — drawing it whole would show what is hidden.
+                        continue
                     if cov is not None:
                         # Masked: flush the current run, then draw it on its own
                         # (the replay shader can't share a batched mesh). If the
@@ -1841,8 +2388,11 @@ init -10 python:
                                                  height, can_batch, use_mesh)
                             run = []
                             run_key = None
-                        if not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
-                                                      st, at, width, height):
+                        if (not self._draw_mesh_masked(r, payload, ap, cov, ox, oy,
+                                                       st, at, width, height)
+                                and not ap.visible_inside):
+                            # Unmasked is what a part that draws outside shows
+                            # with no mask; one that draws inside shows nothing.
                             self._flush_mesh_run(r, [payload], ox, oy, st, at,
                                                  width, height, can_batch, use_mesh)
                         continue
@@ -1891,7 +2441,7 @@ init -10 python:
                 if not drawn:
                     self._draw_transform(r, mp, ox, oy, st, at, width, height)
 
-        # -- transform backend (default, documented) -----------------------
+        # -- transform backend (fallback) ----------------------------------
         def _draw_transform(self, r, mp, ox, oy, st, at, width, height):
             tex = self._texture_path(mp.texture_hash)
             if not tex:
@@ -1968,12 +2518,12 @@ init -10 python:
 
             Builds a ``renpy.gl2.gl2mesh2.Mesh2`` from the part's world-space
             corners (``mp.positions``) and its texture-pixel UVs normalized by the
-            atlas size (``framedata.normalize_uvs``), textures it with the FULL
+            atlas size (``uv / texsize``, as :func:`framedata.normalize_uvs`
+            documents), textures it with the FULL
             atlas, and sets ``gl_texture_wrap = REPEAT`` so UVs the runtime baked
             past the atlas edge (UvScale/UvTranslation/UvRotation) wrap instead of
             clamping. This is the only backend that is shear / free-deform exact
-            and honours the UV transforms — the Ren'Py-native form of what the
-            the reference players do. ``parts_color`` is applied per-part
+            and honours the UV transforms. ``parts_color`` is applied per-part
             (uniform) via the ``ss.partcolor`` shader.
 
             On any error returns False so the caller falls back to the transform
@@ -1990,21 +2540,29 @@ init -10 python:
                     return False
 
                 pts = mp.positions            # 4 corners, or 5 with centre fan
-                nuv = framedata.normalize_uvs(mp.uvs, tw, th)
                 tris = mp.triangles
 
                 mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, len(pts), len(tris))
                 geometry = []
-                for (x, y) in pts:
-                    geometry += [ox + x, oy + y]          # SS world -> screen px
-                mesh.set_geometry_data(geometry)
                 attributes = []
-                for (u, v) in nuv:
-                    attributes += [u, v]                  # a_tex_coord (may be >1)
-                mesh.set_attribute_data(attributes)
                 indices = []
+                inv_tw = (1.0 / tw) if tw > 0 else 1.0
+                inv_th = (1.0 / th) if th > 0 else 1.0
+                g_app = geometry.append
+                a_app = attributes.append
+                i_app = indices.append
+                for (x, y) in pts:
+                    g_app(ox + x)
+                    g_app(oy + y)
+                for (u, v) in mp.uvs:
+                    a_app(u * inv_tw)
+                    a_app(v * inv_th)
                 for tri in tris:
-                    indices += [tri[0], tri[1], tri[2]]
+                    i_app(tri[0])
+                    i_app(tri[1])
+                    i_app(tri[2])
+                mesh.set_geometry_data(geometry)
+                mesh.set_attribute_data(attributes)
                 mesh.set_triangle_data(indices)
 
                 rv = renpy.Render(width, height)
@@ -2026,34 +2584,79 @@ init -10 python:
                                 "transform backend" % (e,))
                 return False
 
-        # -- mask / clipping (09_mask §3-2): coverage + replay --------------
+        # -- mask / clipping: coverage + replay -----------------------------
         def _white_render(self, st, at):
             """A small white tex0 for texture-less shape writers (no cutout)."""
             if self._mask_white is None:
                 self._mask_white = Solid("#ffffffff", xysize=(2, 2))
             return renpy.render(self._mask_white, 2, 2, st, at)
 
+        def _atlas_render(self, tex_path, st, at, width, height):
+            """The atlas render for ``tex_path``, or None when Ren'Py had to
+            load it as tiles instead of one texture.
+
+            Ren'Py splits any surface past the texture limit
+            (``config.max_texture_size``, clamped to what the GPU reports —
+            4096x4096 by default, logged as "Maximum texture size") into a
+            *Render of tiled textures*. A model's tex0 has to be one texture, so
+            binding a tiled atlas either kills the game with ``TypeError: Cannot
+            convert renpy.display.render.Render to renpy.gl2.gl2model.GL2Model``
+            — thrown inside GL2's draw pass, long after render() returned, where
+            no try/except in this file can reach it — or, when Ren'Py trimmed the
+            atlas' transparent border first, silently squeezes the whole atlas
+            into one limit-sized texture every time the cache drops it. Neither
+            is a draw. Returning None keeps the caller on its own fallback: the
+            transform backend takes the tiled render as it is.
+
+            The pack is the thing to fix — re-export it with an atlas inside the
+            limit. Raising ``config.max_texture_size`` also works, at the cost of
+            a full-size framebuffer (a 4096 -> 8192 bump is 64MB -> 256MB of
+            VRAM), and only up to what the GPU itself allows."""
+            cr = renpy.render(self._base_image(tex_path), width, height, st, at)
+            # One texture arrives as a single model child; tiles arrive as a
+            # nested Render.
+            for c in cr.children:
+                if isinstance(c[0], _SS_Render):
+                    tw, th = cr.get_size()
+                    self._warn_once(("atlas-tiled", tex_path),
+                                    "atlas %s is %dx%d, past this display's %s "
+                                    "texture limit, so Ren'Py loads it as tiles "
+                                    "and no mesh can sample it: parts fall back "
+                                    "to the transform backend (no deform / UV "
+                                    "transforms) and effects are skipped. "
+                                    "Re-export the pack with a smaller atlas, or "
+                                    "raise config.max_texture_size."
+                                    % (tex_path, tw, th, _ss_texture_limit()))
+                    return None
+            return cr
+
         def _tex0_render(self, thash, st, at, width, height):
             """tex0 source for a mesh/shape draw: the bound atlas for a real
             ``texture_hash``, or a 2x2 white for a textureless Shape part
             (``thash == 0``) — the PartColor (rate forced 1.0) then supplies the
             fill. Returns the render, or None when a non-zero hash can't resolve
-            (so the caller can fall back)."""
+            or its atlas is too big to be one texture (so the caller can fall
+            back)."""
             if thash == 0:
                 return self._white_render(st, at)
             tex = self._texture_path(thash)
             if not tex:
                 return None
-            return renpy.render(self._base_image(tex), width, height, st, at)
+            return self._atlas_render(tex, st, at, width, height)
 
         def _build_coverages(self, cov_by_id, items, ox, oy, st, at,
                              width, height):
             """Rasterize the coverage bitmap for every distinct ``FrameMask`` in
-            ``items`` into ``cov_by_id`` (keyed by ``id(frame_mask)``).
+            ``items`` into ``cov_by_id`` (keyed by ``id(frame_mask)``, value
+            ``(coverage_render, cov_w, cov_h, mask_meta)``).
 
             One coverage is shared by all targets of a mask (including instance
             children that inherit it). A build failure is warned once and that
-            coverage is simply skipped (its targets then draw unmasked)."""
+            coverage is simply skipped (its targets then draw as with no mask).
+
+            The replay ``mask_meta`` is per *mask*, not per target, so it is built
+            here alongside the coverage — ``cov_by_id`` is rebuilt every frame, so
+            this cache cannot outlive the ``FrameMask`` whose id keys it."""
             if _SS_Mesh2 is None:
                 return
             seen = set()
@@ -2065,8 +2668,16 @@ init -10 python:
                 if key in seen:
                     continue
                 seen.add(key)
+                if fm.capped:
+                    self._warn_once("mask-capped",
+                                    "more than %d live mask writers in this "
+                                    "animation and its instances; the ones "
+                                    "drawn last are ignored"
+                                    % mask.MAX_WRITERS)
                 try:
                     cov = self._build_coverage(fm, ox, oy, st, at, width, height)
+                    if cov is not None:
+                        cov = cov + (fm.meta_uniform(),)
                 except Exception as e:
                     self._warn_once("mask-coverage",
                                     "coverage build failed (%r); masks off this "
@@ -2081,69 +2692,74 @@ init -10 python:
             Returns ``(coverage_render, cov_w, cov_h)`` or None. The coverage is
             sized to the writers' world bbox (long edge capped at
             SS_MASK_COVERAGE_MAX_DIM); each writer is drawn with ``ss.mask_write``
-            under *additive* blend so disjoint bits OR together (09_mask §3-2-1).
+            under *additive* blend so disjoint bits OR together.
             Built in bbox-local pixel space so the target's ``v_mask_uv`` (derived
-            from a_position via the same bbox) indexes it directly."""
+            from a_position via the same bbox) indexes it directly. Past 24
+            writers the same size splits into tiles (``FrameMask.tiles``), each
+            mapping the whole bbox at a lower resolution."""
             if _SS_Mesh2 is None or not fm.writers:
                 return None
             bx, by = fm.bmin
             bw, bh = fm.bsize
+            tx, ty = fm.tiles
             ss = max(1.0, SS_MASK_COVERAGE_SUPERSAMPLE)
-            cw = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bw * ss))))
-            ch = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bh * ss))))
-            sx, sy = cw / bw, ch / bh             # world -> coverage px
+            tw = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bw * ss))) // tx)
+            th = max(2, min(SS_MASK_COVERAGE_MAX_DIM, int(round(bh * ss))) // ty)
+            cw, ch = tw * tx, th * ty
+            sx, sy = tw / bw, th / bh             # world -> tile px
             add_prop = _ss_gl_blend("add")
             cov = renpy.Render(cw, ch)
             for w in fm.writers:
+                tile, bit = divmod(w.bit, mask.TILE_WRITERS)
                 try:
-                    self._blit_writer(cov, w, bx, by, sx, sy, cw, ch,
-                                      st, at, width, height, add_prop)
+                    self._blit_writer(cov, w, bit, bx, by, sx, sy,
+                                      (tile % tx) * tw, (tile // tx) * th,
+                                      cw, ch, st, at, width, height, add_prop)
                 except Exception:
                     pass   # one bad writer must not blank the whole coverage
             return (cov, cw, ch)
 
-        def _blit_writer(self, cov, w, bx, by, sx, sy, cw, ch,
-                         st, at, width, height, add_prop):
-            """Additively rasterize one writer's bit into the coverage ``cov``."""
+        def _blit_writer(self, cov, w, bit, bx, by, sx, sy, tile_x, tile_y,
+                         cw, ch, st, at, width, height, add_prop):
+            """Additively rasterize one writer's ``bit`` into the coverage
+            ``cov``, in the tile whose top-left is (``tile_x``, ``tile_y``)."""
             pts = w.positions
             npts, ntri = len(pts), len(w.triangles)
             if npts < 3 or ntri < 1:
                 return
             tex = self._texture_path(w.texture_hash) if w.has_texture else ""
-            if tex:
-                cr = renpy.render(self._base_image(tex), width, height, st, at)
+            cr = self._atlas_render(tex, st, at, width, height) if tex else None
+            textured = cr is not None
+            if textured:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return
-                nuv = framedata.normalize_uvs(w.uvs, tw, th)
+                tex_size = (tw, th)
                 threshold = (255.0 - w.mask_value) / 255.0
             else:
-                cr = self._white_render(st, at)   # texture-less: whole geometry
-                nuv = [(0.0, 0.0)] * npts
+                # Texture-less writer — or one on a tiled atlas we cannot sample
+                # (_atlas_render warned): its whole geometry writes coverage.
+                # Covering too much keeps the target visible; dropping the writer
+                # would clip the target away entirely.
+                cr = self._white_render(st, at)
+                tex_size = None
                 threshold = -1.0
 
             mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, npts, ntri)
-            geom = []
-            for (x, y) in pts:
-                geom += [(x - bx) * sx, (y - by) * sy]   # world -> coverage px
+            geom, attrs, idx = mask.pack_writer_mesh(w, bx, by, sx, sy,
+                                                     tile_x, tile_y, tex_size)
             mesh.set_geometry_data(geom)
-            attrs = []
-            for (u, v) in nuv:
-                attrs += [u, v]
             mesh.set_attribute_data(attrs)
-            idx = []
-            for tri in w.triangles:
-                idx += [tri[0], tri[1], tri[2]]
             mesh.set_triangle_data(idx)
 
             wr = renpy.Render(cw, ch)
             wr.blit(cr, (0, 0))                  # tex0 (cutout source / white)
             wr.mesh = mesh
-            if tex and _SS_TEXTURE_WRAP is not None:
+            if textured and _SS_TEXTURE_WRAP is not None:
                 wr.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
             wr.add_shader("ss.mask_write")
-            chan = w.bit // 8
-            val = float(1 << (w.bit % 8)) / 255.0
+            chan = bit // 8
+            val = float(1 << (bit % 8)) / 255.0
             bc = [0.0, 0.0, 0.0]
             bc[chan] = val
             wr.add_uniform("u_bit_color", (bc[0], bc[1], bc[2]))
@@ -2155,33 +2771,20 @@ init -10 python:
                     pass
             cov.blit(wr, (0, 0))
 
-        def _mask_meta_uniform(self, fm):
-            """Flat ``vec4[MAX_WRITERS]`` of (rank, op_invert, is_clipping, 0).
-
-            The writer's bit is its index, so it is not stored. Padded to the
-            full array length the shader declares."""
-            vals = []
-            for (rank, _bit, op, clip) in fm.meta:
-                vals += [float(rank), float(op), float(clip), 0.0]
-            need = mask.MAX_WRITERS * 4
-            if len(vals) < need:
-                vals += [0.0] * (need - len(vals))
-            return vals
-
         def _draw_mesh_masked(self, r, mp, ap, cov, ox, oy, st, at, width, height):
             """Draw one masked part via ``ss.partcolor_mask`` (coverage replay).
 
             Per-vertex colour (like :meth:`_draw_mesh_batch`, one part) so a
             gradient / textureless Shape fill masks with its TRUE colour, not a
             flat average. Binds the coverage as tex1 + the replay uniforms
-            (target rank / polarity + the writers' meta), and a 2x2 white tex0 for
+            (target position / polarity + the writers' meta), and a 2x2 white tex0 for
             a textureless Shape (``texture_hash == 0``) via :meth:`_tex0_render` so
             a Shape target is clipped instead of falling through unmasked. Returns
-            True on success; False makes the caller draw it unmasked."""
+            True on success; False makes the caller draw it as with no mask."""
             if _SS_Mesh2 is None or _SS_PC_LAYOUT is None:
                 return False
             try:
-                cov_render, cw, ch = cov
+                cov_render, cw, ch, mask_meta = cov
                 cr = self._tex0_render(mp.texture_hash, st, at, width, height)
                 if cr is None:
                     return False
@@ -2189,7 +2792,7 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     [mp], ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2202,17 +2805,21 @@ init -10 python:
                 if _SS_TEXTURE_WRAP is not None:
                     rv.add_property("texture_wrap_tex0", _SS_TEXTURE_WRAP)
                 rv.mesh = mesh
-                rv.add_shader("ss.partcolor_mask")
                 fm = ap.frame_mask
+                if fm.count > mask.TILE_WRITERS:
+                    rv.add_shader("ss.partcolor_mask_tiled")
+                    rv.add_uniform("u_mask_tiles", tuple(float(t) for t in fm.tiles))
+                else:
+                    rv.add_shader("ss.partcolor_mask")
                 bx, by = fm.bmin
                 bw, bh = fm.bsize
                 rv.add_uniform("u_mask_origin", (ox + bx, oy + by))
                 rv.add_uniform("u_mask_size", (bw, bh))
                 rv.add_uniform("u_cov_size", (float(cw), float(ch)))
                 rv.add_uniform("u_mask_count", len(fm.meta))
-                rv.add_uniform("u_mask_rank", float(ap.rank))
+                rv.add_uniform("u_mask_seq", float(ap.seq))
                 rv.add_uniform("u_mask_inside", 1.0 if ap.visible_inside else 0.0)
-                rv.add_uniform("u_mask_meta", self._mask_meta_uniform(fm))
+                rv.add_uniform("u_mask_meta", mask_meta)
                 self._apply_blend(rv, mp)
                 r.blit(rv, (0, 0))
                 return True
@@ -2229,8 +2836,8 @@ init -10 python:
             Same per-vertex mesh as :meth:`_draw_mesh_masked` (a_tex_coord +
             a_ss_color + a_ss_varg, so gradients / Shape fills keep their true
             colour), but binds ``shader`` (e.g. ``ss.user_sepia``) with the effect
-            uniforms instead of the coverage replay: ``u_texel`` (= 1/atlas px,
-            Godot's TEXTURE_PIXEL_SIZE), ``u_ss_param`` (param0..3), and — for the
+            uniforms instead of the coverage replay: ``u_texel`` (= 1/atlas px),
+            ``u_ss_param`` (param0..3), and — for the
             cell-rect shaders (circle / spot) — ``u_cell_rect`` (the part's atlas
             cell in UV, from ``src_rect``). Returns True on success; False makes
             the caller draw the part plainly (effect skipped, never blanks)."""
@@ -2244,7 +2851,7 @@ init -10 python:
                 if tw <= 0 or th <= 0:
                     return False
 
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     [mp], ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2266,7 +2873,7 @@ init -10 python:
                     params[3] if len(params) > 3 else 0.0))
                 # Bind the optional uniforms only for variants that use them (an
                 # unused one is pruned from the compiled program — see
-                # _SS_USER_NEEDS_*). u_texel = 1/atlas px (Godot TEXTURE_PIXEL_SIZE);
+                # _SS_USER_NEEDS_*). u_texel = 1/atlas px;
                 # neighbour-sampling variants step by it in UV space.
                 if shader in _SS_USER_NEEDS_TEXEL:
                     rv.add_uniform("u_texel", (1.0 / tw, 1.0 / th))
@@ -2303,7 +2910,7 @@ init -10 python:
                 tw, th = cr.get_size()
                 if tw <= 0 or th <= 0:
                     return False
-                geometry, attributes, indices, nverts = _ss_pack_pc_mesh(
+                geometry, attributes, indices, nverts = framedata.pack_pc_mesh(
                     parts, ox, oy, tw, th)
                 mesh = _SS_Mesh2(_SS_PC_LAYOUT, nverts, len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2337,7 +2944,9 @@ init -10 python:
                                 "effect cellmap hash %d unresolved" % eb.cellmap_hash)
                 return
             try:
-                cr = renpy.render(self._base_image(tex), width, height, st, at)
+                cr = self._atlas_render(tex, st, at, width, height)
+                if cr is None:
+                    return       # tiled atlas (warned): particles are mesh-only
                 blend_prop = _ss_effect_blend_property(eb.blend)
                 if (_SS_FX_LAYOUT is not None and SS_BATCH_DRAW
                         and self._draw_fx_batched(r, eb, cr, ox, oy, width,
@@ -2352,17 +2961,7 @@ init -10 python:
         def _draw_fx_batched(self, r, eb, cr, ox, oy, width, height, blend_prop):
             """All particles of ``eb`` in one Mesh2 (per-vertex colour)."""
             try:
-                geometry = []
-                attributes = []
-                indices = []
-                for idx in range(len(eb.positions)):
-                    x, y = eb.positions[idx]
-                    geometry += [ox + x, oy + y]
-                    u, v = eb.uvs[idx]
-                    c = eb.colors[idx]
-                    attributes += [u, v, c[0], c[1], c[2], c[3]]
-                for (i, j, k) in eb.triangles:
-                    indices += [i, j, k]
+                geometry, attributes, indices = effectplan.pack_fx_mesh(eb, ox, oy)
                 mesh = _SS_Mesh2(_SS_FX_LAYOUT, len(eb.positions),
                                  len(indices) // 3)
                 mesh.set_geometry_data(geometry)
@@ -2388,23 +2987,33 @@ init -10 python:
                                   blend_prop):
             """Fallback: one uniform-colour quad per particle (proven layout)."""
             tris = eb.triangles
-            for q in range(len(eb.positions) // 4):
+            positions = eb.positions
+            uvs = eb.uvs
+            colors = eb.colors
+            for q in range(len(positions) // 4):
                 base = q * 4
                 quad_tris = tris[2 * q:2 * q + 2]
                 if len(quad_tris) < 2:
                     break
-                col = eb.colors[base]
+                col = colors[base]
                 indices = []
+                i_app = indices.append
                 for (i, j, k) in quad_tris:
-                    indices += [i - base, j - base, k - base]
+                    i_app(i - base)
+                    i_app(j - base)
+                    i_app(k - base)
                 mesh = _SS_Mesh2(_SS_TEXTURE_LAYOUT, 4, 2)
                 geometry = []
-                for (x, y) in eb.positions[base:base + 4]:
-                    geometry += [ox + x, oy + y]
+                g_app = geometry.append
+                for (x, y) in positions[base:base + 4]:
+                    g_app(ox + x)
+                    g_app(oy + y)
                 mesh.set_geometry_data(geometry)
                 attributes = []
-                for (u, v) in eb.uvs[base:base + 4]:
-                    attributes += [u, v]
+                a_app = attributes.append
+                for (u, v) in uvs[base:base + 4]:
+                    a_app(u)
+                    a_app(v)
                 mesh.set_attribute_data(attributes)
                 mesh.set_triangle_data(indices)
                 rv = renpy.Render(width, height)
@@ -2420,10 +3029,18 @@ init -10 python:
                 r.blit(rv, (0, 0))
 
         def visit(self):
-            # Disabled: Eagerly predicting unused textures causes mid-animation
-            # stutters when the background thread finishes decoding massive PNGs
-            # and stalls the main thread to upload them to the GPU.
-            return []
+            # Our own ATLASES are deliberately absent: predicting every atlas up
+            # front stalls mid-animation when the background decode finishes and
+            # the main thread uploads massive PNGs. They are prewarmed a few per
+            # frame by _prewarm_textures() instead.
+            #
+            # Attachment children ARE reported. They are ordinary displayables
+            # the game handed us, not pack textures, so they take the normal
+            # Ren'Py path: without this the predictor never loads them and the
+            # first frame one is drawn stalls on decode+upload — the very hitch
+            # _prewarm_textures exists to avoid — and Ren'Py could not manage
+            # their lifecycle either.
+            return [_r["child"] for _r in self._attachments]
 
         # -- hide / destroy: stop this player's audio -----------------------
         def _handles_event(self, event):
@@ -2444,32 +3061,61 @@ init -10 python:
 
         # -- playback / control / query API --------------------------------
         # A small ss_-prefixed, Ren'Py-idiomatic surface that delegates to the
-        # engine-independent core. set_animation/play are split (docs/06 §4):
-        # set_animation loads+poses; ss_play starts.
+        # engine-independent core. load/set_animation/play are split:
+        # building the core loads the pack and
+        # everything it implies (textures, Instance/Effect rigs), set_animation
+        # switches+poses, ss_play starts.
         def ss_set_animation(self, name):
-            """Load + pose animation ``name`` (does NOT start playback).
+            """Switch + pose animation ``name`` (does NOT start playback).
 
-            Front-loads the heavy work — native setup, texture acquisition, and
-            Instance child-context allocation — so a later :meth:`ss_play` starts
-            instantly (docs/06 §4 setAnimation/play split).
+            Cheap enough to call on the hot path: the pack's textures and
+            Instance child contexts were acquired when the core was built, so
+            this is native setup for the new animation and nothing more.
             """
             if self._core is None:
-                if name:
-                    self.animation = name      # build straight into `name`
+                # First build: _ensure() arms the constructor's animation via
+                # _start_initial(); fall through so `name` is applied on top
+                # (the pack's resources are already loaded by then, so the extra
+                # set_animation is just the switch).
                 self._ensure()
-                return True
-            if not name or name == self._core.animation:
+            if not name or name == self._core.current_animation:
                 return True
             if not self._core.set_animation(name):
                 self._warn_once(("anim", name),
-                                "setup_animation(%r) failed" % name)
+                                "%s has no animation %r (it has: %s)"
+                                % (self.ssab, name,
+                                   ", ".join(self._core.animation_names())))
                 return False
-            self.animation = self._core.animation
+            self._loop_after_switch()
+            # setup_animation dropped the Brain's visibility + non-Permanent
+            # overrides and the section; keep our restore record in step with it.
+            self._prune_overrides_for_new_animation()
+            self._section = None
+            self._finished = False
+            self.animation = self._core.current_animation
+            self._record_playback(self._core)
             renpy.redraw(self, 0)
             return True
 
-        def ss_get_animation(self):
-            return self._core.animation if self._core else self.animation
+        def _loop_after_switch(self):
+            """Put the game's loop count on the animation track 0 was just
+            switched to, which the Brain starts looping forever.
+
+            The count is the game's setting (ss_set_loop_count, or the
+            constructor's `loop`), so it outlasts the switch, as the speed and
+            the direction do. An explicit switch also overrides a pending
+            sequence: the queue is dropped, or a leftover chain (e.g. from a
+            sequence constructor whose first clip _ensure just armed) would
+            resume after the new animation finishes -- and the 1 the sequence
+            ran its clips at is not the game's count, so that goes back to the
+            constructor's."""
+            if self._anim_queue:
+                self._anim_queue = []
+                self.loop = self._initial_loop
+            self._core.set_loop_count(self.loop)
+
+        def ss_get_current_animation(self):
+            return self._core.current_animation if self._core else self.animation
 
         def ss_animation_names(self):
             self._ensure()
@@ -2479,43 +3125,63 @@ init -10 python:
             """Start playback (optionally switching animation / loop first).
 
             ``start_frame >= 0`` begins at that frame; otherwise resumes from the
-            section start. Re-arms Instance/Effect slots so they re-fire."""
+            section start. Re-arms Instance/Effect slots so they re-fire.
+
+            False, leaving what plays as it is, for an ``animation`` the pack
+            lacks; True otherwise."""
             self._ensure()
-            if animation:
-                self.ss_set_animation(animation)
+            if animation and not self.ss_set_animation(animation):
+                return False
             if loop is not None:
                 self.loop = loop
-                self._core.set_loop(loop)
+                self._core.set_loop_count(loop)
             if start_frame is not None and start_frame >= 0:
                 self._core.play(start_frame=start_frame)
             else:
                 self._core.play()
-            self.animation = self._core.animation
-            self._call_cb(self.on_started)
+            self.animation = self._core.current_animation
+            self._record_playback(self._core)
+            self._call_cb(self.on_animation_started)
             renpy.redraw(self, 0)
+            return True
 
+        # These act on the playback itself, so like ss_play they build the core
+        # first: a player not drawn yet (or since a load) has none, and the
+        # call would otherwise be lost. Each records what it did, for a save
+        # that comes before the next draw.
         def ss_pause(self):
-            if self._core:
-                self._core.pause()
+            """Hold the playhead where it stands. `ss_resume()` lifts the hold;
+            `ss_play()` would head out from the section start instead."""
+            self._ensure()
+            self._core.pause()
+            self._record_playback(self._core)
 
         def ss_resume(self):
-            if self._core:
-                self._core.resume()
-                renpy.redraw(self, 0)
+            """Lift an `ss_pause()`: playback carries on from where it was held."""
+            self._ensure()
+            self._core.resume()
+            self._record_playback(self._core)
+            renpy.redraw(self, 0)
 
         def ss_stop(self):
-            if self._core:
-                self._core.stop()
-                # stop() may jump the head (e.g. back to the start frame); re-arm
-                # so the change is shown even if the loop had gone quiescent.
-                renpy.redraw(self, 0)
-            # Stopping the player also silences the audio it triggered (the sound
-            # is on independent channels, so it would otherwise keep playing).
-            self._stop_audio()
+            """Stop where the playhead stands. It does not rewind (`ss_play()`
+            does), and it is not a completion: `ss_is_finished()` stays False."""
+            self._ensure()
+            self._core.stop()
+            self._record_playback(self._core)
+            # stop() does not rewind -- the head stays where it stands -- but
+            # the stopped frame still has to reach the screen, so re-arm in
+            # case the loop had gone quiescent.
+            renpy.redraw(self, 0)
+            # The sound it started is deliberately left alone: what has begun
+            # sounding outlives the playback that triggered it, and SpriteStudio
+            # has no infinite loop, so it ends on its own. `ss_stop_audio()` is
+            # there for when you do want silence.
 
         def ss_stop_audio(self, fadeout=0.0):
-            """Stop SS audio this player is currently sounding (docs/11 §4). Called
-            automatically on hide / scene change and ss_stop(); call it directly to
+            """Stop SS audio this player is currently sounding.
+            Called automatically on hide / scene
+            change; `ss_stop()` deliberately does not, so call this directly to
             cut the sound early or with a `fadeout` (seconds)."""
             self._stop_audio(fadeout=fadeout)
 
@@ -2525,13 +3191,37 @@ init -10 python:
         def ss_is_pausing(self):
             return bool(self._core and self._core.is_pausing())
 
-        def ss_get_frame(self):
+        def ss_is_finished(self):
+            """Whether every configured loop has played.
+
+            A **state**, not a pulse: it latches on completion and stays True
+            until the next `ss_play()` / `ss_set_animation()`. The rising edge
+            is the `on_animation_finished` callback; this is the same thing
+            asked about afterwards, for a screen or an interaction that missed
+            the tick it fired on.
+
+            Not `not ss_is_playing()`: a commanded `ss_stop()` also stops
+            playing but is **not** a completion, so only this one tells "the run
+            ended on its own" from "something stopped it". Never True under an
+            infinite loop count. A save keeps it: a player that had finished
+            reads True after a load.
+
+            It follows the **sequence**, not each clip in it: chaining to the
+            next animation re-arms the Brain's flag, so this reads True once the
+            sequence is spent — the same moment `on_animation_finished` fires.
+            """
+            return self._finished or bool(self._core and self._core.is_finished())
+
+        def ss_get_frame_no(self):
             return self._core.frame_no if self._core else 0.0
 
-        def ss_set_frame(self, frame):
-            if self._core:
-                self._core.set_frame(frame)
-                renpy.redraw(self, 0)
+        def ss_set_frame_no(self, frame):
+            """Move the playhead to ``frame``. A seek lands on the frame without
+            crossing its keys, so its audio keys do not sound."""
+            self._ensure()
+            self._core.set_frame_no(frame)
+            self._record_playback(self._core)
+            renpy.redraw(self, 0)
 
         def ss_total_frames(self):
             return self._core.total_frames if self._core else 0
@@ -2542,69 +3232,989 @@ init -10 python:
         def ss_end_frame(self):
             return self._core.end_frame if self._core else 0
 
-        def ss_set_speed(self, speed):
+        def ss_set_speed_scale(self, speed):
+            """Scale playback by ``speed``, a multiple of the frame rate.
+
+            `0` and negatives are a **stop**, not reverse playback — reverse is
+            `ss_set_playback_direction(1)`. `self.speed` keeps what was asked
+            for because Ren'Py drops the native core on pickling and it has to
+            be replayed onto the rebuilt one.
+            """
             self.speed = speed
             if self._core:
-                self._core.set_speed(speed)
+                self._core.set_speed_scale(speed)
 
-        def ss_get_speed(self):
-            return self.speed
+        def ss_get_speed_scale(self):
+            """The speed in effect — read from the core, not from the request.
 
-        def ss_set_loop(self, count):
+            The two part company the moment `0` or a negative is passed, since
+            the Brain clamps those to a stop: `ss_set_speed_scale(-1)` then reads back
+            `0.0`, so a caller can tell that its negative became a stop rather
+            than the reverse playback it may have been hoping for. Falls back to
+            the requested value only before the core exists (or after a save
+            dropped it).
+            """
+            return self._core.speed_scale if self._core else self.speed
+
+        def ss_set_loop_count(self, count):
+            # Builds the core first, like the calls above: before it, the
+            # count would miss the animation the constructor starts.
+            self._ensure()
             self.loop = count
-            if self._core:
-                self._core.set_loop(count)
+            self._core.set_loop_count(count)
+            self._record_playback(self._core)
 
-        def ss_get_loop(self):
+        def ss_get_loop_count(self):
             return self.loop
 
-        def ss_set_section(self, start, end):
-            if self._core:
-                self._core.set_section(start, end)
-                renpy.redraw(self, 0)
+        def ss_set_animation_section(self, start, end):
+            """Play only frames ``start``..``end`` of the current animation.
+
+            Both ends are included, and an end outside the animation (``-1``)
+            is its edge on that side. An end before the start, both inside
+            the animation, is refused: this returns False, logs it once per
+            pair, and leaves the section and the playhead as they were.
+
+            It belongs to that animation: the next animation change (an
+            ss_set_animation, a sequence moving on, a crossfade on track 0)
+            plays the whole of the new one. Kept on the displayable too, so a
+            load puts it back."""
+            self._ensure()
+            return self._set_section(
+                start, end, ("section", int(start), int(end)),
+                "set_animation_section(%r, %r) failed" % (start, end))
+
+        def ss_set_animation_section_by_label(self, start_label, end_label,
+                                              start_offset=0, end_offset=0):
+            """`ss_set_animation_section` with the ends named by labels of the
+            current animation: from ``start_label``'s frame plus
+            ``start_offset`` to ``end_label``'s frame plus ``end_offset``.
+            ``"_start"`` and ``"_end"`` are the animation's own first and last
+            frame, unless it has a label of that name.
+
+            A label the animation lacks, or frames the section is refused on,
+            return False, log it once, and leave the section and the playhead
+            as they were."""
+            self._ensure()
+            section = self._core.label_section(start_label, end_label,
+                                               start_offset, end_offset)
+            if section is None:
+                anim = self._core.current_animation
+                table = self._core.label_table()
+                missing = [l for l in dict.fromkeys((start_label, end_label))
+                           if table is None or table.frame_of(l) is None]
+                self._warn_once(
+                    ("label", anim) + tuple(missing),
+                    "set_animation_section_by_label(%r, %r) failed: animation "
+                    "%r has no label %s" % (start_label, end_label, anim,
+                                            " or ".join(repr(l) for l in missing)))
+                return False
+            return self._set_section(
+                section[0], section[1],
+                ("label_section", start_label, end_label) + section,
+                "set_animation_section_by_label(%r, %r) failed: frames %d..%d"
+                % ((start_label, end_label) + section))
+
+        def _set_section(self, start, end, warn_key, warn_msg):
+            if not self._core.set_animation_section(start, end):
+                self._warn_once(warn_key, warn_msg)
+                return False
+            self._section = (int(start), int(end))
+            self._record_playback(self._core)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_label_table(self, animation=None):
+            """The labels of ``animation`` -- the current one when omitted --
+            in frame order: ``.labels`` (each with ``.name`` and ``.frame``),
+            and the animation's own ``.start_frame`` / ``.end_frame``. None for
+            an animation the pack lacks. Read out of the pack on every call."""
+            self._ensure()
+            return self._core.label_table(animation)
+
+        def _apply_playback_modes(self):
+            """Push the recorded direction / ping-pong style onto the core.
+
+            For the rebuilt core only. A `setup_animation` carries the modes
+            itself, so an animation switch needs nothing -- but
+            pickling drops the native core entirely and the replacement starts
+            from the runtime defaults, which no amount of retention reaches.
+            """
+            if not self._core:
+                return
+            if self._playback_direction or self._playback_style:
+                self._core.set_playback_direction(self._playback_direction,
+                                                  self._playback_style)
 
         def ss_set_playback_direction(self, direction, style=0):
             """``direction``: 0=forward, 1=reverse; ``style``: 0=normal, 1=ping-pong."""
+            # Kept on the displayable too: Ren'Py drops the native core on
+            # pickling (save / rollback / re-show) and rebuilds it with the
+            # runtime defaults, so without this record a reverse or ping-pong
+            # sprite would quietly revert to forward on the next load.
+            self._playback_direction = int(direction)
+            self._playback_style = int(style)
             if self._core:
                 self._core.set_playback_direction(direction, style)
 
+        def ss_get_playback_direction(self):
+            """The configured direction (0=forward, 1=reverse) — the setting, not
+            the instantaneous heading: on a ping-pong return leg this still
+            reads forward."""
+            return (self._core.playback_direction if self._core
+                    else self._playback_direction)
+
+        def ss_get_playback_style(self):
+            """The configured style (0=normal, 1=ping-pong)."""
+            return (self._core.playback_style if self._core
+                    else self._playback_style)
+
+        def ss_set_frame_skip_enabled(self, enabled):
+            """Toggle frame skipping (default on).
+
+            On, playback follows the clock: after a stall (a slow frame, a
+            re-shown window) it catches up by skipping ahead, so a 2-second
+            animation always takes 2 seconds. Off, the head advances exactly one
+            frame per rendered frame — nothing is skipped, and a stall stretches
+            the animation instead. Turn it off when every frame must be seen
+            (a short effect, a frame-counted cutscene); leave it on when timing
+            matters more (a sprite synced to dialogue or audio)."""
+            self._frame_skip = bool(enabled)
+            if self._core:
+                self._core.set_frame_skip_enabled(self._frame_skip)
+
+        def ss_is_frame_skip_enabled(self):
+            return self._core.frame_skip_enabled if self._core else self._frame_skip
+
         def ss_set_frame_rate(self, fps):
+            """Play at ``fps`` whatever the animation's own rate; 0 clears it.
+
+            Recorded like the speed, since Ren'Py drops the native core on
+            pickling and the rebuilt one starts without it."""
+            self._frame_rate = fps
             if self._core:
                 self._core.set_frame_rate(fps)
 
         def ss_get_frame_rate(self):
-            return self._core.fps if self._core else 0
+            return self._core.frame_rate if self._core else 0
 
         def ss_set_sub_frame_enabled(self, enabled):
             """Toggle sub-frame interpolation (default on)."""
             self._sub_frame = bool(enabled)
             if self._core:
-                self._core.set_sub_frame(enabled)
+                self._core.set_sub_frame_enabled(enabled)
             renpy.redraw(self, 0)
 
         def ss_is_sub_frame_enabled(self):
             return self._sub_frame
 
+        # -- animation mixing (the track stack) ----------------------------
+        # Layer and cross-fade the animations of this pack on one player.
+        # Track 0 is the animation ss_set_animation sets up; a track above it
+        # layers onto the pose below, with an alpha and a blend. Durations are
+        # in seconds, like the rest of Ren'Py. A setter returns False when the
+        # runtime refuses it; a read returns None where there is nothing to
+        # read. See ss_renpy.player.SSInternalPlayer for each call.
+        #
+        # ss_set_animation folds the stack back to track 0 alone. Neither is
+        # the stack saved: a load or a rebuilt player comes back with track 0's
+        # animation and frame only.
+        def _mixer(self):
+            self._ensure()
+            return self._core
+
+        def _track_zero_switched(self):
+            """Track 0 now plays the animation a crossfade or a track animation
+            laid there, as after ss_set_animation (see _loop_after_switch). No
+            on_animation_started -- the incoming animation carries on playing,
+            it is not started -- and the overrides stay, since only setup drops
+            them. The section does not: it starts over with the incoming
+            animation."""
+            self._loop_after_switch()
+            self._section = None
+            self._finished = False
+            self.animation = self._core.current_animation
+
+        def _why(self):
+            """The Brain's reason for the call that just failed, for a log line."""
+            reason = self._core.last_error_message()
+            return ": " + reason if reason else ""
+
+        def _mix_drawn(self, ok):
+            # Every track setter ends here, and several move what a save keeps:
+            # a switch on track 0, or a seek of track 0 or of a source on it.
+            if ok:
+                self._record_playback(self._core)
+                renpy.redraw(self, 0)
+            return ok
+
+        def ss_set_track_animation(self, track, name):
+            """Lay ``name`` on ``track`` without a fade. On track 0 it becomes
+            the current animation, as with ss_set_animation, but the other
+            tracks and the play state stay as they are."""
+            core = self._mixer()
+            if not core.set_track_animation(track, name):
+                self._warn_once(("track-anim", track, name),
+                                "set_track_animation(%r, %r) failed" % (track, name))
+                return False
+            if _ss_is_track_zero(track):
+                self._track_zero_switched()
+            return self._mix_drawn(True)
+
+        def ss_crossfade(self, track, name, duration):
+            """Fade ``track`` over to ``name`` in ``duration`` seconds.
+
+            On track 0 the incoming animation is the current one from this call
+            on: ss_get_current_animation names it, ss_is_finished and the
+            callbacks describe it, and ss_set_animation of the outgoing one
+            switches back. Its events fire from the first frame of the fade,
+            and the outgoing side's fall silent then, unless
+            ss_set_track_outgoing_event_threshold lets them run on."""
+            core = self._mixer()
+            if not core.crossfade(track, name, float(duration) * 1000.0):
+                self._warn_once(("crossfade", track, name),
+                                "crossfade(%r, %r, %r) failed%s"
+                                % (track, name, duration, self._why()))
+                return False
+            if _ss_is_track_zero(track):
+                self._track_zero_switched()
+            return self._mix_drawn(True)
+
+        def ss_track_count(self):
+            return self._core.track_count() if self._core else 0
+
+        def ss_clear_track(self, track):
+            return self._mix_drawn(self._mixer().clear_track(track))
+
+        def ss_set_track_alpha(self, track, alpha):
+            return self._mix_drawn(self._mixer().set_track_alpha(track, alpha))
+
+        def ss_get_track_alpha(self, track):
+            return self._core.track_alpha(track) if self._core else None
+
+        def ss_set_track_blend(self, track, blend):
+            """``blend``: 0 = mix, 1 = additive (``ssruntime.TRACK_BLEND_*``)."""
+            return self._mix_drawn(self._mixer().set_track_blend(track, blend))
+
+        def ss_get_track_blend(self, track):
+            return self._core.track_blend(track) if self._core else None
+
+        def ss_set_track_sync(self, track, sync):
+            """``sync``: 0 = from the top, 1 = at track 0's phase
+            (``ssruntime.TRACK_SYNC_*``). Set it before laying the animation."""
+            return self._mixer().set_track_sync(track, sync)
+
+        def ss_get_track_sync(self, track):
+            return self._core.track_sync(track) if self._core else None
+
+        def ss_set_track_frame(self, track, frame):
+            return self._mix_drawn(self._mixer().set_track_frame(track, frame))
+
+        def ss_get_track_frame(self, track):
+            return self._core.track_frame(track) if self._core else None
+
+        # A track's playback settings reach every animation on it, and outlast
+        # it. Track 0's are the player's own (ss_set_speed_scale, ...), so they
+        # go through those setters, which keep the copy a rebuilt core is
+        # given back.
+        def ss_set_track_speed(self, track, speed):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_speed_scale(speed)
+                return True
+            return self._mix_drawn(core.set_track_speed(track, speed))
+
+        def ss_get_track_speed(self, track):
+            return self._core.track_speed(track) if self._core else None
+
+        def ss_set_track_frame_rate(self, track, fps):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_frame_rate(fps)
+                return True
+            return core.set_track_frame_rate(track, fps)
+
+        def ss_get_track_frame_rate(self, track):
+            return self._core.track_frame_rate(track) if self._core else None
+
+        def ss_set_track_frame_skip_enabled(self, track, enabled):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_frame_skip_enabled(enabled)
+                return True
+            return core.set_track_frame_skip_enabled(track, enabled)
+
+        def ss_is_track_frame_skip_enabled(self, track):
+            return (self._core.track_frame_skip_enabled(track)
+                    if self._core else None)
+
+        def ss_set_track_playback_direction(self, track, direction, style=0):
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_playback_direction(direction, style)
+                return True
+            return core.set_track_playback_direction(track, direction, style)
+
+        def ss_get_track_playback_direction(self, track):
+            return (self._core.track_playback_direction(track)
+                    if self._core else None)
+
+        def ss_get_track_playback_style(self, track):
+            return (self._core.track_playback_style(track)
+                    if self._core else None)
+
+        def ss_set_track_loop_count(self, track, count):
+            """The loop count of the animation on ``track``. Laying another
+            animation there starts it looping forever again, so set it after.
+            Track 0's is ss_set_loop_count."""
+            core = self._mixer()
+            if _ss_is_track_zero(track):
+                self.ss_set_loop_count(count)
+                return True
+            return self._mix_drawn(core.set_track_loop_count(track, count))
+
+        def ss_get_track_loop_count(self, track):
+            return self._core.track_loop_count(track) if self._core else None
+
+        def ss_is_track_finished(self, track):
+            """Whether the track's animation has played its loops (a state).
+            A finished track holds its last frame and stays mixed in until it
+            is faded or cleared."""
+            return bool(self._core and self._core.is_track_finished(track))
+
+        def ss_track_just_looped(self, track):
+            """Whether the last update wrapped the track's animation (a pulse,
+            as ss_just_looped is for track 0)."""
+            return bool(self._core and self._core.track_just_looped(track))
+
+        def ss_set_track_outgoing_event_threshold(self, track, threshold):
+            """Let the outgoing side of a crossfade on ``track`` fire events
+            while its share, ``1 - t``, is at least ``threshold``. By default it
+            falls silent as the fade begins; ``0.5`` keeps the first half."""
+            return self._mixer().set_track_outgoing_event_threshold(
+                track, threshold)
+
+        def ss_get_track_outgoing_event_threshold(self, track):
+            return (self._core.track_outgoing_event_threshold(track)
+                    if self._core else None)
+
+        def ss_fade_track(self, track, alpha, duration):
+            """Fade the track's alpha to ``alpha`` in ``duration`` seconds."""
+            core = self._mixer()
+            if not core.fade_track(track, alpha, float(duration) * 1000.0):
+                self._warn_once(("fade-track", track),
+                                "fade_track(%r, %r, %r) failed%s"
+                                % (track, alpha, duration, self._why()))
+                return False
+            return self._mix_drawn(True)
+
+        def ss_track_fade_progress(self, track):
+            return self._core.track_fade_progress(track) if self._core else None
+
+        def ss_cancel_track_fade(self, track):
+            return self._mix_drawn(self._mixer().cancel_track_fade(track))
+
+        def ss_track_main_source(self, track):
+            return self._core.track_main_source(track) if self._core else None
+
+        def ss_add_track_source(self, track, name, weight=1.0):
+            """Add ``name`` to ``track`` as another weighted source; returns
+            its handle, or None."""
+            handle = self._mixer().add_track_source(track, name, weight)
+            self._mix_drawn(handle is not None)
+            return handle
+
+        def ss_set_source_weight(self, source, weight):
+            return self._mix_drawn(self._mixer().set_source_weight(source, weight))
+
+        def ss_get_source_weight(self, source):
+            return self._core.source_weight(source) if self._core else None
+
+        def ss_set_source_frame(self, source, frame):
+            return self._mix_drawn(self._mixer().set_source_frame(source, frame))
+
+        def ss_get_source_frame(self, source):
+            return self._core.source_frame(source) if self._core else None
+
+        def ss_set_source_event_threshold(self, source, threshold):
+            return self._mixer().set_source_event_threshold(source, threshold)
+
+        def ss_get_source_event_threshold(self, source):
+            return (self._core.source_event_threshold(source)
+                    if self._core else None)
+
         # -- part query ----------------------------------------------------
+        def ss_just_looped(self):
+            """Whether the last update crossed a loop boundary.
+
+            A **pulse**, not a state: the runtime clears it at the top of every
+            update, so it only reads True inside the tick that crossed — which
+            is why it is not ``ss_is_looped``, and why reading it a tick late
+            reads False.
+            """
+            self._ensure()
+            return self._core.just_looped()
+
+        def ss_is_playing_forward(self):
+            """Which way the playhead is *actually* travelling this frame.
+
+            Not ``ss_get_playback_direction``, which reports the heading that
+            was configured: on a ping-pong return leg that still reads forward
+            while this reads False. Gate audio on this one — SpriteStudio has no
+            reverse audio, so a sound key crossed on a backward leg is not meant
+            to sound, and it is the test this player applies itself.
+            """
+            self._ensure()
+            return self._core.is_playing_forward()
+
         def ss_part_names(self):
             self._ensure()
             return self._core.part_names()
 
-        def ss_part_index(self, name):
+        def ss_find_part_index(self, name):
+            """The index of the part ``name``, or -1 when the pack has none."""
             self._ensure()
-            return self._core.part_index(name)
+            return self._core.find_part_index(name)
 
         def ss_part_transform(self, name):
             """Player-local transform of a part on the last rendered frame, or
-            ``None``: a dict with x/y (px), rotation (deg), xscale/yscale."""
+            ``None``: a dict with x/y (px), rotation (deg), xscale/yscale. A
+            part's skew (shear) is not included — SpriteStudio does not
+            propagate skew to a part's children, and a follower behaves like
+            one."""
             return self._core.part_transform(name) if self._core else None
 
         def ss_is_part_hidden(self, name):
-            """Whether ``name`` is hidden on the last rendered frame."""
-            return self._core.is_part_hidden(name) if self._core else True
+            """Whether ``name`` is hidden on the last rendered frame.
 
-    # Back-compat alias for the pre-rename class name (README / older scripts).
-    SpriteStudioDisplayable = SSPlayer
+            False for an unknown part, and False before anything has been
+            rendered — "not hidden". Ask `ss_find_part_index()` (-1) whether the
+            part exists at all.
+            """
+            return self._core.is_part_hidden(name) if self._core else False
+
+        def ss_part_quad(self, part):
+            """The outline ``part`` (a name or index) is drawn with on the last
+            rendered frame: four ``(x, y)`` corners -- top left, top right,
+            bottom left, bottom right of the part's own art -- in the space
+            `ss_part_transform` reports. None for an unknown or hidden part,
+            one that draws nothing of its own (Null, bone, Instance, Effect),
+            and before anything has been rendered."""
+            return self._core.part_quad(part) if self._core else None
+
+        def ss_hit_test_part(self, x, y, parts=None):
+            """The index of the front-most part whose `ss_part_quad` outline
+            holds ``(x, y)`` on the last rendered frame, among ``parts`` (names
+            or indices; every part when omitted), or -1. The point is in the
+            space `ss_part_transform` reports; a name the pack lacks is
+            skipped."""
+            return self._core.hit_test_part(x, y, parts) if self._core else -1
+
+        def ss_is_part_skinned_mesh(self, name):
+            """Whether ``name`` is a bone-skinned mesh part.
+
+            Static pack metadata — unlike `ss_is_part_hidden` it holds before
+            anything is drawn (loading the pack if needed). A skinned mesh draws
+            from its bones while its own transform stays at the setup pose, so it
+            is a poor `ss_attach` target: the follower snaps to the node, not the
+            deformed art. Ask this to pick a follow target, or place a NULL part
+            at the spot in SpriteStudio and attach to that. False for an unknown
+            part, and for deform-only (rigid) meshes and non-mesh parts."""
+            self._ensure()
+            return self._core.is_part_skinned_mesh(name) if self._core else False
+
+        # -- part attachments ----------------------------------------------
+        # Pin a displayable to a part's live transform: every frame it is drawn
+        # at that part's position (and rotation; scale too when drive_scale),
+        # so an item follows the hand, an effect rides the head, a second SS
+        # animation links to a bone. The child is ANY Ren'Py displayable — an
+        # image name, "file.png", a Transform(...), even another SSPlayer — so
+        # the whole Ren'Py composition stack rides along. There is no scene tree
+        # to push to, so the child is composited INTO this player's render at the
+        # part. Children draw in front of the sprite (no z insertion between
+        # parts). Several may ride one part.
+        #
+        #     $ ringo.ss_attach("hand_R", "sword.png")
+        #     $ ringo.ss_attach("head", Transform("aura", zoom=1.2), on_hide="hide")
+        #     $ ringo.ss_attach("hand_R", "sword.png", anchor=(0.5, 1.0))  # grip
+        #     $ ringo.ss_detach(part="hand_R")
+        #
+        # anchor=(ax, ay) is the child point (as a 0..1 fraction of its size)
+        # pinned to the part and used as the rotation/scale pivot: (0.5, 0.5)
+        # centres it (default), (0.5, 1.0) puts the child's BOTTOM edge on the
+        # part (a held item's grip), (0.5, 0.0) the top edge.
+        #
+        # Overrides live on the Brain; attachments are pure host policy (like
+        # sequence chaining), so they are plain data that pickles straight into
+        # the save — no _reapply step needed.
+        def _init_attachments(self, attachments):
+            """Normalise the constructor's ``attachments`` into the record list.
+
+            Accepts the ergonomic ``{part_name: child}`` dict or a list of
+            records (what _duplicate passes back). Child references go through
+            ``renpy.displayable`` so an image name / "file.png" / a displayable
+            all work. Returns a fresh list (never aliased to the source)."""
+            out = []
+            if not attachments:
+                return out
+            src = attachments.items() if isinstance(attachments, dict) \
+                else [(r["part"], r) for r in attachments]
+            for part, val in src:
+                if isinstance(val, dict):          # a record (from _duplicate)
+                    out.append({"part": val["part"],
+                                "child": renpy.displayable(val["child"]),
+                                "drive_position": bool(val.get("drive_position", True)),
+                                "drive_rotation": bool(val.get("drive_rotation", True)),
+                                "drive_scale": bool(val.get("drive_scale", False)),
+                                "on_hide": val.get("on_hide", "follow"),
+                                "anchor": val.get("anchor", (0.5, 0.5)),
+                                "angle": val.get("angle", 0.0)})
+                else:                              # {part_name: child}
+                    out.append({"part": part,
+                                "child": renpy.displayable(val),
+                                "drive_position": True, "drive_rotation": True,
+                                "drive_scale": False, "on_hide": "follow",
+                                "anchor": (0.5, 0.5), "angle": 0.0})
+            return out
+
+        def _invalidate_attachments(self):
+            """Drop the Transform cache: it is keyed by record index, so any
+            attach/detach shifts it. Cheap — it refills on the next render."""
+            self._xform_cache = {}
+            renpy.redraw(self, 0)
+
+        def ss_attach(self, part, child, drive_scale=False, on_hide="follow",
+                      anchor=(0.5, 0.5), angle=0.0,
+                      drive_position=True, drive_rotation=True):
+            """Pin ``child`` to ``part``; returns the normalised child.
+
+            ``part`` is a part name (need not exist yet — a child rides it once
+            the part appears). ``child`` is any displayable (image name,
+            "file.png", Transform(...), another SSPlayer).
+
+            ``drive_position`` and ``drive_rotation`` are on by default and
+            ``drive_scale`` is off: a follower is placed *at* the part rather
+            than *sized by* it. A disabled axis contributes its identity, so the
+            child keeps its own value for it.
+            ``on_hide``: "follow" keeps drawing while the part is hidden, "hide"
+            drops the child that frame. ``anchor=(ax, ay)`` is the child point
+            (0..1 fraction of its size) pinned to the part and used as the
+            rotation/scale pivot; default centres it, (0.5, 1.0) pins the bottom
+            edge (a grip). ``angle`` is a fixed rotation offset (degrees,
+            clockwise-positive) added on top of the part's rotation, to align
+            the child's rest orientation with the part's local axis (e.g. a
+            hand part carries the wrist angle, so a held item usually needs an
+            offset to lie along the fingers; -90 rotates it CCW)."""
+            child = renpy.displayable(child)
+            anchor = (float(anchor[0]), float(anchor[1]))
+            self._attachments.append({"part": part, "child": child,
+                                      "drive_position": bool(drive_position),
+                                      "drive_rotation": bool(drive_rotation),
+                                      "drive_scale": bool(drive_scale),
+                                      "on_hide": on_hide, "anchor": anchor,
+                                      "angle": float(angle)})
+            self._invalidate_attachments()
+            self._warn_if_skinned_target(part)
+            return child
+
+        def ss_detach(self, child=None, part=None):
+            """Remove attachments matching ``child`` and/or ``part``; returns the
+            count removed. Pass the child ss_attach returned (or the same
+            displayable). With neither given, removes nothing — use
+            ss_clear_attachments to drop them all."""
+            if child is None and part is None:
+                return 0
+            if child is not None:
+                child = renpy.displayable(child)
+            keep, removed = [], 0
+            for rec in self._attachments:
+                match_child = child is None or rec["child"] is child \
+                    or rec["child"] == child
+                match_part = part is None or rec["part"] == part
+                if match_child and match_part:
+                    removed += 1
+                else:
+                    keep.append(rec)
+            self._attachments = keep
+            if removed:
+                self._invalidate_attachments()
+            return removed
+
+        def ss_clear_attachments(self):
+            """Remove every attachment; returns the count removed."""
+            n = len(self._attachments)
+            self._attachments = []
+            if n:
+                self._invalidate_attachments()
+            return n
+
+        def ss_attachments(self):
+            """Current attachments as a list of ``(part_name, child)`` tuples."""
+            return [(r["part"], r["child"]) for r in self._attachments]
+
+        # -- part overrides ------------------------------------------------
+        # Per-part runtime overrides: "make this part this colour / cell /
+        # hidden NOW". The Brain applies them on the resolved pose, so an
+        # override wins over both the keyframe and any blend.
+        #
+        #     $ ringo.ss_set_part_color_override("apple", "#f00", blend_op=1)
+        #     $ ringo.ss_set_part_visibility_override("apple", True, cascade=True)
+        #     $ ringo.ss_clear_all_part_overrides()
+        #
+        # `part` is a part NAME or its index (ss_find_part_index). Colours take any
+        # Ren'Py colour form ("#f00", (255, 0, 0), Color(...)); they are read in
+        # the same 8-bit sRGB space as the authored PartColor and the Brain
+        # pre-multiplies alpha, so pass the colour as authored. Each method
+        # returns False when the part is unknown or the runtime rejects the call.
+        #
+        # Every setter asks for a redraw: an override changes the pose WITHOUT
+        # changing the frame number, so a paused (or quiescent) player would
+        # otherwise keep showing the previous frame until something else moved.
+        def _norm_color(self, color):
+            """Any Ren'Py colour form -> the packed 0xRRGGBBAA the core takes.
+
+            Accepts everything `Color()` does — "#f00", (255, 0, 0[, a]), a
+            Color — plus an already-packed 0xRRGGBBAA int."""
+            if isinstance(color, int):
+                return color & 0xFFFFFFFF
+            # Color() answers None for None and RAISES for anything else it
+            # cannot read (e.g. TypeError: not iterable). Either way the caller
+            # deserves to be told which value was wrong, not a bare traceback
+            # from inside Ren'Py's colour parser.
+            try:
+                c = renpy.color.Color(color)
+            except Exception:
+                c = None
+            if c is None:
+                raise ValueError(
+                    "ss: %r is not a colour — pass \"#rrggbb\", an "
+                    "(r, g, b[, a]) tuple, a Color, or a packed 0xRRGGBBAA int"
+                    % (color,))
+            r, g, b, a = c
+            return (r << 24) | (g << 16) | (b << 8) | a
+
+        def _record_override(self, part, kind, args):
+            """Remember a set/clear so it can be restored after Ren'Py drops and
+            rebuilds the native core (see _reapply_overrides). ``args=None``
+            forgets the entry. Keyed by the RESOLVED part index, so a name and
+            an index for the same part collapse to one record."""
+            i = self._core.resolve_part(part) if self._core else -1
+            if i < 0:
+                return
+            if args is None:
+                self._overrides.pop((i, kind), None)
+            else:
+                self._overrides[(i, kind)] = args
+
+        def _reapply_overrides(self):
+            """Re-apply the recorded overrides onto a freshly built core.
+
+            Ren'Py drops the native core on pickling (saves, rollback) and
+            rebuilds it lazily, which would silently lose every override the
+            game had set — so restoring them is host policy, the same tier that
+            re-applies the animation, loop and speed. The Brain still owns the
+            live table and its lifecycle; this only replays what the game asked
+            for. One-shot (OverwriteOnNextKeyframe) overrides are deliberately
+            never recorded: the Brain drops them when playback reaches the next
+            keyframe, and that handover is not observable from here, so
+            replaying one would resurrect an override that had already expired.
+            """
+            core = self._core
+            if core is None or not self._overrides:
+                return
+            for (i, kind), args in list(self._overrides.items()):
+                try:
+                    if kind == "visibility":
+                        core.set_part_visibility_override(i, args[0], args[1])
+                    elif kind == "color":
+                        color, blend_op, priority = args
+                        if isinstance(color, tuple):
+                            core.set_part_color_override_corners(
+                                i, color, blend_op, priority)
+                        else:
+                            core.set_part_color_override(
+                                i, color, blend_op, priority)
+                    elif kind == "cell":
+                        core.set_part_cell_override(i, args[0], args[1], args[2])
+                except Exception:
+                    # A record that no longer resolves (e.g. a cell removed by a
+                    # re-export) must not break the rebuild — drop it silently.
+                    self._overrides.pop((i, kind), None)
+
+        def _permanent_overrides(self):
+            """The subset of the override record that survives an animation
+            change: Permanent colour/cell entries.
+
+            Colour is ``(packed, blend_op, priority)`` and cell is
+            ``(cellmap, cell, priority)`` — priority last in both; visibility has
+            none and is always dropped."""
+            return {key: args
+                    for key, args in self._overrides.items()
+                    if key[1] != "visibility"
+                    and args[2] == ssruntime.PRIORITY_PERMANENT}
+
+        def _prune_overrides_for_new_animation(self):
+            """Mirror the Brain's own lifecycle on a CREATOR-initiated animation
+            change: visibility and non-Permanent colour/cell overrides are
+            dropped, Permanent ones survive.
+
+            Deliberately not called from _start_initial: that path also runs when
+            the core is merely rebuilt (save/load, re-show), and pruning there
+            would throw away the very records _reapply_overrides is restoring.
+            """
+            self._overrides = self._permanent_overrides()
+
+        def _override_refused(self, call, part):
+            """Say once that a per-part override was refused; False, for the
+            caller to return. A part the pack lacks never reaches the Brain."""
+            if self._core.resolve_part(part) < 0:
+                why = "%s has no such part" % self.ssab
+            else:
+                why = "the runtime refused the values given"
+            self._warn_once(("override", call, part),
+                            "%s(%r) failed: %s" % (call, part, why))
+            return False
+
+        def ss_set_part_visibility_override(self, part, hide=True, cascade=False):
+            """Force-hide ``part``, or revert it to the animation (``hide=False``).
+
+            ``cascade`` propagates the force-hide to the part's descendants.
+            Visibility takes no priority mode: it always wins, and any new
+            animation clears it."""
+            self._ensure()
+            if not self._core.set_part_visibility_override(part, hide, cascade):
+                return self._override_refused("ss_set_part_visibility_override", part)
+            # hide=False IS the revert (the runtime drops the entry), so record
+            # it as a clear rather than as an override worth restoring.
+            self._record_override(
+                part, "visibility",
+                (True, bool(cascade)) if hide else None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_visibility_override(self, part):
+            """Clear a part's visibility override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_visibility_override(part):
+                return self._override_refused("ss_clear_part_visibility_override", part)
+            self._record_override(part, "visibility", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_color_override(self, part, color, blend_op=0, priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
+            """Tint ``part`` with one colour (all four corners).
+
+            ``blend_op``: 0=Mix, 1=Mul, 2=Add, 3=Sub. ``priority``:
+            0=OverwriteOnNextKeyframe (one-shot), 1=HoldUntilNextAnimation
+            (default), 2=Permanent. Normal parts only — other part types
+            silently ignore it (the call still succeeds)."""
+            self._ensure()
+            packed = self._norm_color(color)
+            if not self._core.set_part_color_override(part, packed, blend_op,
+                                                      priority):
+                return self._override_refused("ss_set_part_color_override", part)
+            if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "color", (packed, blend_op, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_color_override_corners(self, part, corners, blend_op=0,
+                                               priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
+            """Like :meth:`ss_set_part_color_override` with four distinct corner
+            colours, given in ``left-top, right-top, left-bottom, right-bottom``
+            order."""
+            self._ensure()
+            cols = list(corners) if corners is not None else []
+            if len(cols) != 4:
+                self._warn_once(("override-corners", part),
+                                "ss_set_part_color_override_corners(%r) failed: it "
+                                "takes four colours, not %d" % (part, len(cols)))
+                return False
+            packed = tuple(self._norm_color(c) for c in cols)
+            if not self._core.set_part_color_override_corners(
+                    part, packed, blend_op, priority):
+                return self._override_refused("ss_set_part_color_override_corners", part)
+            if priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "color", (packed, blend_op, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_color_override(self, part):
+            """Clear a part's colour override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_color_override(part):
+                return self._override_refused("ss_clear_part_color_override", part)
+            self._record_override(part, "color", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_set_part_cell_override(self, part, cellmap_name, cell_name,
+                                      priority=ssruntime.PRIORITY_HOLD_UNTIL_NEXT_ANIMATION):
+            """Make ``part`` draw a different cell.
+
+            ``cellmap_name`` is written WITHOUT the ``.ssce`` extension; list the
+            valid targets with :meth:`ss_cellmap_names` / :meth:`ss_cell_names`.
+            The cell is resolved immediately, so an unknown name returns False.
+            Normal and mask parts only. Empty names revert to the animation."""
+            self._ensure()
+            if not self._core.set_part_cell_override(part, cellmap_name,
+                                                     cell_name, priority):
+                return self._override_refused("ss_set_part_cell_override", part)
+            if not cellmap_name and not cell_name:
+                self._record_override(part, "cell", None)   # the revert sentinel
+            elif priority != ssruntime.PRIORITY_OVERWRITE_ON_NEXT_KEYFRAME:
+                self._record_override(part, "cell",
+                                      (cellmap_name, cell_name, priority))
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_part_cell_override(self, part):
+            """Clear a part's cell override (revert to the animation)."""
+            self._ensure()
+            if not self._core.clear_part_cell_override(part):
+                return self._override_refused("ss_clear_part_cell_override", part)
+            self._record_override(part, "cell", None)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_clear_all_part_overrides(self):
+            """Clear every per-part override on this player."""
+            self._ensure()
+            if not self._core.clear_all_part_overrides():
+                self._warn_once("override-clear-all",
+                                "ss_clear_all_part_overrides() failed: the runtime "
+                                "refused it")
+                return False
+            self._overrides = {}
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_cellmap_names(self):
+            """Names of this pack's cellmaps (cell-override targets)."""
+            self._ensure()
+            return self._core.cellmap_names()
+
+        def ss_cell_names(self, cellmap_name):
+            """Names of the cells in ``cellmap_name`` (cell-override targets)."""
+            self._ensure()
+            return self._core.cell_names(cellmap_name)
+
+        # -- runtime texture replacement -----------------------------------
+        # A whole-texture swap from your program (costume / expression change),
+        # distinct from the per-part Override Layer above: it repoints the atlas
+        # a cellmap (or TCHG target) binds, not a part's cell/colour/visibility
+        # (implemented by the Player, not part of the Part Overrides).
+        def ss_texture_names(self):
+            """Names you can pass to :meth:`ss_set_cellmap_texture`.
+
+            Every cellmap (named WITHOUT its ``.ssce`` extension, e.g. ``common``)
+            plus every texture a *texture change* (``TCHG``) can select (a file
+            name, e.g. ``common.png``). Both hash spaces are listed because both
+            are legitimately replaceable; a cellmap's own image appears under its
+            cellmap name, its TCHG-target file (if any) under the file name."""
+            self._ensure()
+            return self._core.replaceable_texture_names()
+
+        def ss_set_cellmap_texture(self, name, texture):
+            """Replace, at runtime, the atlas a cellmap (or TCHG target) binds.
+
+            ``name`` is a cellmap name (no ``.ssce``) or a texture file name —
+            list the valid ones with :meth:`ss_texture_names`. ``texture`` is
+            anything ``renpy.displayable`` accepts (an image name, ``"file.png"``
+            or a Displayable); pass ``None`` to restore the pack's own atlas.
+            Returns False for an unknown ``name`` rather than raising.
+
+            The swap applies wherever this texture binds in THIS player,
+            including instance sub-animations that share the same file (they draw
+            through the same resolver) — but not a separate ``SSPlayer``. The
+            replacement is assumed to share the original's size and layout: the
+            UVs are unchanged, so a different resolution samples a different
+            region. Callable
+            before the first show or any time after; persists across save/load."""
+            self._ensure()
+            path = self._core.resolve_texture_name(name)
+            if not path:
+                return False
+            if texture is None:
+                self._tex_override.pop(path, None)
+            else:
+                self._tex_override[path] = renpy.displayable(texture)
+            renpy.redraw(self, 0)
+            return True
+
+        def ss_get_cellmap_texture(self, name):
+            """The displayable currently overriding ``name`` (set by
+            :meth:`ss_set_cellmap_texture`), or ``None`` when it is not
+            overridden. This returns only the override value, never the pack's
+            original atlas."""
+            self._ensure()
+            path = self._core.resolve_texture_name(name)
+            if not path:
+                return None
+            return self._tex_override.get(path)
+
+    def _ss_lint():
+        """Lint the players lint can reach — every image, and every player held
+        in a `define`d variable — for a .ssab that is not loadable and for an
+        animation (the starting one, or an alias's) that the pack does not have.
+
+        Lint finds a missing file by predicting what an image loads, and a
+        player loads nothing until it is first drawn, so without this both
+        mistakes pass lint and surface only at that first draw."""
+        import difflib
+
+        def report(msg):
+            # Ren'Py's own reporter, so `lint --error-code` fails on these too.
+            # Its location is whichever statement lint checked last, so clear it.
+            try:
+                renpy.lint.report_node = None
+                renpy.lint.report("%s", msg)
+            except Exception:
+                print("")
+                print(msg)
+
+        found = []
+
+        def collect(label):
+            def visit(d):
+                if isinstance(d, SSPlayer):
+                    found.append((label, d))
+            return visit
+
+        for name, d in list(renpy.display.image.images.items()):
+            try:
+                d.visit_all(collect("image " + " ".join(name)))
+            except Exception:
+                pass
+        for name, v in list(vars(store).items()):
+            if not name.startswith("_") and isinstance(v, SSPlayer):
+                found.append((name, v))
+
+        seen = set()
+        for label, p in found:
+            if id(p) in seen:
+                continue
+            seen.add(id(p))
+            if not renpy.loader.loadable(p._ssab_relpath):
+                report("%s uses file '%s', which is not loadable."
+                       % (label, p._ssab_relpath))
+                continue
+            have = p._get_available_animations()
+            if not have:
+                continue
+            wanted = []
+            for a in [p._initial_animation] + list(p.aliases.values()):
+                wanted.extend(a if isinstance(a, (list, tuple)) else [a])
+            for a in wanted:
+                if a and a not in have:
+                    close = difflib.get_close_matches(a, have, n=3)
+                    report("%s plays animation %r, which '%s' does not have.%s"
+                           % (label, a, p._ssab_relpath,
+                              (" Did you mean: %s?" % ", ".join(close)) if close else ""))
+
+    config.lint_hooks[:] = [_f for _f in config.lint_hooks
+                            if getattr(_f, "__name__", "") != "_ss_lint"]
+    config.lint_hooks.append(_ss_lint)
 
 
 # Register the SS Audio channel pool. register_channel() is only allowed during
@@ -2623,8 +4233,8 @@ init python:
             try:
                 renpy.music.register_channel(_c, mixer=SS_AUDIO_MIXER, loop=False)
             except Exception as _e:
-                renpy.log("ss: could not register audio channel %r (%r)"
-                          % (_c, _e))
+                _ss_log("could not register audio channel %r (%r)"
+                        % (_c, _e))
         # Register the off-screen audio reaper as a periodic callback (~20Hz), so
         # a player swapped out of a screen (no `_hide`) still stops sounding.
         # Drop any stale copy first (a dev reload redefines the function).

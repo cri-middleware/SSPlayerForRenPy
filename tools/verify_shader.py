@@ -7,7 +7,7 @@ still needs a real GL2 run; use the Asset Browser, Shift+B, on
 ``overall/Shader.ssab``). Four layers:
 
   * **struct sanity** — that the bulk ``PartState`` decode record
-    (:data:`ss_renpy.framedata._PS_REC`, now carrying the ``shader`` short) still
+    (:data:`ss_renpy.framedata._PS_REC`, which includes the ``shader`` short) still
     matches ``PartState.SizeOf()`` so the fast path stays enabled;
   * **hash catalog** — that the render layer's name→id_hash map (built with the
     Brain's own ``ss_runtime_hash_string``) covers every ``ss-*`` variant and
@@ -64,7 +64,7 @@ def _check(cond, msg, fails):
 
 
 # --------------------------------------------------------------------------
-# 1. struct sanity (the fast-path record grew a `shader` field)
+# 1. struct sanity (the fast-path record must match PartState.SizeOf)
 # --------------------------------------------------------------------------
 def check_struct() -> bool:
     fails: list = []
@@ -104,9 +104,9 @@ def check_pack(lib, path: str, anim=None, expect_shaders=True) -> bool:
         if not rt.setup_animation(a0):
             print("    FAIL: setup_animation(%r)" % a0)
             return False
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
-        fps = rt.fps or 30
+        fps = rt.frame_rate or 30
         dt = 1.0 / fps
         total = max(1, meta.animations()[0].total_frame)
 
@@ -123,7 +123,7 @@ def check_pack(lib, path: str, anim=None, expect_shaders=True) -> bool:
             if not fb:
                 continue
             fd = framedata.parse(fb)
-            items = collect_ordered(rt, fd, None, None, f, dt, rt.is_looped,
+            items = collect_ordered(rt, fd, None, None, f, dt, rt.just_looped,
                                     False)
             for tag, mp in items:
                 if tag != "mesh":

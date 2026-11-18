@@ -2,7 +2,7 @@
 """Software-render a .ssab animation to PNG frames + an animated GIF.
 
 This is NOT the Ren'Py renderer — it is a headless reference rasterizer that
-drives the *same* M2 render core (``framedata.build_mesh_parts``: world matrix x
+drives the *same* render core (``framedata.build_mesh_parts``: world matrix x
 local vertices, UVs and per-vertex ``parts_color`` straight from the runtime)
 and composites the Normal parts with Pillow. It exists so we can visually verify
 the data/geometry/colour path without a GUI, and so the output can be eyeballed
@@ -10,8 +10,8 @@ against the SS editor.
 
 Only the ``Normal`` draw-batch kind is rendered. ``parts_color`` is applied as a
 flat (averaged) tint per part via the ``eval_partcolor`` reference formula — the
-exact per-vertex gradient is checked numerically by ``tools/verify_m2.py``.
-Requires Pillow (dev venv).
+exact per-vertex gradient is checked numerically by ``tools/verify_geometry.py``.
+Requires Pillow (`pip install Pillow`).
 
 Usage:
     python tools/render_png.py [anim.ssab] [animation] [--out DIR] [--bg hex]
@@ -39,13 +39,31 @@ BLEND_ADD = framedata.BLEND_NAMES and 2  # BlendType.Add == 2
 
 
 def load_atlases(meta: SsabMeta, base: str) -> dict:
+    """``DrawBatch.texture_hash`` -> atlas image, keyed from BOTH texture tables.
+
+    Cellmaps cover ordinary parts; ``external_textures`` covers parts whose
+    drawing applies a texture change (``TCHG``), whose hash is of the FILE name.
+    Skipping the second table leaves those quads without an atlas and this
+    renderer drops them (see the ``atlases.get(th) is None`` guard below) — the
+    silent-vanishing-part failure the shipped player also has to avoid.
+    """
     tex = {}
+    cache = {}
+
+    def _load(rel):
+        if rel not in cache:
+            cache[rel] = Image.open(os.path.join(base, rel)).convert("RGBA")
+        return cache[rel]
+
     for c in meta.cellmaps():
         if not c.image_path:
             continue
-        img = Image.open(os.path.join(base, c.image_path)).convert("RGBA")
+        img = _load(c.image_path)
         tex[c.name_hash] = img
         tex[c.image_path_hash] = img
+    for t in meta.external_textures():
+        if t.name:
+            tex[t.name_hash] = _load(t.name)
     return tex
 
 
@@ -147,7 +165,7 @@ def _avg_rate(rates) -> float:
 def tint_layer(layer: Image.Image, blend: int, color, rate: float) -> Image.Image:
     """Apply a flat ``parts_color`` tint to an RGBA layer (per-channel LUT).
 
-    Implements the PartColor formula (10_parts_color §1-4 / ``eval_partcolor``)
+    Implements the PartColor formula (``eval_partcolor``)
     as a per-channel linear op out = pixel*S + O. Uniform-colour approximation
     of the per-vertex gradient; alpha is left untouched (handled separately).
     """
@@ -184,12 +202,12 @@ def render_animation(ssab_path: str, anim: str | None, out_dir: str,
     rt.load_ssab_bytes(data)
     if not rt.setup_animation(a0.name):
         raise SystemExit(f"setup_animation({a0.name!r}) failed")
-    fps = rt.fps or a0.fps or 30
+    fps = rt.frame_rate or a0.fps or 30
     total = max(1, a0.total_frame)
     dt = 1.0 / fps
 
     # Pass 1: capture per-frame quad lists + global bbox.
-    rt.set_loop(-1)
+    rt.set_loop_count(-1)
     rt.play()
     frames_quads = []
     minx = miny = math.inf
@@ -240,7 +258,9 @@ def render_animation(ssab_path: str, anim: str | None, out_dir: str,
             if has_pc:                      # parts_color tint (flat approx)
                 layer = tint_layer(layer, cb, col, rate)
             layer = scale_alpha(layer, col[3])
-            canvas = Image.alpha_composite(canvas, layer)  # Add path: TODO
+            # Additive-blend parts are composited as normal alpha here; the
+            # GPU path handles Add.
+            canvas = Image.alpha_composite(canvas, layer)
         # composite over solid bg for viewing
         framed = Image.new("RGBA", canvas_size, bg)
         framed = Image.alpha_composite(framed, canvas)

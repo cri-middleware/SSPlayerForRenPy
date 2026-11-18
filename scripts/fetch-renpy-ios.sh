@@ -12,7 +12,8 @@
 # generate the project with scripts/deploy-ios.sh and open it in Xcode.
 #
 # Usage: scripts/fetch-renpy-ios.sh [version]
-#   version : renios package version to fetch (default: latest stable, or $RENPY_VERSION).
+#   version : renios package version to fetch (default: $RENPY_VERSION, else the pin in
+#             scripts/RENPY_VERSION.txt, else the latest stable).
 #             e.g. scripts/fetch-renpy-ios.sh 8.3.0
 set -euo pipefail
 
@@ -22,7 +23,14 @@ BASE_URL="https://www.renpy.org/dl"
 VERSION_FILE="$ROOT_DIR/scripts/RENPY_VERSION.txt"
 
 usage() { sed -n '/^# Usage:/,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
-case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
+VERSION_ARG=""
+for a in "$@"; do
+  case "$a" in
+    -h|--help|help) usage; exit 0 ;;
+    -*) echo "fetch-renpy-ios.sh: unknown flag '$a'" >&2; exit 2 ;;
+    *) [ -z "$VERSION_ARG" ] || { echo "fetch-renpy-ios.sh: unexpected extra arg '$a'" >&2; exit 2; }; VERSION_ARG="$a" ;;
+  esac
+done
 
 command -v curl >/dev/null || { echo "fetch-renpy-ios.sh: curl not on PATH" >&2; exit 1; }
 command -v unzip >/dev/null || { echo "fetch-renpy-ios.sh: unzip not on PATH" >&2; exit 1; }
@@ -35,7 +43,7 @@ fi
 # --- resolve version ------------------------------------------------------
 # priority: CLI arg > $RENPY_VERSION > scripts/RENPY_VERSION.txt (the pin all
 # fetch-renpy-* scripts share) > latest stable resolved from latest.html.
-VERSION="${1:-${RENPY_VERSION:-}}"
+VERSION="${VERSION_ARG:-${RENPY_VERSION:-}}"
 if [ -z "$VERSION" ] && [ -f "$VERSION_FILE" ]; then
   VERSION="$(tr -d ' \t\r\n' < "$VERSION_FILE")"
   [ -n "$VERSION" ] && echo "Using pinned version from scripts/RENPY_VERSION.txt: $VERSION"

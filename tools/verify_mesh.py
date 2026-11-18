@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless check for Mesh(deform) part rendering (docs/08 §4).
+"""Headless check for Mesh(deform) part rendering.
 
 Drives a pack with Mesh parts (default Ringo.ssab + overall/Mesh.ssab) through
 its frames, walks the draw plan via :func:`ss_renpy.instance.collect_ordered`,
@@ -52,9 +52,9 @@ def check_pack(lib, path: str, anim=None) -> bool:
         if not rt.setup_animation(a0):
             print(f"    FAIL: setup_animation({a0!r})")
             return False
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
-        fps = rt.fps or 30
+        fps = rt.frame_rate or 30
         dt = 1.0 / fps
         total = max(1, meta.animations()[0].total_frame)
 
@@ -70,7 +70,7 @@ def check_pack(lib, path: str, anim=None) -> bool:
             if not fb:
                 continue
             fd = framedata.parse(fb)
-            items = collect_ordered(rt, fd, None, None, f, dt, rt.is_looped, False)
+            items = collect_ordered(rt, fd, None, None, f, dt, rt.just_looped, False)
             sig = 0.0
             for tag, mp in items:
                 if tag != "mesh" or len(mp.positions) <= 5:

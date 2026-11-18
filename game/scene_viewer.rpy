@@ -1,6 +1,6 @@
-# Legacy basic-feature viewer: a `screen ss_demo` that cycles through the bundled
+# Basic-feature viewer: a `screen ss_demo` that cycles through the bundled
 # sample packs with the arrow keys, with a live timeline-event log overlay. Each
-# SS_DEMO_PACKS entry is (sprites_subdir, pack) so packs in different folders
+# SS_DEMO_PACKS entry is (dir, pack) so packs in different folders
 # coexist. (Reached from the start menu in script.rpy.)
 
 init python:
@@ -9,8 +9,8 @@ init python:
     # Sample packs. The full `overall/` feature set is listed so the viewer
     # exercises every supported feature (Basic alpha, PartsColor, blends, mesh
     # deform, shapes, masks, the ss-* user shaders, instances, timeline events).
-    # Text / NineSlice are listed for completeness but their batch kinds are not
-    # rendered yet (they show empty — later milestones). Ringo is a real
+    # Text.ssab and NineSlice.ssab are left out: those parts are not drawn (see
+    # docs/en/limitations.md), so they would show an empty stage. Ringo is a real
     # character (Normal parts render; Mesh-deform parts do). A trimmed sample of
     # the ParticleEffect packs is appended after these (see below).
     SS_DEMO_PACKS = [
@@ -32,8 +32,6 @@ init python:
         ("ss_assets/overall", "Signal.ssab"),                 # timeline: signal
         ("ss_assets/overall", "Sound.ssab"),                  # timeline: audio
         ("ss_assets/overall", "01-new.ssab"),
-        ("ss_assets/overall", "Text.ssab"),                   # (not rendered yet)
-        ("ss_assets/overall", "NineSlice.ssab"),              # (not rendered yet)
         ("ss_assets/Ringo",   "Ringo.ssab"),                  # character
         ("ss_assets/Ringo",   "Ringo_tyu.ssab"),              # companion
     ]
@@ -53,8 +51,8 @@ init python:
         # entry is (dir, pack); we just join them into the .ssab path. The
         # event-log overlay consumes events via ss_poll_events() (see
         # ss_drain_events), so we don't pass callbacks here — but the constructor
-        # accepts on_user_data / on_signal / on_audio / on_finished / on_looped /
-        # on_started if you prefer push delivery.
+        # accepts on_user_data / on_signal / on_audio / on_animation_finished / on_animation_looped /
+        # on_animation_started if you prefer push delivery.
         subdir, pack = entry
         return SSPlayer(subdir + "/" + pack, animation=animation)
 
@@ -86,7 +84,7 @@ init python:
         names = player.ss_animation_names()
         if not names:
             return
-        curr = player.ss_get_animation()
+        curr = player.ss_get_current_animation()
         try:
             idx = names.index(curr)
         except ValueError:
@@ -141,9 +139,13 @@ label viewer_demo:
 
 screen ss_demo():
     add Solid("#2a2e36")
+    # Each pack is laid out on the canvas it was authored on, shrunk by Ren'Py's
+    # own `fit` when that canvas is bigger than the stage above the bottom bar.
     add ss_current:
+        fit "scale-down"
+        xysize (1280, 670)
         xalign 0.5
-        yalign (0.95 if "Ringo" in SS_DEMO_PACKS[ss_index][1] else 0.5)
+        yalign 0.4
 
     # Drain timeline events from the displayable's poll queue a few times a
     # second; the screen re-renders each tick to show the latest log.

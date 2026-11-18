@@ -1,3 +1,7 @@
+"""ctypes bindings for libssconverter — background .sspj -> .ssab conversion (no renpy import)."""
+
+from __future__ import annotations
+
 import ctypes as C
 import os
 import platform
@@ -16,7 +20,8 @@ def platform_subdir() -> str:
         return "macos"
     if sys.platform.startswith("win"):
         return os.path.join("windows", arch)
-    return os.path.join("linux", arch)
+    # 64-bit ARM is linux/aarch64 but windows/arm64 — see ssruntime_native.platform_subdir.
+    return os.path.join("linux", "aarch64" if arch == "arm64" else arch)
 
 def library_filename() -> str:
     if sys.platform.startswith("win"):
@@ -52,32 +57,32 @@ _LOG_CB_TYPE = C.CFUNCTYPE(None, C.c_char_p)
 def _declare(lib: C.CDLL) -> None:
     P = C.c_void_p
     f = lib
-    
+
     f.ss_converter_version.argtypes = []
     f.ss_converter_version.restype = P
     f.ss_converter_version_free.argtypes = [P]
     f.ss_converter_version_free.restype = None
-    
+
     f.ss_converter_create.argtypes = []
     f.ss_converter_create.restype = P
     f.ss_converter_destroy.argtypes = [P]
     f.ss_converter_destroy.restype = None
-    
+
     f.ss_converter_convert.argtypes = [P, C.c_char_p, C.c_char_p, C.c_bool, _LOG_CB_TYPE]
     f.ss_converter_convert.restype = None
-    
+
     f.ss_converter_is_running.argtypes = [P]
     f.ss_converter_is_running.restype = C.c_bool
-    
+
     f.ss_converter_is_finished.argtypes = [P]
     f.ss_converter_is_finished.restype = C.c_bool
-    
+
     f.ss_converter_abort.argtypes = [P]
     f.ss_converter_abort.restype = None
-    
+
     f.ss_converter_get_result.argtypes = [P]
     f.ss_converter_get_result.restype = C.c_int32
-    
+
     f.ss_converter_get_error.argtypes = [P, C.POINTER(C.c_char_p), C.POINTER(C.c_size_t)]
     f.ss_converter_get_error.restype = None
 
@@ -91,17 +96,38 @@ class SsConverter:
         self._lib = C.CDLL(lib_path)
         _declare(self._lib)
         self._ctx = self._lib.ss_converter_create()
-        # Hold the ctypes log-callback trampoline for THIS converter's lifetime.
-        # It used to be a module global, so a second converter (or an overlapping
-        # convert) overwrote it and could free a trampoline still in use by a
-        # running background conversion thread. Per-instance keeps it alive as
-        # long as the ctx that invokes it.
+        # Hold the ctypes log-callback trampoline per instance for this
+        # converter's lifetime: a shared/module-level reference could be
+        # overwritten by a second converter and freed while a background
+        # conversion thread is still invoking it.
         self._log_cb = None
 
     def __del__(self):
         if hasattr(self, "_ctx") and self._ctx:
+            # ss_converter_destroy drops the JoinHandle, *detaching* a still-
+            # running conversion thread — which could then call into this
+            # object's dying log-callback trampoline. Abort and join first
+            # (get_result joins the worker on the FFI side).
+            try:
+                if self._lib.ss_converter_is_running(self._ctx):
+                    self._lib.ss_converter_abort(self._ctx)
+                    self._lib.ss_converter_get_result(self._ctx)
+            except Exception:
+                pass
             self._lib.ss_converter_destroy(self._ctx)
             self._ctx = None
+
+    def version(self) -> str:
+        """The converter's build version, e.g. ``"0.1.0+abc1234"``."""
+        # The one string this ABI hands over to the caller: read it, then give
+        # it back to the library that allocated it.
+        ptr = self._lib.ss_converter_version()
+        if not ptr:
+            return ""
+        try:
+            return (C.cast(ptr, C.c_char_p).value or b"").decode("utf-8", errors="replace")
+        finally:
+            self._lib.ss_converter_version_free(ptr)
 
     def convert(self, sspj_path: str, output_dir: str, on_log: Optional[Callable[[str], None]] = None):
         """Starts the conversion process in a background thread."""
@@ -109,13 +135,19 @@ class SsConverter:
             def cb(msg_ptr):
                 if msg_ptr:
                     on_log(msg_ptr.decode('utf-8', errors='replace'))
-            self._log_cb = _LOG_CB_TYPE(cb)
+            new_cb = _LOG_CB_TYPE(cb)
         else:
-            self._log_cb = C.cast(None, _LOG_CB_TYPE)
+            new_cb = C.cast(None, _LOG_CB_TYPE)
 
         sspj_bytes = sspj_path.encode('utf-8')
         out_bytes = output_dir.encode('utf-8')
-        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, False, self._log_cb)
+        # self._log_cb still references the PREVIOUS trampoline here, keeping it
+        # alive across the call: the native side joins a still-running previous
+        # conversion inside ss_converter_convert, and the old thread may invoke
+        # its callback right up to that join. Only reassign afterwards, so the
+        # old thunk is never freed while it can still be called.
+        self._lib.ss_converter_convert(self._ctx, sspj_bytes, out_bytes, False, new_cb)
+        self._log_cb = new_cb
 
     def is_running(self) -> bool:
         """Checks if the converter is currently running."""

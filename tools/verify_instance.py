@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Headless check for Instance-part playback via the unified SSInternalPlayer.
 
-Instance children are now parent-driven ``SSInternalPlayer`` instances (not a
-bespoke SubPlayer). Drives ``Instance.ssab`` (whose parts embed the external
+Instance children are parent-driven ``SSInternalPlayer`` instances.
+Drives ``Instance.ssab`` (whose parts embed the external
 pack ``Instance_SourceAnime``) through every frame and validates that:
   * instance children actually render (mesh geometry appears),
   * every child texture hash resolves against the shared (root + external)
@@ -60,7 +60,7 @@ def check_pack(lib, path: str) -> bool:
         p.close(); return False
     p.play()
 
-    fps = p.fps or 30
+    fps = p.frame_rate or 30
     dt_ms = 1000.0 / fps
     total = max(1, p.total_frames)
     frames_with_geom = max_mesh = total_fx = bad = 0

@@ -34,10 +34,10 @@ def main() -> int:
     print("== snippet generator verification ==\n")
 
     print("### default_role heuristic")
-    check("effect: has_effects + single anim", snippet.default_role(1, True) == "effect")
+    check("oneshot: has_effects + single anim", snippet.default_role(1, True) == "oneshot")
     check("character: multi anim", snippet.default_role(5, False) == "character")
     check("ui: single anim, no effects", snippet.default_role(1, False) == "ui")
-    check("character beats effect when multi-anim", snippet.default_role(3, True) == "character")
+    check("character beats oneshot when multi-anim", snippet.default_role(3, True) == "character")
 
     print("### character snippet (path-based)")
     s = snippet.build_snippet("ss_assets/Ringo/Ringo.ssab", "character", ["wait1", "joy", "walk"])
@@ -45,8 +45,8 @@ def main() -> int:
     check("aliases for each anim", '"wait1": "wait1",' in s and '"joy": "joy",' in s)
     check("Character() uses stem", 'define ringo_chr = Character("Ringo", image="ringo")' in s)
 
-    print("### effect snippet (path-based)")
-    s = snippet.build_snippet("ss_assets/ParticleEffect/e038.ssab", "effect", ["hit"])
+    print("### one-shot snippet (path-based)")
+    s = snippet.build_snippet("ss_assets/ParticleEffect/e038.ssab", "oneshot", ["hit"])
     check("one-shot loop=1 with path",
           'SSPlayer("ss_assets/ParticleEffect/e038.ssab", animation="hit", loop=1)' in s)
 
@@ -54,6 +54,24 @@ def main() -> int:
     s = snippet.build_snippet("ss_assets/ui/Logo.ssab", "ui", ["anime_1"])
     check("screen + add path", 'screen logo_screen():' in s
           and 'add SSPlayer("ss_assets/ui/Logo.ssab")' in s)
+
+    print("### names a show statement or a define cannot spell")
+    check("space -> _ in the tag", snippet.image_tag("BG art w pink") == "bg_art_w_pink")
+    check("bracket -> _ in the tag", snippet.image_tag("[NG]_medal DANCE") == "_ng__medal_dance")
+    check("hyphen and Japanese stay", snippet.image_tag("My-リンゴ") == "my-リンゴ")
+    s = snippet.build_snippet("x/My-Ringo.ssab", "character", ["a"])
+    check("hyphen: image keeps it, define does not",
+          'image my-ringo = SSPlayer(' in s and 'define my_ringo_chr = ' in s
+          and 'image="my-ringo"' in s)
+    s = snippet.build_snippet("x/My-Ringo.ssab", "ui", ["a"])
+    check("hyphen: screen does not", 'screen my_ringo_screen():' in s)
+    s = snippet.build_snippet("x/BG art w pink.ssab", "oneshot", ["a"])
+    check("space: one tag, not a tag and attributes", 'image bg_art_w_pink = SSPlayer(' in s)
+    s = snippet.build_snippet("x/01_title.ssab", "character", ["a"])
+    check("digit first: define takes a prefix",
+          'image 01_title = SSPlayer(' in s and 'define ss_01_title_chr = ' in s)
+    s = snippet.build_snippet("x/[NG]_medal DANCE.ssab", "character", ["a"])
+    check("bracket: Character text is escaped", 'Character("[[NG]_medal DANCE"' in s)
 
     print("### robustness")
     s = snippet.build_snippet("x/Foo.ssab", "character", [])

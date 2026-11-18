@@ -29,8 +29,7 @@ label ringo_demo:
     scene bg room
     window show  # keep the dialogue window up (handy for checking layers)
 
-    show ringo idle:
-        yoffset 200
+    show ringo idle at ss_stand
 
     "Ringo has appeared." id ringo_msg1
 
@@ -38,24 +37,23 @@ label ringo_demo:
 
     r piyo "I can even play the dizzy motion (piyo) just by specifying its name, su." id ringo_msg3
 
-    # Without a `size`, SSPlayer fills the screen, so we position with offset.
-    # Pass size=(w, h) to SSPlayer(...) and xalign/xpos work like a normal image.
-    show ringo walk:
-        xoffset -400 yoffset 200
+    # The SSPlayer's box is the canvas Ringo was authored on, so it moves like
+    # any image: ss_stand (script.rpy) is plain xpos / ypos.
+    show ringo walk at ss_stand(240)
     with move
     r walk "Of course, I can use 'move' and other Transforms together with this, su." id ringo_msg4
 
-    show ringo walk:
-        xoffset 0 yoffset 200
+    show ringo walk at ss_stand
     with move
     r "After moving back to the center..." id ringo_msg5
 
     show ringo attack
     $ renpy.pause(0.05) # wait briefly for the attack's hit moment (the downward swing)
 
-    # fire the effect at the hand to match the attack (offset toward the right hand)
+    # fire the effect at the hand to match the attack. The effect was authored
+    # around its canvas centre, so xcenter / ycenter place that point.
     show hit_effect:
-        xoffset -150 yoffset 50
+        xcenter 490 ycenter 410
 
     r "Ei! (When the attack finishes, I automatically return to the idle motion, su.)" id ringo_msg6
 
@@ -64,11 +62,10 @@ label ringo_demo:
     hide ringo
     with dissolve
 
-    # Show Ringo_tyu and e040b together as a test case
-    show ringo_tyu:
-        xoffset 0 yoffset 150
+    # Bonus: Ringo_tyu and the e040b particle effect shown simultaneously.
+    show ringo_tyu at ss_stand
     show effect_e040b:
-        xoffset 0 yoffset 150
+        xcenter 0.5 ycenter 560
     "As a bonus, here's my companion Ringo_tyu, along with a cool particle effect (e040b) playing at the same time!" id ringo_msg8
 
     return

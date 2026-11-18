@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 #
 # Build the native runtime libssruntime from the SpriteStudio-SDK and place it
-# in the library's per-platform/arch layout. Interface mirrors SSPlayerForUnity's
-# build-runtime.sh (platform=/arch=/build=). For linux/windows DESKTOP we build
-# only the feature-enabled `ssruntime` cdylib directly (NOT via the SDK
-# release-*.sh, which also build the whole workspace + ssconverter — wasteful
-# here). macOS is the exception: it ships the Brain as a versioned, signable
-# libssruntime.framework (App Store / notarization want a .framework bundle, not
-# a bare dylib), so — like android/ios/web — it DOES delegate to the SDK's
-# release-macos.sh, which builds the universal slices and wraps + codesigns the
-# framework. (That path is always universal; no fast single-arch host build.)
+# in the library's per-platform/arch layout. Interface: platform=/arch=/build=
+# key=value arguments, the same as build-runtime.ps1. For linux/windows DESKTOP
+# it builds just the two cdylibs it places -- ssruntime-ffi (feature-enabled)
+# and ssconverter-ffi -- with cargo directly, NOT via the SDK's release-*
+# scripts, which build the whole workspace (and release-windows*.ps1 always in
+# release, whatever build= says). macOS is the exception: it ships the Brain as
+# a versioned, signable libssruntime.framework (App Store / notarization want a
+# .framework bundle, not a bare dylib), so -- like android/ios/web -- it DOES
+# delegate to the SDK's release-macos.sh, which builds the universal slices and
+# wraps + codesigns the framework. (That path is always universal; no fast
+# single-arch host build.)
 #
 #   game/spritestudio/libs/
 #     macos/libssruntime.framework             (universal arm64+x86_64; + libssconverter.dylib)
 #     windows/<arch>/ssruntime.dll   linux/<arch>/libssruntime.so
-#     android/<abi>/libssruntime.so  ios/libssruntime.xcframework  web/libssruntime.a
+#     android/<abi>/libssruntime.so  ios/libssruntime.xcframework
+#     web/ (wasm-pack bundle: ssruntime.js + ssruntime_bg.wasm)
 #
 # android/ios/web are toolchain-heavy cross builds and DO delegate to the SDK
-# release scripts (reserved path; Ren'Py-side integration is separate).
+# release scripts.
 #
 # Usage: scripts/build-runtime.sh [platform=<p>] [arch=<a>] [build=<m>] [hostbuild=<auto|false>]
 #   platform : windows macos linux android ios web   (default: host)
@@ -51,6 +54,16 @@ for item in "$@"; do
     *) echo "build-runtime.sh: unknown arg '$item'" >&2; usage; exit 2 ;;
   esac
 done
+# Checked before anything is written: libs/VERSION is stamped below, and a typo
+# should not cost the libraries already in place their version.
+case "$PLATFORM" in
+  windows|macos|linux|android|ios|web) ;;
+  *) echo "build-runtime.sh: unknown platform '$PLATFORM'" >&2; exit 2 ;;
+esac
+case "$BUILD_MODE" in
+  debug|release) ;;
+  *) echo "build-runtime.sh: build must be debug or release (got '$BUILD_MODE')" >&2; exit 2 ;;
+esac
 
 # --- locate the SDK -------------------------------------------------------
 SDK_DIR="${SSSDK:-}"
@@ -74,12 +87,18 @@ echo "Building for $PLATFORM ($ARCH) in $BUILD_MODE mode (host build: $IS_HOST_B
 CARGO_FLAGS=""; [ "$BUILD_MODE" = "release" ] && CARGO_FLAGS="--release"
 
 # build the feature-enabled ssruntime and ssconverter cdylib
-build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime --features libc_alloc,panic-handler ); }
-build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter ); }
+build_ss() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssruntime-ffi --features libc_alloc,panic-handler ); }
+build_converter() { ( cd "$SDK_DIR" && cargo build $CARGO_FLAGS "$@" -p ssconverter-ffi ); }
 place() { mkdir -p "$LIB_ROOT/$1"; cp "$2" "$LIB_ROOT/$1/${3:-$(basename "$2")}"; echo "   -> game/spritestudio/libs/$1/${3:-$(basename "$2")}"; }
 
-# licenses (mirror Unity)
 mkdir -p "$LIB_ROOT"
+# libs/VERSION names the SDK release download-sdk installed, and what follows
+# replaces libraries with this local build. Stamp it "local" first: a later
+# download-sdk sees a mismatch and reinstalls instead of skipping as up to date,
+# and build-release sdk=build labels its zip for what it is.
+echo "local" > "$LIB_ROOT/VERSION"
+
+# copy license notices alongside the libraries
 [ -f "$SDK_DIR/LICENSE.md" ] && cp "$SDK_DIR/LICENSE.md" "$LIB_ROOT/"
 [ -f "$SDK_DIR/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" ] && \
   cp "$SDK_DIR/target/licenses/THIRD-PARTY-LICENSES.ssruntime.md" "$LIB_ROOT/"
@@ -152,6 +171,5 @@ case "$PLATFORM" in
     mkdir -p "$LIB_ROOT/web"
     cp -R "$SDK_DIR/pkg/runtime-web/$BUILD_MODE/"* "$LIB_ROOT/web/"
     echo "   -> game/spritestudio/libs/web/" ;;
-  *) echo "build-runtime.sh: unknown platform '$PLATFORM'" >&2; exit 2 ;;
 esac
 echo "build-runtime.sh: done."

@@ -1,10 +1,10 @@
 # SpriteStudio Asset Browser — a developer-mode inspector / snippet generator.
 #
 # Press **Shift+B** in developer mode to toggle it. It lists every .ssab the
-# resolver can find (all discovered packs, incl. instance sub-packs), previews
-# any animation live, and saves a
-# ready-to-paste snippet for the role you pick (character / effect / UI) — so a
-# creator picks the role while watching the animation, instead of guessing.
+# resolver can find (all discovered packs, incl. instance sub-packs), previews any
+# animation live (drag to move it, wheel to scale it), and saves a ready-to-paste
+# snippet for the role you pick (character / one-shot / UI) — so a creator picks
+# the role while watching the animation, instead of guessing.
 #
 # It sits on top of the zero-config resolver + SSInternalPlayer. Only the hotkey
 # registration is dev-gated, so this file is harmless in a release build (the
@@ -14,9 +14,23 @@ init python:
     import os as _ss_os
     from ss_renpy import snippet as _ss_snippet
 
+    # "Save snippet" writes this into the project folder; it is not the game's.
+    build.classify('ss_snippets.txt', None)
+
+    def _ss_browser_copy(text):
+        """Put `text` on the system clipboard, where the platform allows it.
+
+        Through Ren'Py's CopyToClipboard action, the one way Ren'Py offers:
+        there is no renpy.* function for it. It does nothing on the web."""
+        try:
+            CopyToClipboard(text)()
+        except Exception:
+            pass
+
     def _ss_browser_escape(s):
-        # Ren'Py text treats { and [ as tags / substitutions — escape for display
-        # (the file export keeps the raw, correct text).
+        # For text written into a screen statement, where Ren'Py reads { as a
+        # tag and [ as a substitution. A value substituted in with [x!q] needs
+        # neither: its [ is not substituted again, and !q quotes its {.
         return str(s).replace("{", "{{").replace("[", "[[")
 
     def _ss_browser_detail(name):
@@ -42,6 +56,42 @@ init python:
     def _ss_browser_default_role(d):
         return _ss_snippet.default_role(len(d["anims"]), d["has_effects"])
 
+    # The preview box. A pack opens with its whole authored canvas fitted into
+    # it and centred — the framing a Reset view returns to, and what 100% on
+    # the zoom readout means — so a canvas far bigger or smaller than the box,
+    # or an origin far from the canvas's centre, still opens fully in view.
+    # The 1:1 button shows the canvas at its own pixels instead, around the same
+    # centre, where a stage-sized canvas's fit would be too small to read.
+    SS_BROWSER_BOX = (470, 360)
+
+    # Preview zoom range. The zoom is a Transform around the live SSPlayer, so
+    # scaling neither rebuilds the player nor restarts the animation.
+    SS_BROWSER_ZOOM_MIN = 0.2
+    # Up to 16 times the fitted size: a canvas the size of an Animate stage fits
+    # at a few percent, and this still reaches its own pixels.
+    SS_BROWSER_ZOOM_MAX = 16.0
+    SS_BROWSER_ZOOM_STEP = 1.1       # one wheel notch
+
+    def _ss_browser_zoom_by(factor):
+        """Scale the preview by `factor`, clamped to the range above."""
+        z = store.ss_browser_zoom * factor
+        store.ss_browser_zoom = max(SS_BROWSER_ZOOM_MIN,
+                                    min(SS_BROWSER_ZOOM_MAX, z))
+
+    def _ss_browser_reset_view():
+        """Put the preview back the way a pack opens: fitted, centred.
+
+        A new view number is a new drag, placed afresh; see the drag in
+        ss_browser for why it takes one."""
+        store.ss_browser_zoom = 1.0
+        store.ss_browser_view += 1
+
+    def _ss_browser_set_fit(fit):
+        """Fit the canvas to the box (True) or show it at its own pixels, and
+        start that framing at 100%, centred. The choice holds across packs."""
+        store.ss_browser_fit = fit
+        _ss_browser_reset_view()
+
     def _ss_browser_select(name, anim=None):
         """Select a pack (and optional animation); build the live preview."""
         # Stop the outgoing preview's audio: it is held in a variable and swapped,
@@ -54,6 +104,11 @@ init python:
                 _old.ss_stop_audio()
             except Exception:
                 pass
+        # A new pack is a new subject: start it fitted. Switching ANIMATION comes
+        # through here too and keeps the zoom, so two clips of one pack can be
+        # compared at the same scale.
+        if name != store.ss_browser_pack:
+            store.ss_browser_zoom = 1.0
         store.ss_browser_pack = name
         d = _ss_browser_detail(name)
         store.ss_browser_detail = d
@@ -62,10 +117,10 @@ init python:
         store.ss_browser_anim = anim
         store.ss_browser_role = _ss_browser_default_role(d)
         try:
-            # size=(470, 360): give the preview a definite size so the draggable
-            # `drag` wrapping it has a real hit area — an unsized CDD can't be
-            # dragged. Same proven pattern as the demo picker (asset_picker.rpy).
-            store.ss_browser_player = SSPlayer(d["path"], animation=anim, size=(470, 360)) if d["path"] else None
+            # No size: the player is its authored canvas, which the preview then
+            # fits into SS_BROWSER_BOX. A pack without a canvas fills what it is
+            # offered instead, which the fit leaves at the box.
+            store.ss_browser_player = SSPlayer(d["path"], animation=anim) if d["path"] else None
         except Exception as e:
             store.ss_browser_player = None
             renpy.notify("Preview failed: %s" % (e,))
@@ -85,11 +140,7 @@ init python:
             target = "ss_snippets.txt"
         except Exception:
             pass
-        try:
-            if hasattr(renpy, "copy_to_clipboard"):
-                renpy.copy_to_clipboard(snip)
-        except Exception:
-            pass
+        _ss_browser_copy(snip)
         renpy.notify("Snippet saved to %s" % target)
 
     # Dev-only hotkey: register the Shift+B toggle screen as an overlay.
@@ -103,6 +154,9 @@ default ss_browser_role = None
 default ss_browser_detail = {"path": "", "anims": [], "fps": 0,
                              "has_effects": False, "instance_packs": []}
 default ss_browser_player = None
+default ss_browser_zoom = 1.0
+default ss_browser_view = 0
+default ss_browser_fit = True
 
 
 screen _ss_browser_key():
@@ -116,6 +170,17 @@ screen ss_browser():
     modal True
     zorder 200
     key "K_ESCAPE" action Hide("ss_browser")
+
+    # Wheel = zoom the preview. Declared before the body so the lists are offered
+    # the event first (a `mousewheel True` viewport only takes it while the
+    # pointer is inside), which leaves the wheel elsewhere to scale the sprite.
+    # + / - do the same from the keyboard, and 0 resets the view.
+    key "mousedown_4" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "mousedown_5" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
+    key "K_EQUALS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "K_PLUS" action Function(_ss_browser_zoom_by, SS_BROWSER_ZOOM_STEP)
+    key "K_MINUS" action Function(_ss_browser_zoom_by, 1.0 / SS_BROWSER_ZOOM_STEP)
+    key "K_0" action Function(_ss_browser_reset_view)
 
     add Solid("#000000d8")
 
@@ -145,35 +210,58 @@ screen ss_browser():
                         # List EVERY discovered .ssab, not just primaries — a
                         # sub-part pack that back-references the main pack would
                         # otherwise hide the main pack (e.g. Ringo_tyu -> Ringo
-                        # demotes Ringo). ss_list_assets() stays primary-only for
-                        # name resolution / diagnostics; the browser shows all.
+                        # demotes Ringo).
+                        # The LABEL is escaped, the action keeps the raw name:
+                        # Ren'Py interpolates [..] / {..} in a button's text, so a
+                        # pack called "[NG]_medalDANCE" would otherwise raise
+                        # NameError: name 'NG' is not defined and take the whole
+                        # browser down.
                         for _n in sorted({_r.stem for _r in _ss_get_index().records()}):
-                            textbutton _n action Function(_ss_browser_select, _n) text_size 14
+                            textbutton _ss_browser_escape(_n) action Function(_ss_browser_select, _n) text_size 14
 
             # --- center: live preview + animation list ---------------------
             vbox:
                 spacing 8
                 xsize 480
                 if ss_browser_pack:
-                    text "[ss_browser_pack]" size 20
+                    text "[ss_browser_pack!q]" size 20
                     frame:
-                        xsize 470
-                        ysize 360
+                        xsize SS_BROWSER_BOX[0]
+                        ysize SS_BROWSER_BOX[1]
                         background Solid("#222222")
                         if ss_browser_player is not None:
-                            # Drag the preview to reposition it. A definite size
-                            # (SSPlayer size=) makes the Drag grabbable. Mirrors the
-                            # demo picker (asset_picker.rpy).
+                            # Drag the preview to reposition it, wheel to scale it.
+                            # The canvas is fitted into the box and then zoomed,
+                            # and the drag's hit area is what that draws. Mirrors
+                            # the demo picker (asset_picker.rpy).
                             draggroup:
-                                drag:
-                                    drag_name ss_browser_pack
-                                    draggable True
-                                    drag_offscreen True
-                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                    add ss_browser_player
+                                # One drag per pack and view number. The screen hands a
+                                # rebuilt drag the one it replaces, and a drag takes that
+                                # one's position, so a new pack or a Reset view would stay
+                                # where the last drag was dropped; a new index key builds
+                                # the drag afresh. The name changes with it because the
+                                # group also keeps each dropped drag's position by name.
+                                for _view index _view in [(ss_browser_pack, ss_browser_view)]:
+                                    drag:
+                                        drag_name "%s#%d" % _view
+                                        draggable True
+                                        drag_offscreen True
+                                        xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                        # reset: a screen update hands the new transform the old
+                                        # one's properties, and Fit's size and fit would outlive
+                                        # a switch to 1:1.
+                                        add ss_browser_player at (Transform(xysize=SS_BROWSER_BOX, fit="contain", zoom=ss_browser_zoom, reset=True) if ss_browser_fit else Transform(zoom=ss_browser_zoom, reset=True))
                         else:
                             text "(no preview)" xalign 0.5 yalign 0.5
-                    text "drag the preview to reposition" size 11
+                    # Percent, not a "x1.25" factor: at this size the decimal point
+                    # is easy to miss, and "125%" cannot be misread.
+                    $ _zoom_disp = "%d%%" % round(ss_browser_zoom * 100)
+                    hbox:
+                        spacing 10
+                        text "drag to move | wheel (or + / -) to zoom: [_zoom_disp]" size 11 yalign 0.5
+                        textbutton "Fit" action Function(_ss_browser_set_fit, True) selected ss_browser_fit text_size 11 yalign 0.5
+                        textbutton "1:1" action Function(_ss_browser_set_fit, False) selected (not ss_browser_fit) text_size 11 yalign 0.5
+                        textbutton "Reset view (0)" action Function(_ss_browser_reset_view) text_size 11 yalign 0.5
                     $ _na = len(ss_browser_detail["anims"])
                     $ _fps = ss_browser_detail["fps"]
                     $ _fx = ss_browser_detail["has_effects"]
@@ -190,7 +278,8 @@ screen ss_browser():
                         vbox:
                             spacing 1
                             for _a in ss_browser_detail["anims"]:
-                                textbutton _a action Function(_ss_browser_select, ss_browser_pack, _a) text_size 13
+                                # Escaped label, raw name to the action (as above).
+                                textbutton _ss_browser_escape(_a) action Function(_ss_browser_select, ss_browser_pack, _a) text_size 13
                 else:
                     text "Select a pack on the left." xalign 0.5 yalign 0.5
 
@@ -202,10 +291,10 @@ screen ss_browser():
                 hbox:
                     spacing 6
                     textbutton "Character" action SetVariable("ss_browser_role", "character") text_size 13
-                    textbutton "Effect" action SetVariable("ss_browser_role", "effect") text_size 13
+                    textbutton "One-shot" action SetVariable("ss_browser_role", "oneshot") text_size 13
                     textbutton "UI" action SetVariable("ss_browser_role", "ui") text_size 13
                 if ss_browser_pack and ss_browser_role:
-                    $ _snip_disp = _ss_browser_escape(_ss_browser_snippet(ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]))
+                    $ _snip_disp = _ss_browser_snippet(ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"])
                     frame:
                         xsize 360
                         ysize 360
@@ -213,7 +302,7 @@ screen ss_browser():
                         viewport:
                             mousewheel True
                             draggable True
-                            text "[_snip_disp]" size 13
+                            text "[_snip_disp!q]" size 13
                     textbutton "Save snippet -> ss_snippets.txt" action Function(_ss_browser_export, ss_browser_pack, ss_browser_detail["path"], ss_browser_role, ss_browser_detail["anims"]) text_size 13
                 else:
                     text "Pick a pack, then a role." size 13

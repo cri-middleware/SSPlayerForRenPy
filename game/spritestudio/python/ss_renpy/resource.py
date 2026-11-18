@@ -47,7 +47,7 @@ class RecordingResourceManager(ResourceManager):
     """Headless :class:`ResourceManager`: records acquired paths, loads nothing.
 
     ``acquired`` preserves first-seen order; ``acquired_set`` is for membership
-    tests. Handy for asserting *which* textures ``set_animation`` requested.
+    tests. Handy for asserting *which* textures loading a pack requested.
     """
 
     def __init__(self) -> None:

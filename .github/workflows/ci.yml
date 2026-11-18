@@ -1,0 +1,290 @@
+name: CI
+
+# Two tiers, as in SpriteStudio-SDK. Every pull request runs release.yml's
+# headless gate (the plain-CPython tests under tools/ and the Ren'Py lint), with
+# the runtime built from the SDK submodule rather than downloaded: the submodule
+# is the source a PR that bumps it changes. A PR on the submodule commit the
+# weekly run last built takes that build instead of building it again (see the
+# test job). It also checks that each script under
+# scripts/ and its twin in the other shell take the same arguments. The weekly
+# run, a dispatch and the release PR (release/X.Y into main) also build the
+# runtime for macOS, Windows and Web, export the project for each desktop
+# platform and for the Web, and build the documentation site through docs.yml,
+# which a pull request that touches the docs runs on its own. Android and iOS are
+# left out: their exports need the launcher's interactive setup and Xcode.
+#
+# GL2 rendering cannot be verified here: sign it off locally (Shift+B /
+# scripts/run-demo.*) before releasing.
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE*'
+  # The weekly run also writes the develop caches that PRs restore from, since
+  # PRs do not save.
+  schedule:
+    # Each repository of the family takes its own hour on Sunday, so their
+    # weekly runs do not queue for the organization's runners; :17 keeps clear
+    # of the top of the hour, when GitHub delays scheduled runs.
+    - cron: '17 6 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 🐧 Tests and lint (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # deploy-examples.sh converts the SDK's bundled test projects, and the
+          # runtime is built from the SDK's source.
+          submodules: recursive
+          persist-credentials: false
+
+      # The runtime build depends on nothing but the submodule commit, the script
+      # that drives it, this workflow and the runner image, so its key is made
+      # of those, and only an exact match counts. The weekly run always builds,
+      # which keeps proving the submodule builds with the current toolchain and
+      # keeps the Rust cache seeded, and saves the libraries when no build is
+      # saved under that key yet. A pull request whose key matches restores them
+      # and skips Rust altogether; one that bumps the submodule, or changes any
+      # of the rest, misses and builds as before.
+      - name: Name the runtime build
+        id: runtime
+        run: echo "key=runtime-${ImageOS}-linux-debug-$(git rev-parse HEAD:SpriteStudio-SDK)-${{ hashFiles('scripts/build-runtime.sh', '.github/workflows/ci.yml') }}" >> "$GITHUB_OUTPUT"
+
+      # game/spritestudio/libs/ is gitignored and nothing else writes into it.
+      - name: Restore the runtime build
+        id: runtime-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: game/spritestudio/libs
+          key: ${{ steps.runtime.outputs.key }}
+          # The weekly run builds regardless; it only asks whether a build is saved.
+          lookup-only: ${{ github.event_name != 'pull_request' }}
+
+      - name: Setup Rust toolchain
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          # Pinned by SHA, so the channel must be named explicitly here.
+          toolchain: stable
+
+      - name: Setup Rust cache
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: SpriteStudio-SDK
+          # Only develop writes caches. A PR's cache is visible to that PR alone,
+          # so saving one per PR would only fill the 10 GB quota and evict the
+          # develop caches every PR restores from.
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      - name: Build the runtime
+        if: github.event_name != 'pull_request' || steps.runtime-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-runtime.sh
+
+      - name: Save the runtime build
+        if: github.ref == 'refs/heads/develop' && steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: game/spritestudio/libs
+          key: ${{ steps.runtime.outputs.key }}
+
+      # game/ss_assets/ is gitignored; the tests play these converted packs.
+      - name: Generate example animation data
+        run: bash scripts/deploy-examples.sh
+
+      # Through the runner, never a bare loop: a tool that cannot find its pack
+      # prints SKIP and exits 0, and only the runner counts that as a failure.
+      - name: Run headless test suite
+        run: bash scripts/run-tests.sh verbose=yes
+
+      # The SDK is a 150 MB .tar.bz2 that fetch-renpy-sdk.sh downloads and
+      # unpacks on every call, so it is cached whole, keyed on the pinned version.
+      - name: Restore the Ren'Py SDK
+        id: renpy-sdk
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: renpy-sdk
+          key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
+
+      - name: Fetch Ren'Py SDK
+        if: steps.renpy-sdk.outputs.cache-hit != 'true'
+        run: bash scripts/fetch-renpy-sdk.sh
+
+      # Saved before the lint runs in it.
+      - name: Save the Ren'Py SDK
+        if: steps.renpy-sdk.outputs.cache-hit != 'true' && github.ref == 'refs/heads/develop'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: renpy-sdk
+          key: renpy-sdk-${{ runner.os }}-${{ hashFiles('scripts/RENPY_VERSION.txt') }}
+
+      # Without --error-code the lint exits 0 whatever it reports. Even with it,
+      # an exception raised before the lint gets going (in an init block, say)
+      # exits 0 and leaves only traceback.txt, so either file Ren'Py writes when
+      # it fails is a failure here too.
+      - name: Lint (Ren'Py)
+        run: |
+          rm -f traceback.txt errors.txt
+          status=0
+          renpy-sdk/renpy.sh . lint --error-code || status=$?
+          for f in traceback.txt errors.txt; do
+            if [ -f "$f" ]; then
+              echo "::error::Ren'Py wrote $f during the lint:"
+              cat "$f"
+              status=1
+            fi
+          done
+          exit "$status"
+
+  # Each .sh under scripts/ and its .ps1 twin must take the same arguments and
+  # print the same help; check-twins.sh runs both with --help and with an
+  # option neither takes. The runner image has PowerShell 7.
+  twins:
+    name: 🐧 Script twins (bash / PowerShell)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare each script with its twin
+        run: bash scripts/check-twins.sh
+
+  # The weekly tier. `github.base_ref == 'main'` is the release PR: under git-flow
+  # only release/X.Y is merged into main.
+  desktop:
+    name: ${{ matrix.name }}
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 🐧 Desktop export (Linux)
+            os: ubuntu-latest
+            platform: linux
+
+          - name: 🍎 Desktop export (macOS)
+            os: macos-latest
+            platform: macos
+
+          - name: 🏁 Desktop export (Windows)
+            os: windows-latest
+            platform: windows
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: SpriteStudio-SDK
+          # The key is the job id and the runner OS; the platform keeps it
+          # readable next to the web job's.
+          key: ${{ matrix.platform }}
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      # macOS always goes through the SDK's release-macos.sh, which builds the
+      # universal framework.
+      - name: Install the macOS targets
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Build the runtime, then the example data (Linux / macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          bash scripts/build-runtime.sh build=release
+          bash scripts/deploy-examples.sh
+
+      - name: Build the runtime, then the example data (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          ./scripts/build-runtime.ps1 build=release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./scripts/deploy-examples.ps1
+
+      # Each fetches the Ren'Py SDK first when renpy-sdk/ is missing.
+      - name: Export (Linux / macOS)
+        if: matrix.platform != 'windows'
+        run: bash scripts/deploy-desktop.sh "$RUNNER_TEMP/dist"
+
+      - name: Export (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/deploy-desktop.ps1 "$env:RUNNER_TEMP/dist"
+
+  web:
+    name: 🌐 Web export
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      # The web runtime is the SDK's wasm-pack bundle.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: SpriteStudio-SDK
+          key: web
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: wasm-pack
+
+      - name: Build the runtime, then the example data
+        # Two builds, as in build-pages.sh: the wasm runtime the export ships,
+        # and the host libssconverter deploy-examples.sh converts through.
+        run: |
+          bash scripts/build-runtime.sh platform=web build=release
+          bash scripts/build-runtime.sh build=release
+          bash scripts/deploy-examples.sh
+
+      - name: Fetch Ren'Py SDK, with Web support
+        run: |
+          bash scripts/fetch-renpy-sdk.sh
+          bash scripts/fetch-renpy-web.sh
+
+      - name: Export
+        run: bash scripts/deploy-web.sh "$RUNNER_TEMP/web"
+
+  # docs.yml, the build pages.yml publishes, both locales --strict. A pull
+  # request into anything but main that touches the docs runs it on its own.
+  docs:
+    name: 📚 Docs site
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    uses: ./.github/workflows/docs.yml

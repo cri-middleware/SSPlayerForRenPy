@@ -43,12 +43,12 @@ class Cell(object):
         return None
 
     # Cell
-    def Rectangle(self):
+    def Region(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ss.format.Rect import Rect
-            obj = Rect()
+            from ss.format.Region import Region
+            obj = Region()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
@@ -170,11 +170,11 @@ def CellAddName(builder, name):
 def AddName(builder, name):
     CellAddName(builder, name)
 
-def CellAddRectangle(builder, rectangle):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(rectangle), 0)
+def CellAddRegion(builder, region):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(region), 0)
 
-def AddRectangle(builder, rectangle):
-    CellAddRectangle(builder, rectangle)
+def AddRegion(builder, region):
+    CellAddRegion(builder, region)
 
 def CellAddPivot(builder, pivot):
     builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(pivot), 0)

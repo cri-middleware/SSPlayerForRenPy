@@ -1,17 +1,22 @@
 """Decode the timeline events (UserData / Signal / Audio) the runtime reports.
 
-This is the data half of "Step 4 — interactive features" in the porting guide
-(``docs/06_playback_control`` §3). The Brain does not hand back event payloads
-over the C-API; it only reports, after each ``update``, the *indices* of the
-``EventsPerFrame`` records that the playhead passed through. We resolve those
-indices straight from the ``.ssab`` FlatBuffer.
+The Brain does not hand back event payloads over the C-API;
+it only reports, after each ``update``, the
+*indices* of the ``EventsPerFrame`` records that the playhead passed through.
+We resolve those indices straight from the ``.ssab`` FlatBuffer.
 
-Index semantics (verified empirically against the overall packs):
+Index semantics (verified empirically against the SDK sample packs
+(UserData.ssab, Sound.ssab)):
   ``ss_runtime_get_passed_event_index(ctx, i)`` returns an index into the
-  **currently-setup animation's** ``AnimationData.events`` vector (a vector of
-  ``EventsPerFrame``). The resolved ``EventsPerFrame.frame_index`` equals the
-  integer frame the event lives on (e.g. UserData.ssab → {0, 10}, Sound.ssab →
-  {0, 10, 20}). So resolution is just ``AnimationData.Events(idx)``.
+  ``AnimationData.events`` vector (a vector of ``EventsPerFrame``) of the
+  animation of the **source that fired it** — read it with
+  ``ss_runtime_get_passed_event_source_handle`` and
+  ``ss_runtime_get_source_animation_index``. With one animation playing that is
+  the one set up; once a crossfade has handed track 0 to another animation, or
+  an overlay fires, it is not, and reading every index against the animation
+  set up reports other events or none. The resolved
+  ``EventsPerFrame.frame_index`` equals the integer frame the event lives on
+  (e.g. UserData.ssab → {0, 10}, Sound.ssab → {0, 10, 20}).
 
 Engine-independent on purpose (no ``renpy`` import) so the headless tools and
 the Ren'Py displayable share one decoder — mirrors ``framedata`` / ``ssab_meta``.
@@ -40,18 +45,22 @@ class UserDataEvent:
     """A SpriteStudio UserData marker (``PartAttributeUserData``).
 
     Each optional slot is ``None`` when the marker does not carry that field.
-    ``rect`` is ``(x1, y1, x2, y2)``; ``point`` is ``(x, y)``.
+    ``rect`` is ``(left, top, right, bottom)``; ``point`` is ``(x, y)``.
+    ``source`` is the handle of the source whose animation fired it (see
+    :class:`FrameEvents`).
     """
     part_index: int
+    part_name: str | None = None
     integer: int | None = None
     rect: tuple[float, float, float, float] | None = None
     point: tuple[float, float] | None = None
     string: str | None = None
+    source: int | None = None
 
 
 @dataclass(frozen=True)
 class SignalEvent:
-    """A v7 Signal marker (``PartAttributeSignal``).
+    """A Signal marker (``PartAttributeSignal``).
 
     ``params`` maps ``param_id`` → decoded value (``bool`` / ``int`` / ``float``
     / ``str``); a ``None``-typed param maps to ``None``.
@@ -60,6 +69,8 @@ class SignalEvent:
     active: bool
     command_id: str
     params: dict = field(default_factory=dict)
+    part_name: str | None = None
+    source: int | None = None
 
 
 @dataclass(frozen=True)
@@ -67,27 +78,37 @@ class AudioEvent:
     """A sound-trigger marker (``PartAttributeAudio``).
 
     The runtime only *reports* the trigger; actually playing the sound is the
-    Player's job (``docs/00_limitations`` → "サウンド再生"). ``sound_name`` is the
-    alias; the two hashes address ``SoundList`` / ``SoundFile``. ``file_path`` is
-    that entry resolved to its ssab-relative audio file (empty when the pack
-    carries no matching ``SoundFile``, or when decoded without a sound map — the
-    host joins it with the pack base dir to play). ``loop_num`` is a *play count*
-    (docs/11 §4: SS has no infinite loop — ``n`` means play ``n`` times)."""
+    Player's job.
+    ``sound_name`` is the alias; the two hashes address ``SoundList`` /
+    ``SoundFile``. ``file_path`` is that entry resolved to its ssab-relative
+    audio file (empty when the pack carries no matching ``SoundFile``, or when
+    decoded without a sound map — the host joins it with the pack base dir to
+    play). ``loop_num`` is a *play count* (SS has no infinite loop — ``n`` means
+    play ``n`` times)."""
     part_index: int
     sound_name: str
     sound_name_hash: int
     sound_list_name_hash: int
     loop_num: int
     file_path: str = ""
+    part_name: str | None = None
+    source: int | None = None
 
 
 @dataclass(frozen=True)
 class FrameEvents:
-    """All events on one ``EventsPerFrame`` record (one timeline frame)."""
+    """All events on one ``EventsPerFrame`` record (one timeline frame).
+
+    ``source`` is the handle of the source whose animation fired the record —
+    track 0's main source for the animation playing, or another one when the
+    track stack is in use (``SSInternalPlayer.track_main_source`` /
+    ``add_track_source`` hand out the same handles). ``None`` when the runtime
+    cannot say (a library that predates the track stack)."""
     frame_index: int
     users: list[UserDataEvent] = field(default_factory=list)
     signals: list[SignalEvent] = field(default_factory=list)
     audios: list[AudioEvent] = field(default_factory=list)
+    source: int | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -121,7 +142,15 @@ def _param_value(param):
     return None                               # NONE / None_
 
 
-def _user_event(eu) -> UserDataEvent:
+def _part_name(part_names, index):
+    """The part's name, or None when the table is absent or the index is out
+    of range. Never raises: an event is worth delivering without a name."""
+    if 0 <= index < len(part_names):
+        return part_names[index] or None
+    return None
+
+
+def _user_event(eu, part_names=(), source=None) -> UserDataEvent:
     v = eu.Value()
     integer = rect = point = string = None
     if v is not None:
@@ -130,18 +159,21 @@ def _user_event(eu) -> UserDataEvent:
             integer = int(iv.Value())
         rc = v.Rect()
         if rc is not None:
-            rect = (rc.X1(), rc.Y1(), rc.X2(), rc.Y2())
+            rect = (rc.Left(), rc.Top(), rc.Right(), rc.Bottom())
         pt = v.Point()
         if pt is not None:
             point = (pt.V1(), pt.V2())
         st = v.Str()
         if st is not None:
             string = _s(st)
-    return UserDataEvent(part_index=eu.PartIndex(), integer=integer,
-                         rect=rect, point=point, string=string)
+    return UserDataEvent(part_index=eu.PartIndex(),
+                         part_name=_part_name(part_names, eu.PartIndex()),
+                         integer=integer,
+                         rect=rect, point=point, string=string,
+                         source=source)
 
 
-def _signal_event(es) -> SignalEvent:
+def _signal_event(es, part_names=(), source=None) -> SignalEvent:
     v = es.Value()
     active = False
     command_id = ""
@@ -154,11 +186,14 @@ def _signal_event(es) -> SignalEvent:
             if p is None:
                 continue
             params[_s(p.ParamId())] = _param_value(p)
-    return SignalEvent(part_index=es.PartIndex(), active=active,
-                       command_id=command_id, params=params)
+    return SignalEvent(part_index=es.PartIndex(),
+                       part_name=_part_name(part_names, es.PartIndex()),
+                       active=active,
+                       command_id=command_id, params=params,
+                       source=source)
 
 
-def _audio_event(ea, sound_map=None) -> AudioEvent:
+def _audio_event(ea, sound_map=None, part_names=(), source=None) -> AudioEvent:
     v = ea.Value()
     name = ""
     name_hash = list_hash = loop = 0
@@ -173,81 +208,129 @@ def _audio_event(ea, sound_map=None) -> AudioEvent:
     if sound_map:
         file_path = sound_map.get((list_hash, name_hash)) \
             or sound_map.get(name_hash, "")
-    return AudioEvent(part_index=ea.PartIndex(), sound_name=name,
+    return AudioEvent(part_index=ea.PartIndex(),
+                      part_name=_part_name(part_names, ea.PartIndex()),
+                      sound_name=name,
                       sound_name_hash=name_hash, sound_list_name_hash=list_hash,
-                      loop_num=loop, file_path=file_path)
+                      loop_num=loop, file_path=file_path, source=source)
 
 
-def parse_events_per_frame(epf, sound_map=None) -> FrameEvents:
+def parse_events_per_frame(epf, sound_map=None, part_names=(),
+                           source=None) -> FrameEvents:
     """Turn one ``EventsPerFrame`` FlatBuffer record into a :class:`FrameEvents`.
 
     ``sound_map`` (``ss_renpy.ssab_meta.SsabMeta.sound_file_map()`` or ``None``)
     resolves each Audio event's ``file_path``; without it audio decodes with an
-    empty ``file_path`` (name + hashes still populated)."""
-    users = [_user_event(epf.Users(i)) for i in range(epf.UsersLength())]
-    signals = [_signal_event(epf.Signals(i)) for i in range(epf.SignalsLength())]
-    audios = [_audio_event(epf.Audios(i), sound_map)
+    empty ``file_path`` (name + hashes still populated). ``source`` is the
+    handle of the source that fired the record, set on it and on each event."""
+    users = [_user_event(epf.Users(i), part_names, source)
+             for i in range(epf.UsersLength())]
+    # A Signal switched off in the editor is authoring state, not an event.
+    signals = [s for s in (_signal_event(epf.Signals(i), part_names, source)
+                           for i in range(epf.SignalsLength()))
+               if s.active]
+    audios =[_audio_event(epf.Audios(i), sound_map, part_names, source)
               for i in range(epf.AudiosLength())]
     return FrameEvents(frame_index=epf.FrameIndex(), users=users,
-                       signals=signals, audios=audios)
+                       signals=signals, audios=audios, source=source)
 
 
 # --- resolver -------------------------------------------------------------
 
 class EventResolver:
-    """Resolve passed-event indices for one setup animation into payloads.
+    """Resolve passed-event indices into payloads, over the whole pack.
 
-    Construct once per animation (the index space is per-animation). Keeps the
-    ``.ssab`` bytes alive — the FlatBuffers accessors index into them.
+    Each index addresses the event table of the animation of the source that
+    fired it, so one resolver serves every animation of the pack; the one it
+    was built for, or last :meth:`select`-ed, is the fallback for a runtime
+    that cannot name the source. Keeps the ``.ssab`` bytes alive — the
+    FlatBuffers accessors index into them.
     """
 
-    def __init__(self, ssab_bytes: bytes, animation_name: str):
+    def __init__(self, ssab_bytes: bytes, animation_name: str | None = None):
         self._buf = ssab_bytes
-        self.animation_name = animation_name
         root = SsAnimeBinary.GetRootAs(ssab_bytes, 0)
+        # Positional, as the runtime's animation indices are.
+        self._anims = [root.Animations(i)
+                       for i in range(root.AnimationsLength())]
+        self.animation_name = None
         self._anim = None
-        for i in range(root.AnimationsLength()):
-            a = root.Animations(i)
+        self.select(animation_name)
+        # Pack-global audio table, built
+        # once so every resolved Audio event carries its file path. Guarded: a
+        # pack with no / malformed sound lists just yields an empty map (audio
+        # then decodes file-path-less).
+        try:
+            from ss_renpy.ssab_meta import SsabMeta
+            meta = SsabMeta(ssab_bytes)
+            self._sound_map = meta.sound_file_map()
+            # Part-index-ordered, so a decoded event resolves its own name with a
+            # lookup rather than making every callback carry the pack around.
+            self._part_names = tuple(meta.part_names())
+        except Exception:
+            self._sound_map = {}
+            self._part_names = ()
+
+    def select(self, animation_name: str | None) -> None:
+        """Make ``animation_name`` the one :meth:`resolve` reads by default."""
+        self.animation_name = animation_name
+        self._anim = None
+        for a in self._anims:
             if _s(a.Name()) == animation_name:
                 self._anim = a
                 break
-        # Pack-global audio table (docs/11 §4), built once so every resolved
-        # Audio event carries its file path. Guarded: a pack with no / malformed
-        # sound lists just yields an empty map (audio then decodes file-path-less).
-        try:
-            from ss_renpy.ssab_meta import SsabMeta
-            self._sound_map = SsabMeta(ssab_bytes).sound_file_map()
-        except Exception:
-            self._sound_map = {}
 
     @property
     def available(self) -> bool:
-        """True when the named animation was found (else resolution is a no-op)."""
+        """True when the selected animation was found (else resolution falls
+        back to nothing unless the runtime names the source's animation)."""
         return self._anim is not None
 
     @property
     def events_length(self) -> int:
         return self._anim.EventsLength() if self._anim is not None else 0
 
-    def resolve(self, event_idx: int) -> FrameEvents | None:
-        """Resolve one ``passed_event_index`` into its :class:`FrameEvents`."""
-        if self._anim is None:
+    def resolve(self, event_idx: int, animation_index: int | None = None,
+                source: int | None = None) -> FrameEvents | None:
+        """Resolve one ``passed_event_index`` into its :class:`FrameEvents`.
+
+        ``animation_index`` (positional over the pack's animations) names the
+        table to read; ``None`` reads the selected animation's."""
+        if animation_index is None:
+            anim = self._anim
+        elif 0 <= animation_index < len(self._anims):
+            anim = self._anims[animation_index]
+        else:
+            anim = None
+        # A not-found (-1), or an index past that table, would read past the
+        # FlatBuffer.
+        if anim is None or event_idx < 0 or event_idx >= anim.EventsLength():
             return None
-        if event_idx < 0 or event_idx >= self._anim.EventsLength():
-            return None
-        return parse_events_per_frame(self._anim.Events(event_idx),
-                                      self._sound_map)
+        return parse_events_per_frame(anim.Events(event_idx),
+                                      self._sound_map, self._part_names,
+                                      source)
 
     def collect(self, rt) -> list[FrameEvents]:
         """Drain the events the last ``update`` passed through, in order.
 
         ``rt`` is anything exposing ``passed_event_count()`` /
         ``passed_event_index(i)`` (the :class:`ss_renpy.ssruntime.SSRuntime`
-        wrapper). Empty records are dropped.
+        wrapper); one that also exposes ``passed_event_source_handle(i)`` and
+        ``source_animation_index(handle)`` has each event read from the table of
+        the animation that fired it. Empty records are dropped.
         """
         out: list[FrameEvents] = []
+        source_of = getattr(rt, "passed_event_source_handle", None)
         for i in range(rt.passed_event_count()):
-            fe = self.resolve(rt.passed_event_index(i))
+            source = source_of(i) if source_of is not None else None
+            index = None
+            if source is not None:
+                index = rt.source_animation_index(source)
+                if index is None:
+                    # A source the runtime names but cannot place: its table
+                    # is unknown, and the selected one may not be it.
+                    continue
+            fe = self.resolve(rt.passed_event_index(i), index, source)
             if fe is not None and not fe.is_empty:
                 out.append(fe)
         return out

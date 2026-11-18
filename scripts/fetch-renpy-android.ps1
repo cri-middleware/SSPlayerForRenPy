@@ -6,14 +6,16 @@
 # The Ren'Py SDK must already be fetched using fetch-renpy-sdk.ps1.
 #
 # Note: RAPT itself does NOT include the Android SDK / NDK / JDK, nor the signing
-# keys. Those two steps are interactive, so do them once from the launcher GUI:
+# keys. Those steps are interactive, so do them once from the launcher GUI:
 #     renpy-sdk\renpy.exe renpy-sdk\launcher   ->  Android
 #       -> "Install SDK"   (downloads the SDK/NDK/JDK into rapt\Sdk\)
 #       -> "Generate Keys" (creates android.keystore to sign the package)
+#       -> "Configure"     (package/app name in android.json)
 # After that, build with scripts\deploy-android.ps1.
 #
 # Usage: scripts\fetch-renpy-android.ps1 [version]
-#   version : RAPT package version to fetch (default: latest stable, or $env:RENPY_VERSION).
+#   version : RAPT package version to fetch (default: $env:RENPY_VERSION, else the pin in
+#             scripts\RENPY_VERSION.txt, else the latest stable).
 #             e.g. scripts\fetch-renpy-android.ps1 8.3.0
 
 $ErrorActionPreference = "Stop"
@@ -22,9 +24,27 @@ $Dest = Join-Path $RootDir "renpy-sdk"
 $BaseUrl = "https://www.renpy.org/dl"
 $VersionFile = Join-Path $RootDir "scripts/RENPY_VERSION.txt"
 
-if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
-    Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
-    exit 0
+# From "# Usage:" to the end of the header, which is what the .sh twin prints.
+function Show-Usage {
+    $emit = $false
+    foreach ($line in Get-Content $PSCommandPath) {
+        if ($line -match '^# Usage:') { $emit = $true }
+        if (-not $emit) { continue }
+        if ($line -notmatch '^#') { break }
+        $line -replace '^# ?', ''
+    }
+}
+
+$VersionArg = ""
+foreach ($a in $args) {
+    switch -Regex -CaseSensitive ($a) {
+        '^(-h|--help|help)$' { Show-Usage; exit 0 }
+        '^-' { [Console]::Error.WriteLine("fetch-renpy-android.ps1: unknown flag '$a'"); exit 2 }
+        default {
+            if ($VersionArg) { [Console]::Error.WriteLine("fetch-renpy-android.ps1: unexpected extra arg '$a'"); exit 2 }
+            $VersionArg = $a
+        }
+    }
 }
 
 if (-not (Test-Path $Dest)) {
@@ -35,7 +55,7 @@ if (-not (Test-Path $Dest)) {
 # --- resolve version ------------------------------------------------------
 # priority: CLI arg > $env:RENPY_VERSION > scripts\RENPY_VERSION.txt (the pin all
 # fetch-renpy-* scripts share) > latest stable resolved from latest.html.
-$Version = if ($Args.Count -ge 1) { $Args[0] } elseif ($env:RENPY_VERSION) { $env:RENPY_VERSION } else { "" }
+$Version = if ($VersionArg) { $VersionArg } elseif ($env:RENPY_VERSION) { $env:RENPY_VERSION } else { "" }
 if (-not $Version -and (Test-Path $VersionFile)) {
     $Version = (Get-Content $VersionFile -Raw).Trim()
     if ($Version) { Write-Host "Using pinned version from scripts\RENPY_VERSION.txt: $Version" }

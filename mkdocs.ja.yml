@@ -1,0 +1,37 @@
+INHERIT: ./mkdocs.base.yml
+
+docs_dir: docs/ja
+site_dir: site/ja
+site_url: "https://cri-middleware.github.io/SSPlayerForRenPy/ja/"
+site_description: "SpriteStudio のアニメーションを Ren'Py で再生するプラグイン"
+
+theme:
+  language: ja
+
+extra:
+  site_root_prefix: "../"
+  social:
+    - icon: material/motion-play
+      link: https://cri-middleware.github.io/SpriteStudio-Docs/ja/
+      name: SpriteStudio Docs（ポータル）
+    - icon: fontawesome/brands/github
+      link: https://github.com/cri-middleware
+      name: GitHub の cri-middleware
+    - icon: material/web
+      link: https://www.webtech.co.jp/spritestudio/
+      name: SpriteStudio
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/spritestudio
+      name: X の SpriteStudio
+
+nav:
+  - 🏠 ホーム: index.md
+  - 🚀 導入ガイド: setup.md
+  - 🗂️ アセットの取り込み: import.md
+  - ▶️ 再生と制御: usage.md
+  - 🔘 ボタン: buttons.md
+  - 📦 ゲームのエクスポート: export.md
+  - 🛠️ Player・SDK 開発者向けガイド:
+      - ビルドガイド: development/build.md
+      - プレイヤーの構成: development/architecture.md
+  - ⚠️ 制約と適用範囲: limitations.md

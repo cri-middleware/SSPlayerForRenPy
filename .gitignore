@@ -97,10 +97,10 @@ tmbootpicker.efi
 mono_crash.*
 
 # Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
+/[Dd]ebug/
+/[Dd]ebugPublic/
+/[Rr]elease/
+/[Rr]eleases/
 
 [Dd]ebug/x64/
 [Dd]ebugPublic/x64/
@@ -116,18 +116,18 @@ obj/x64/
 bin/x86/
 obj/x86/
 
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-[Aa][Rr][Mm]64[Ee][Cc]/
-bld/
-[Oo]bj/
-[Oo]ut/
-[Ll]og/
-[Ll]ogs/
+/[Ww][Ii][Nn]32/
+/[Aa][Rr][Mm]/
+/[Aa][Rr][Mm]64/
+/[Aa][Rr][Mm]64[Ee][Cc]/
+/bld/
+/[Oo]bj/
+/[Oo]ut/
+/[Ll]og/
+/[Ll]ogs/
 
 # Build results on 'Bin' directories
-**/[Bb]in/*
+/[Bb]in/
 # Uncomment if you have tasks that rely on *.refresh files to move binaries
 # (https://github.com/github/gitignore/pull/3736)
 #!**/[Bb]in/*.refresh
@@ -154,8 +154,8 @@ nunit-*.xml
 *.received.*
 
 # Build Results of an ATL Project
-[Dd]ebugPS/
-[Rr]eleasePS/
+/[Dd]ebugPS/
+/[Rr]eleasePS/
 dlldata.c
 
 # Benchmark Results
@@ -561,7 +561,7 @@ cmake-build-*/
 *.iws
 
 # IntelliJ
-out/
+/out/
 
 # mpeltonen/sbt-idea plugin
 .idea_modules/
@@ -636,18 +636,18 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -794,7 +794,7 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
+# Documentation build output (both locales; the ja build writes into site/ja)
 /site
 
 # mypy
@@ -847,12 +847,22 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# --- SSPlayer for Ren'Py: deploy artifacts (regenerate via scripts/deploy-examples.* and build-runtime.*) ---
+# --- SSPlayer for Ren'Py --------------------------------------------------
+# The templates above ignore a directory named build/, lib/, parts/, out/ and the
+# like wherever it appears. Here those are anchored to the root with a leading /,
+# so a source directory of that name -- "parts" is SpriteStudio's own word --
+# cannot vanish from git status; keep them anchored when the templates are
+# regenerated. What this project writes is listed below on its own.
+
+# Deploy artifacts (regenerate via scripts/deploy-examples.* and build-runtime.*)
 /game/spritestudio/libs/
 /game/sprites/
 /game/ss_assets/
 /SpriteStudio_Source/
 # (the submodule's own build output is ignored inside the submodule)
+
+# SDK zip cached by scripts/download-sdk.* for reuse across runs
+/scripts/.sdk-cache/
 
 # Ren'Py SDK fetched on demand by scripts/fetch-renpy-sdk.* (for launching the project)
 /renpy-sdk/
@@ -869,3 +879,36 @@ __marimo__/
 web_out/
 web_out.zip
 progressive_download.txt
+
+# Release packaging: scripts/build-release.sh writes the plugin zip, the Web
+# demo zip, their stable aliases and SHA256SUMS here, and unpacks them into
+# build/ to check them.
+/release-dist/
+/build/
+
+# Exports: the scripts/deploy-* that build a package write it under dist/ by
+# default.
+/dist/
+
+# PNGs that tools/render_png.py and render_mask_png.py write by default.
+/out/
+
+# Android signing: deploy-android.sh wants the two keystores in the root, and
+# the launcher's Android configuration sits beside them. A signing key must
+# never be committed.
+/android.keystore
+/bundle.keystore
+/android.json
+/.android.json
+
+# scripts/scan-snippets.sh writes its reports here.
+/qa/
+
+# AI assistant configuration
+# AGENTS.md is the tracked canonical guide; per-tool entrypoints that developers
+# symlink to it (e.g. CLAUDE.md) stay local.
+GEMINI.md
+.gemini/
+CLAUDE.md
+.claude/
+.antigravitycli/

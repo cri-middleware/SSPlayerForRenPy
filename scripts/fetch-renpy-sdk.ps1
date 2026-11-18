@@ -6,11 +6,12 @@
 #
 # This is a SEPARATE job from the other scripts (keep them decoupled):
 #   build-runtime.*   -> the native libssruntime    (game\spritestudio\libs\)
-#   deploy-examples.* -> the .ssab playback data     (game\sprites\)
+#   deploy-examples.* -> the .ssab playback data     (game\ss_assets\)
 #   fetch-renpy-sdk.* -> the Ren'Py editor/runtime   (renpy-sdk\, gitignored)
 #
 # Usage: scripts\fetch-renpy-sdk.ps1 [version]
-#   version : SDK version to fetch (default: latest stable, or $env:RENPY_VERSION).
+#   version : SDK version to fetch (default: $env:RENPY_VERSION, else the pin in
+#             scripts\RENPY_VERSION.txt, else the latest stable).
 #             e.g. scripts\fetch-renpy-sdk.ps1 8.5.3
 #
 # Afterwards, launch the project with:
@@ -22,15 +23,33 @@ $Dest = Join-Path $RootDir "renpy-sdk"
 $BaseUrl = "https://www.renpy.org/dl"
 $VersionFile = Join-Path $RootDir "scripts/RENPY_VERSION.txt"
 
-if ($Args.Count -ge 1 -and ($Args[0] -in @("-h", "--help", "help"))) {
-    Get-Content $PSCommandPath | Select-String -Pattern '^# Usage:', '^#   ' | ForEach-Object { $_.Line -replace '^# ?', '' }
-    exit 0
+# From "# Usage:" to the end of the header, which is what the .sh twin prints.
+function Show-Usage {
+    $emit = $false
+    foreach ($line in Get-Content $PSCommandPath) {
+        if ($line -match '^# Usage:') { $emit = $true }
+        if (-not $emit) { continue }
+        if ($line -notmatch '^#') { break }
+        $line -replace '^# ?', ''
+    }
+}
+
+$VersionArg = ""
+foreach ($a in $args) {
+    switch -Regex -CaseSensitive ($a) {
+        '^(-h|--help|help)$' { Show-Usage; exit 0 }
+        '^-' { [Console]::Error.WriteLine("fetch-renpy-sdk.ps1: unknown flag '$a'"); exit 2 }
+        default {
+            if ($VersionArg) { [Console]::Error.WriteLine("fetch-renpy-sdk.ps1: unexpected extra arg '$a'"); exit 2 }
+            $VersionArg = $a
+        }
+    }
 }
 
 # --- resolve version ------------------------------------------------------
 # priority: CLI arg > $env:RENPY_VERSION > scripts\RENPY_VERSION.txt (the pin all
 # fetch-renpy-* scripts share) > latest stable resolved from latest.html.
-$Version = if ($Args.Count -ge 1) { $Args[0] } elseif ($env:RENPY_VERSION) { $env:RENPY_VERSION } else { "" }
+$Version = if ($VersionArg) { $VersionArg } elseif ($env:RENPY_VERSION) { $env:RENPY_VERSION } else { "" }
 if (-not $Version -and (Test-Path $VersionFile)) {
     $Version = (Get-Content $VersionFile -Raw).Trim()
     if ($Version) { Write-Host "Using pinned version from scripts\RENPY_VERSION.txt: $Version" }

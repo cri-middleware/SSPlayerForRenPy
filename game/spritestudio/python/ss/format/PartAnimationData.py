@@ -29,954 +29,270 @@ class PartAnimationData(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # PartAnimationData
-    def CellArray(self, j):
+    def CellKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataCellValue import PartAnimationDataCellValue
-            obj = PartAnimationDataCellValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def CellArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def CellArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        return o == 0
-
-    # PartAnimationData
-    def PositionXArray(self, j):
+    def PositionXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PositionXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PositionXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
-        return o == 0
-
-    # PartAnimationData
-    def PositionYArray(self, j):
+    def PositionYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PositionYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PositionYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        return o == 0
-
-    # PartAnimationData
-    def PositionZArray(self, j):
+    def PositionZKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PositionZArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PositionZArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
-        return o == 0
-
-    # PartAnimationData
-    def RotationXArray(self, j):
+    def RotationXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def RotationXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def RotationXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
-        return o == 0
-
-    # PartAnimationData
-    def RotationYArray(self, j):
+    def RotationYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def RotationYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def RotationYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
-        return o == 0
-
-    # PartAnimationData
-    def RotationZArray(self, j):
+    def RotationZKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def RotationZArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def RotationZArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
-        return o == 0
-
-    # PartAnimationData
-    def ScaleXArray(self, j):
+    def ScaleXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def ScaleXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def ScaleXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
-        return o == 0
-
-    # PartAnimationData
-    def ScaleYArray(self, j):
+    def ScaleYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def ScaleYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def ScaleYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
-        return o == 0
-
-    # PartAnimationData
-    def LocalScaleXArray(self, j):
+    def LocalScaleXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def LocalScaleXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def LocalScaleXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
-        return o == 0
-
-    # PartAnimationData
-    def LocalScaleYArray(self, j):
+    def LocalScaleYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(24))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def LocalScaleYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(24))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def LocalScaleYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(24))
-        return o == 0
-
-    # PartAnimationData
-    def AlphaArray(self, j):
+    def AlphaKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def AlphaArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def AlphaArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
-        return o == 0
-
-    # PartAnimationData
-    def LocalAlphaArray(self, j):
+    def LocalAlphaKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def LocalAlphaArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def LocalAlphaArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
-        return o == 0
-
-    # PartAnimationData
-    def PriorityArray(self, j):
+    def PriorityKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(30))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataIntValue import PartAnimationDataIntValue
-            obj = PartAnimationDataIntValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PriorityArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(30))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PriorityArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(30))
-        return o == 0
-
-    # PartAnimationData
-    def FlipHArray(self, j):
+    def FlipHKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(32))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataBoolValue import PartAnimationDataBoolValue
-            obj = PartAnimationDataBoolValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def FlipHArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(32))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def FlipHArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(32))
-        return o == 0
-
-    # PartAnimationData
-    def FlipVArray(self, j):
+    def FlipVKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(34))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataBoolValue import PartAnimationDataBoolValue
-            obj = PartAnimationDataBoolValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def FlipVArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(34))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def FlipVArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(34))
-        return o == 0
-
-    # PartAnimationData
-    def HideArray(self, j):
+    def HideKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(36))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataBoolValue import PartAnimationDataBoolValue
-            obj = PartAnimationDataBoolValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def HideArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(36))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def HideArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(36))
-        return o == 0
-
-    # PartAnimationData
-    def PartColorArray(self, j):
+    def PartColorKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(38))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataPartColor import PartAnimationDataPartColor
-            obj = PartAnimationDataPartColor()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PartColorArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(38))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PartColorArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(38))
-        return o == 0
-
-    # PartAnimationData
-    def ShaderArray(self, j):
+    def ShaderKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(40))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataShader import PartAnimationDataShader
-            obj = PartAnimationDataShader()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def ShaderArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(40))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def ShaderArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(40))
-        return o == 0
-
-    # PartAnimationData
-    def VertexArray(self, j):
+    def VertexKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(42))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataVertex import PartAnimationDataVertex
-            obj = PartAnimationDataVertex()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def VertexArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(42))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def VertexArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(42))
-        return o == 0
-
-    # PartAnimationData
-    def PivotXArray(self, j):
+    def PivotXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(44))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PivotXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(44))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PivotXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(44))
-        return o == 0
-
-    # PartAnimationData
-    def PivotYArray(self, j):
+    def PivotYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(46))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def PivotYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(46))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def PivotYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(46))
-        return o == 0
-
-    # PartAnimationData
-    def AnchorXArray(self, j):
+    def AnchorXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(48))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def AnchorXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(48))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def AnchorXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(48))
-        return o == 0
-
-    # PartAnimationData
-    def AnchorYArray(self, j):
+    def AnchorYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(50))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def AnchorYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(50))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def AnchorYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(50))
-        return o == 0
-
-    # PartAnimationData
-    def SizeXArray(self, j):
+    def SizeXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(52))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def SizeXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(52))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def SizeXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(52))
-        return o == 0
-
-    # PartAnimationData
-    def SizeYArray(self, j):
+    def SizeYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(54))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def SizeYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(54))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def SizeYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(54))
-        return o == 0
-
-    # PartAnimationData
-    def ImgFlipHArray(self, j):
+    def ImgFlipHKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(56))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataBoolValue import PartAnimationDataBoolValue
-            obj = PartAnimationDataBoolValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def ImgFlipHArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(56))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def ImgFlipHArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(56))
-        return o == 0
-
-    # PartAnimationData
-    def ImgFlipVArray(self, j):
+    def ImgFlipVKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(58))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataBoolValue import PartAnimationDataBoolValue
-            obj = PartAnimationDataBoolValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def ImgFlipVArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(58))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def ImgFlipVArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(58))
-        return o == 0
-
-    # PartAnimationData
-    def UvTranslationXArray(self, j):
+    def UvTranslationXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(60))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def UvTranslationXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(60))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def UvTranslationXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(60))
-        return o == 0
-
-    # PartAnimationData
-    def UvTranslationYArray(self, j):
+    def UvTranslationYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(62))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def UvTranslationYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(62))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def UvTranslationYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(62))
-        return o == 0
-
-    # PartAnimationData
-    def UvRotationZArray(self, j):
+    def UvRotationZKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(64))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def UvRotationZArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(64))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def UvRotationZArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(64))
-        return o == 0
-
-    # PartAnimationData
-    def UvScaleXArray(self, j):
+    def UvScaleXKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(66))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def UvScaleXArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(66))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def UvScaleXArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(66))
-        return o == 0
-
-    # PartAnimationData
-    def UvScaleYArray(self, j):
+    def UvScaleYKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(68))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def UvScaleYArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(68))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def UvScaleYArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(68))
-        return o == 0
-
-    # PartAnimationData
-    def BoundingRadiusArray(self, j):
+    def BoundingRadiusKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(70))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def BoundingRadiusArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(70))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def BoundingRadiusArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(70))
-        return o == 0
-
-    # PartAnimationData
-    def MaskArray(self, j):
+    def MaskKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(72))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataFloatValue import PartAnimationDataFloatValue
-            obj = PartAnimationDataFloatValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def MaskArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(72))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def MaskArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(72))
-        return o == 0
-
-    # PartAnimationData
-    def SkewArray(self, j):
+    def SkewKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(74))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataVec2 import PartAnimationDataVec2
-            obj = PartAnimationDataVec2()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def SkewArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(74))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def SkewArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(74))
-        return o == 0
-
-    # PartAnimationData
-    def DeformArray(self, j):
+    def DeformKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(76))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataDeform import PartAnimationDataDeform
-            obj = PartAnimationDataDeform()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
     # PartAnimationData
-    def DeformArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(76))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def DeformArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(76))
-        return o == 0
-
-    # PartAnimationData
-    def TextureArray(self, j):
+    def TextureKeys(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(78))
         if o != 0:
-            x = self._tab.Vector(o)
-            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
-            from ss.format.PartAnimationDataUIntValue import PartAnimationDataUIntValue
-            obj = PartAnimationDataUIntValue()
-            obj.Init(self._tab.Bytes, x)
-            return obj
-        return None
-
-    # PartAnimationData
-    def TextureArrayLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(78))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
-
-    # PartAnimationData
-    def TextureArrayIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(78))
-        return o == 0
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
+        return 4294967295
 
 def PartAnimationDataStart(builder):
     builder.StartObject(38)
@@ -984,461 +300,233 @@ def PartAnimationDataStart(builder):
 def Start(builder):
     PartAnimationDataStart(builder)
 
-def PartAnimationDataAddCellArray(builder, cellArray):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(cellArray), 0)
+def PartAnimationDataAddCellKeys(builder, cellKeys):
+    builder.PrependUint32Slot(0, cellKeys, 4294967295)
 
-def AddCellArray(builder, cellArray):
-    PartAnimationDataAddCellArray(builder, cellArray)
+def AddCellKeys(builder, cellKeys):
+    PartAnimationDataAddCellKeys(builder, cellKeys)
 
-def PartAnimationDataStartCellArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddPositionXKeys(builder, positionXKeys):
+    builder.PrependUint32Slot(1, positionXKeys, 4294967295)
 
-def StartCellArrayVector(builder, numElems):
-    return PartAnimationDataStartCellArrayVector(builder, numElems)
+def AddPositionXKeys(builder, positionXKeys):
+    PartAnimationDataAddPositionXKeys(builder, positionXKeys)
 
-def PartAnimationDataAddPositionXArray(builder, positionXArray):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(positionXArray), 0)
+def PartAnimationDataAddPositionYKeys(builder, positionYKeys):
+    builder.PrependUint32Slot(2, positionYKeys, 4294967295)
 
-def AddPositionXArray(builder, positionXArray):
-    PartAnimationDataAddPositionXArray(builder, positionXArray)
+def AddPositionYKeys(builder, positionYKeys):
+    PartAnimationDataAddPositionYKeys(builder, positionYKeys)
 
-def PartAnimationDataStartPositionXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddPositionZKeys(builder, positionZKeys):
+    builder.PrependUint32Slot(3, positionZKeys, 4294967295)
 
-def StartPositionXArrayVector(builder, numElems):
-    return PartAnimationDataStartPositionXArrayVector(builder, numElems)
+def AddPositionZKeys(builder, positionZKeys):
+    PartAnimationDataAddPositionZKeys(builder, positionZKeys)
 
-def PartAnimationDataAddPositionYArray(builder, positionYArray):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(positionYArray), 0)
+def PartAnimationDataAddRotationXKeys(builder, rotationXKeys):
+    builder.PrependUint32Slot(4, rotationXKeys, 4294967295)
 
-def AddPositionYArray(builder, positionYArray):
-    PartAnimationDataAddPositionYArray(builder, positionYArray)
+def AddRotationXKeys(builder, rotationXKeys):
+    PartAnimationDataAddRotationXKeys(builder, rotationXKeys)
 
-def PartAnimationDataStartPositionYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddRotationYKeys(builder, rotationYKeys):
+    builder.PrependUint32Slot(5, rotationYKeys, 4294967295)
 
-def StartPositionYArrayVector(builder, numElems):
-    return PartAnimationDataStartPositionYArrayVector(builder, numElems)
+def AddRotationYKeys(builder, rotationYKeys):
+    PartAnimationDataAddRotationYKeys(builder, rotationYKeys)
 
-def PartAnimationDataAddPositionZArray(builder, positionZArray):
-    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(positionZArray), 0)
+def PartAnimationDataAddRotationZKeys(builder, rotationZKeys):
+    builder.PrependUint32Slot(6, rotationZKeys, 4294967295)
 
-def AddPositionZArray(builder, positionZArray):
-    PartAnimationDataAddPositionZArray(builder, positionZArray)
+def AddRotationZKeys(builder, rotationZKeys):
+    PartAnimationDataAddRotationZKeys(builder, rotationZKeys)
 
-def PartAnimationDataStartPositionZArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddScaleXKeys(builder, scaleXKeys):
+    builder.PrependUint32Slot(7, scaleXKeys, 4294967295)
 
-def StartPositionZArrayVector(builder, numElems):
-    return PartAnimationDataStartPositionZArrayVector(builder, numElems)
+def AddScaleXKeys(builder, scaleXKeys):
+    PartAnimationDataAddScaleXKeys(builder, scaleXKeys)
 
-def PartAnimationDataAddRotationXArray(builder, rotationXArray):
-    builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(rotationXArray), 0)
+def PartAnimationDataAddScaleYKeys(builder, scaleYKeys):
+    builder.PrependUint32Slot(8, scaleYKeys, 4294967295)
 
-def AddRotationXArray(builder, rotationXArray):
-    PartAnimationDataAddRotationXArray(builder, rotationXArray)
+def AddScaleYKeys(builder, scaleYKeys):
+    PartAnimationDataAddScaleYKeys(builder, scaleYKeys)
 
-def PartAnimationDataStartRotationXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddLocalScaleXKeys(builder, localScaleXKeys):
+    builder.PrependUint32Slot(9, localScaleXKeys, 4294967295)
 
-def StartRotationXArrayVector(builder, numElems):
-    return PartAnimationDataStartRotationXArrayVector(builder, numElems)
+def AddLocalScaleXKeys(builder, localScaleXKeys):
+    PartAnimationDataAddLocalScaleXKeys(builder, localScaleXKeys)
 
-def PartAnimationDataAddRotationYArray(builder, rotationYArray):
-    builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(rotationYArray), 0)
+def PartAnimationDataAddLocalScaleYKeys(builder, localScaleYKeys):
+    builder.PrependUint32Slot(10, localScaleYKeys, 4294967295)
 
-def AddRotationYArray(builder, rotationYArray):
-    PartAnimationDataAddRotationYArray(builder, rotationYArray)
+def AddLocalScaleYKeys(builder, localScaleYKeys):
+    PartAnimationDataAddLocalScaleYKeys(builder, localScaleYKeys)
 
-def PartAnimationDataStartRotationYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddAlphaKeys(builder, alphaKeys):
+    builder.PrependUint32Slot(11, alphaKeys, 4294967295)
 
-def StartRotationYArrayVector(builder, numElems):
-    return PartAnimationDataStartRotationYArrayVector(builder, numElems)
+def AddAlphaKeys(builder, alphaKeys):
+    PartAnimationDataAddAlphaKeys(builder, alphaKeys)
 
-def PartAnimationDataAddRotationZArray(builder, rotationZArray):
-    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(rotationZArray), 0)
+def PartAnimationDataAddLocalAlphaKeys(builder, localAlphaKeys):
+    builder.PrependUint32Slot(12, localAlphaKeys, 4294967295)
 
-def AddRotationZArray(builder, rotationZArray):
-    PartAnimationDataAddRotationZArray(builder, rotationZArray)
+def AddLocalAlphaKeys(builder, localAlphaKeys):
+    PartAnimationDataAddLocalAlphaKeys(builder, localAlphaKeys)
 
-def PartAnimationDataStartRotationZArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddPriorityKeys(builder, priorityKeys):
+    builder.PrependUint32Slot(13, priorityKeys, 4294967295)
 
-def StartRotationZArrayVector(builder, numElems):
-    return PartAnimationDataStartRotationZArrayVector(builder, numElems)
+def AddPriorityKeys(builder, priorityKeys):
+    PartAnimationDataAddPriorityKeys(builder, priorityKeys)
 
-def PartAnimationDataAddScaleXArray(builder, scaleXArray):
-    builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(scaleXArray), 0)
+def PartAnimationDataAddFlipHKeys(builder, flipHKeys):
+    builder.PrependUint32Slot(14, flipHKeys, 4294967295)
 
-def AddScaleXArray(builder, scaleXArray):
-    PartAnimationDataAddScaleXArray(builder, scaleXArray)
+def AddFlipHKeys(builder, flipHKeys):
+    PartAnimationDataAddFlipHKeys(builder, flipHKeys)
 
-def PartAnimationDataStartScaleXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddFlipVKeys(builder, flipVKeys):
+    builder.PrependUint32Slot(15, flipVKeys, 4294967295)
 
-def StartScaleXArrayVector(builder, numElems):
-    return PartAnimationDataStartScaleXArrayVector(builder, numElems)
+def AddFlipVKeys(builder, flipVKeys):
+    PartAnimationDataAddFlipVKeys(builder, flipVKeys)
 
-def PartAnimationDataAddScaleYArray(builder, scaleYArray):
-    builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(scaleYArray), 0)
+def PartAnimationDataAddHideKeys(builder, hideKeys):
+    builder.PrependUint32Slot(16, hideKeys, 4294967295)
 
-def AddScaleYArray(builder, scaleYArray):
-    PartAnimationDataAddScaleYArray(builder, scaleYArray)
+def AddHideKeys(builder, hideKeys):
+    PartAnimationDataAddHideKeys(builder, hideKeys)
 
-def PartAnimationDataStartScaleYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddPartColorKeys(builder, partColorKeys):
+    builder.PrependUint32Slot(17, partColorKeys, 4294967295)
 
-def StartScaleYArrayVector(builder, numElems):
-    return PartAnimationDataStartScaleYArrayVector(builder, numElems)
+def AddPartColorKeys(builder, partColorKeys):
+    PartAnimationDataAddPartColorKeys(builder, partColorKeys)
 
-def PartAnimationDataAddLocalScaleXArray(builder, localScaleXArray):
-    builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(localScaleXArray), 0)
+def PartAnimationDataAddShaderKeys(builder, shaderKeys):
+    builder.PrependUint32Slot(18, shaderKeys, 4294967295)
 
-def AddLocalScaleXArray(builder, localScaleXArray):
-    PartAnimationDataAddLocalScaleXArray(builder, localScaleXArray)
+def AddShaderKeys(builder, shaderKeys):
+    PartAnimationDataAddShaderKeys(builder, shaderKeys)
 
-def PartAnimationDataStartLocalScaleXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddVertexKeys(builder, vertexKeys):
+    builder.PrependUint32Slot(19, vertexKeys, 4294967295)
 
-def StartLocalScaleXArrayVector(builder, numElems):
-    return PartAnimationDataStartLocalScaleXArrayVector(builder, numElems)
+def AddVertexKeys(builder, vertexKeys):
+    PartAnimationDataAddVertexKeys(builder, vertexKeys)
 
-def PartAnimationDataAddLocalScaleYArray(builder, localScaleYArray):
-    builder.PrependUOffsetTRelativeSlot(10, flatbuffers.number_types.UOffsetTFlags.py_type(localScaleYArray), 0)
+def PartAnimationDataAddPivotXKeys(builder, pivotXKeys):
+    builder.PrependUint32Slot(20, pivotXKeys, 4294967295)
 
-def AddLocalScaleYArray(builder, localScaleYArray):
-    PartAnimationDataAddLocalScaleYArray(builder, localScaleYArray)
+def AddPivotXKeys(builder, pivotXKeys):
+    PartAnimationDataAddPivotXKeys(builder, pivotXKeys)
 
-def PartAnimationDataStartLocalScaleYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddPivotYKeys(builder, pivotYKeys):
+    builder.PrependUint32Slot(21, pivotYKeys, 4294967295)
 
-def StartLocalScaleYArrayVector(builder, numElems):
-    return PartAnimationDataStartLocalScaleYArrayVector(builder, numElems)
+def AddPivotYKeys(builder, pivotYKeys):
+    PartAnimationDataAddPivotYKeys(builder, pivotYKeys)
 
-def PartAnimationDataAddAlphaArray(builder, alphaArray):
-    builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(alphaArray), 0)
+def PartAnimationDataAddAnchorXKeys(builder, anchorXKeys):
+    builder.PrependUint32Slot(22, anchorXKeys, 4294967295)
 
-def AddAlphaArray(builder, alphaArray):
-    PartAnimationDataAddAlphaArray(builder, alphaArray)
+def AddAnchorXKeys(builder, anchorXKeys):
+    PartAnimationDataAddAnchorXKeys(builder, anchorXKeys)
 
-def PartAnimationDataStartAlphaArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddAnchorYKeys(builder, anchorYKeys):
+    builder.PrependUint32Slot(23, anchorYKeys, 4294967295)
 
-def StartAlphaArrayVector(builder, numElems):
-    return PartAnimationDataStartAlphaArrayVector(builder, numElems)
+def AddAnchorYKeys(builder, anchorYKeys):
+    PartAnimationDataAddAnchorYKeys(builder, anchorYKeys)
 
-def PartAnimationDataAddLocalAlphaArray(builder, localAlphaArray):
-    builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(localAlphaArray), 0)
+def PartAnimationDataAddSizeXKeys(builder, sizeXKeys):
+    builder.PrependUint32Slot(24, sizeXKeys, 4294967295)
 
-def AddLocalAlphaArray(builder, localAlphaArray):
-    PartAnimationDataAddLocalAlphaArray(builder, localAlphaArray)
+def AddSizeXKeys(builder, sizeXKeys):
+    PartAnimationDataAddSizeXKeys(builder, sizeXKeys)
 
-def PartAnimationDataStartLocalAlphaArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddSizeYKeys(builder, sizeYKeys):
+    builder.PrependUint32Slot(25, sizeYKeys, 4294967295)
 
-def StartLocalAlphaArrayVector(builder, numElems):
-    return PartAnimationDataStartLocalAlphaArrayVector(builder, numElems)
+def AddSizeYKeys(builder, sizeYKeys):
+    PartAnimationDataAddSizeYKeys(builder, sizeYKeys)
 
-def PartAnimationDataAddPriorityArray(builder, priorityArray):
-    builder.PrependUOffsetTRelativeSlot(13, flatbuffers.number_types.UOffsetTFlags.py_type(priorityArray), 0)
+def PartAnimationDataAddImgFlipHKeys(builder, imgFlipHKeys):
+    builder.PrependUint32Slot(26, imgFlipHKeys, 4294967295)
 
-def AddPriorityArray(builder, priorityArray):
-    PartAnimationDataAddPriorityArray(builder, priorityArray)
+def AddImgFlipHKeys(builder, imgFlipHKeys):
+    PartAnimationDataAddImgFlipHKeys(builder, imgFlipHKeys)
 
-def PartAnimationDataStartPriorityArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddImgFlipVKeys(builder, imgFlipVKeys):
+    builder.PrependUint32Slot(27, imgFlipVKeys, 4294967295)
 
-def StartPriorityArrayVector(builder, numElems):
-    return PartAnimationDataStartPriorityArrayVector(builder, numElems)
+def AddImgFlipVKeys(builder, imgFlipVKeys):
+    PartAnimationDataAddImgFlipVKeys(builder, imgFlipVKeys)
 
-def PartAnimationDataAddFlipHArray(builder, flipHArray):
-    builder.PrependUOffsetTRelativeSlot(14, flatbuffers.number_types.UOffsetTFlags.py_type(flipHArray), 0)
+def PartAnimationDataAddUvTranslationXKeys(builder, uvTranslationXKeys):
+    builder.PrependUint32Slot(28, uvTranslationXKeys, 4294967295)
 
-def AddFlipHArray(builder, flipHArray):
-    PartAnimationDataAddFlipHArray(builder, flipHArray)
+def AddUvTranslationXKeys(builder, uvTranslationXKeys):
+    PartAnimationDataAddUvTranslationXKeys(builder, uvTranslationXKeys)
 
-def PartAnimationDataStartFlipHArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddUvTranslationYKeys(builder, uvTranslationYKeys):
+    builder.PrependUint32Slot(29, uvTranslationYKeys, 4294967295)
 
-def StartFlipHArrayVector(builder, numElems):
-    return PartAnimationDataStartFlipHArrayVector(builder, numElems)
+def AddUvTranslationYKeys(builder, uvTranslationYKeys):
+    PartAnimationDataAddUvTranslationYKeys(builder, uvTranslationYKeys)
 
-def PartAnimationDataAddFlipVArray(builder, flipVArray):
-    builder.PrependUOffsetTRelativeSlot(15, flatbuffers.number_types.UOffsetTFlags.py_type(flipVArray), 0)
+def PartAnimationDataAddUvRotationZKeys(builder, uvRotationZKeys):
+    builder.PrependUint32Slot(30, uvRotationZKeys, 4294967295)
 
-def AddFlipVArray(builder, flipVArray):
-    PartAnimationDataAddFlipVArray(builder, flipVArray)
+def AddUvRotationZKeys(builder, uvRotationZKeys):
+    PartAnimationDataAddUvRotationZKeys(builder, uvRotationZKeys)
 
-def PartAnimationDataStartFlipVArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddUvScaleXKeys(builder, uvScaleXKeys):
+    builder.PrependUint32Slot(31, uvScaleXKeys, 4294967295)
 
-def StartFlipVArrayVector(builder, numElems):
-    return PartAnimationDataStartFlipVArrayVector(builder, numElems)
+def AddUvScaleXKeys(builder, uvScaleXKeys):
+    PartAnimationDataAddUvScaleXKeys(builder, uvScaleXKeys)
 
-def PartAnimationDataAddHideArray(builder, hideArray):
-    builder.PrependUOffsetTRelativeSlot(16, flatbuffers.number_types.UOffsetTFlags.py_type(hideArray), 0)
+def PartAnimationDataAddUvScaleYKeys(builder, uvScaleYKeys):
+    builder.PrependUint32Slot(32, uvScaleYKeys, 4294967295)
 
-def AddHideArray(builder, hideArray):
-    PartAnimationDataAddHideArray(builder, hideArray)
+def AddUvScaleYKeys(builder, uvScaleYKeys):
+    PartAnimationDataAddUvScaleYKeys(builder, uvScaleYKeys)
 
-def PartAnimationDataStartHideArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddBoundingRadiusKeys(builder, boundingRadiusKeys):
+    builder.PrependUint32Slot(33, boundingRadiusKeys, 4294967295)
 
-def StartHideArrayVector(builder, numElems):
-    return PartAnimationDataStartHideArrayVector(builder, numElems)
+def AddBoundingRadiusKeys(builder, boundingRadiusKeys):
+    PartAnimationDataAddBoundingRadiusKeys(builder, boundingRadiusKeys)
 
-def PartAnimationDataAddPartColorArray(builder, partColorArray):
-    builder.PrependUOffsetTRelativeSlot(17, flatbuffers.number_types.UOffsetTFlags.py_type(partColorArray), 0)
+def PartAnimationDataAddMaskKeys(builder, maskKeys):
+    builder.PrependUint32Slot(34, maskKeys, 4294967295)
 
-def AddPartColorArray(builder, partColorArray):
-    PartAnimationDataAddPartColorArray(builder, partColorArray)
+def AddMaskKeys(builder, maskKeys):
+    PartAnimationDataAddMaskKeys(builder, maskKeys)
 
-def PartAnimationDataStartPartColorArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddSkewKeys(builder, skewKeys):
+    builder.PrependUint32Slot(35, skewKeys, 4294967295)
 
-def StartPartColorArrayVector(builder, numElems):
-    return PartAnimationDataStartPartColorArrayVector(builder, numElems)
+def AddSkewKeys(builder, skewKeys):
+    PartAnimationDataAddSkewKeys(builder, skewKeys)
 
-def PartAnimationDataAddShaderArray(builder, shaderArray):
-    builder.PrependUOffsetTRelativeSlot(18, flatbuffers.number_types.UOffsetTFlags.py_type(shaderArray), 0)
+def PartAnimationDataAddDeformKeys(builder, deformKeys):
+    builder.PrependUint32Slot(36, deformKeys, 4294967295)
 
-def AddShaderArray(builder, shaderArray):
-    PartAnimationDataAddShaderArray(builder, shaderArray)
+def AddDeformKeys(builder, deformKeys):
+    PartAnimationDataAddDeformKeys(builder, deformKeys)
 
-def PartAnimationDataStartShaderArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
+def PartAnimationDataAddTextureKeys(builder, textureKeys):
+    builder.PrependUint32Slot(37, textureKeys, 4294967295)
 
-def StartShaderArrayVector(builder, numElems):
-    return PartAnimationDataStartShaderArrayVector(builder, numElems)
-
-def PartAnimationDataAddVertexArray(builder, vertexArray):
-    builder.PrependUOffsetTRelativeSlot(19, flatbuffers.number_types.UOffsetTFlags.py_type(vertexArray), 0)
-
-def AddVertexArray(builder, vertexArray):
-    PartAnimationDataAddVertexArray(builder, vertexArray)
-
-def PartAnimationDataStartVertexArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartVertexArrayVector(builder, numElems):
-    return PartAnimationDataStartVertexArrayVector(builder, numElems)
-
-def PartAnimationDataAddPivotXArray(builder, pivotXArray):
-    builder.PrependUOffsetTRelativeSlot(20, flatbuffers.number_types.UOffsetTFlags.py_type(pivotXArray), 0)
-
-def AddPivotXArray(builder, pivotXArray):
-    PartAnimationDataAddPivotXArray(builder, pivotXArray)
-
-def PartAnimationDataStartPivotXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartPivotXArrayVector(builder, numElems):
-    return PartAnimationDataStartPivotXArrayVector(builder, numElems)
-
-def PartAnimationDataAddPivotYArray(builder, pivotYArray):
-    builder.PrependUOffsetTRelativeSlot(21, flatbuffers.number_types.UOffsetTFlags.py_type(pivotYArray), 0)
-
-def AddPivotYArray(builder, pivotYArray):
-    PartAnimationDataAddPivotYArray(builder, pivotYArray)
-
-def PartAnimationDataStartPivotYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartPivotYArrayVector(builder, numElems):
-    return PartAnimationDataStartPivotYArrayVector(builder, numElems)
-
-def PartAnimationDataAddAnchorXArray(builder, anchorXArray):
-    builder.PrependUOffsetTRelativeSlot(22, flatbuffers.number_types.UOffsetTFlags.py_type(anchorXArray), 0)
-
-def AddAnchorXArray(builder, anchorXArray):
-    PartAnimationDataAddAnchorXArray(builder, anchorXArray)
-
-def PartAnimationDataStartAnchorXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartAnchorXArrayVector(builder, numElems):
-    return PartAnimationDataStartAnchorXArrayVector(builder, numElems)
-
-def PartAnimationDataAddAnchorYArray(builder, anchorYArray):
-    builder.PrependUOffsetTRelativeSlot(23, flatbuffers.number_types.UOffsetTFlags.py_type(anchorYArray), 0)
-
-def AddAnchorYArray(builder, anchorYArray):
-    PartAnimationDataAddAnchorYArray(builder, anchorYArray)
-
-def PartAnimationDataStartAnchorYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartAnchorYArrayVector(builder, numElems):
-    return PartAnimationDataStartAnchorYArrayVector(builder, numElems)
-
-def PartAnimationDataAddSizeXArray(builder, sizeXArray):
-    builder.PrependUOffsetTRelativeSlot(24, flatbuffers.number_types.UOffsetTFlags.py_type(sizeXArray), 0)
-
-def AddSizeXArray(builder, sizeXArray):
-    PartAnimationDataAddSizeXArray(builder, sizeXArray)
-
-def PartAnimationDataStartSizeXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartSizeXArrayVector(builder, numElems):
-    return PartAnimationDataStartSizeXArrayVector(builder, numElems)
-
-def PartAnimationDataAddSizeYArray(builder, sizeYArray):
-    builder.PrependUOffsetTRelativeSlot(25, flatbuffers.number_types.UOffsetTFlags.py_type(sizeYArray), 0)
-
-def AddSizeYArray(builder, sizeYArray):
-    PartAnimationDataAddSizeYArray(builder, sizeYArray)
-
-def PartAnimationDataStartSizeYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartSizeYArrayVector(builder, numElems):
-    return PartAnimationDataStartSizeYArrayVector(builder, numElems)
-
-def PartAnimationDataAddImgFlipHArray(builder, imgFlipHArray):
-    builder.PrependUOffsetTRelativeSlot(26, flatbuffers.number_types.UOffsetTFlags.py_type(imgFlipHArray), 0)
-
-def AddImgFlipHArray(builder, imgFlipHArray):
-    PartAnimationDataAddImgFlipHArray(builder, imgFlipHArray)
-
-def PartAnimationDataStartImgFlipHArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartImgFlipHArrayVector(builder, numElems):
-    return PartAnimationDataStartImgFlipHArrayVector(builder, numElems)
-
-def PartAnimationDataAddImgFlipVArray(builder, imgFlipVArray):
-    builder.PrependUOffsetTRelativeSlot(27, flatbuffers.number_types.UOffsetTFlags.py_type(imgFlipVArray), 0)
-
-def AddImgFlipVArray(builder, imgFlipVArray):
-    PartAnimationDataAddImgFlipVArray(builder, imgFlipVArray)
-
-def PartAnimationDataStartImgFlipVArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartImgFlipVArrayVector(builder, numElems):
-    return PartAnimationDataStartImgFlipVArrayVector(builder, numElems)
-
-def PartAnimationDataAddUvTranslationXArray(builder, uvTranslationXArray):
-    builder.PrependUOffsetTRelativeSlot(28, flatbuffers.number_types.UOffsetTFlags.py_type(uvTranslationXArray), 0)
-
-def AddUvTranslationXArray(builder, uvTranslationXArray):
-    PartAnimationDataAddUvTranslationXArray(builder, uvTranslationXArray)
-
-def PartAnimationDataStartUvTranslationXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartUvTranslationXArrayVector(builder, numElems):
-    return PartAnimationDataStartUvTranslationXArrayVector(builder, numElems)
-
-def PartAnimationDataAddUvTranslationYArray(builder, uvTranslationYArray):
-    builder.PrependUOffsetTRelativeSlot(29, flatbuffers.number_types.UOffsetTFlags.py_type(uvTranslationYArray), 0)
-
-def AddUvTranslationYArray(builder, uvTranslationYArray):
-    PartAnimationDataAddUvTranslationYArray(builder, uvTranslationYArray)
-
-def PartAnimationDataStartUvTranslationYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartUvTranslationYArrayVector(builder, numElems):
-    return PartAnimationDataStartUvTranslationYArrayVector(builder, numElems)
-
-def PartAnimationDataAddUvRotationZArray(builder, uvRotationZArray):
-    builder.PrependUOffsetTRelativeSlot(30, flatbuffers.number_types.UOffsetTFlags.py_type(uvRotationZArray), 0)
-
-def AddUvRotationZArray(builder, uvRotationZArray):
-    PartAnimationDataAddUvRotationZArray(builder, uvRotationZArray)
-
-def PartAnimationDataStartUvRotationZArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartUvRotationZArrayVector(builder, numElems):
-    return PartAnimationDataStartUvRotationZArrayVector(builder, numElems)
-
-def PartAnimationDataAddUvScaleXArray(builder, uvScaleXArray):
-    builder.PrependUOffsetTRelativeSlot(31, flatbuffers.number_types.UOffsetTFlags.py_type(uvScaleXArray), 0)
-
-def AddUvScaleXArray(builder, uvScaleXArray):
-    PartAnimationDataAddUvScaleXArray(builder, uvScaleXArray)
-
-def PartAnimationDataStartUvScaleXArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartUvScaleXArrayVector(builder, numElems):
-    return PartAnimationDataStartUvScaleXArrayVector(builder, numElems)
-
-def PartAnimationDataAddUvScaleYArray(builder, uvScaleYArray):
-    builder.PrependUOffsetTRelativeSlot(32, flatbuffers.number_types.UOffsetTFlags.py_type(uvScaleYArray), 0)
-
-def AddUvScaleYArray(builder, uvScaleYArray):
-    PartAnimationDataAddUvScaleYArray(builder, uvScaleYArray)
-
-def PartAnimationDataStartUvScaleYArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartUvScaleYArrayVector(builder, numElems):
-    return PartAnimationDataStartUvScaleYArrayVector(builder, numElems)
-
-def PartAnimationDataAddBoundingRadiusArray(builder, boundingRadiusArray):
-    builder.PrependUOffsetTRelativeSlot(33, flatbuffers.number_types.UOffsetTFlags.py_type(boundingRadiusArray), 0)
-
-def AddBoundingRadiusArray(builder, boundingRadiusArray):
-    PartAnimationDataAddBoundingRadiusArray(builder, boundingRadiusArray)
-
-def PartAnimationDataStartBoundingRadiusArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartBoundingRadiusArrayVector(builder, numElems):
-    return PartAnimationDataStartBoundingRadiusArrayVector(builder, numElems)
-
-def PartAnimationDataAddMaskArray(builder, maskArray):
-    builder.PrependUOffsetTRelativeSlot(34, flatbuffers.number_types.UOffsetTFlags.py_type(maskArray), 0)
-
-def AddMaskArray(builder, maskArray):
-    PartAnimationDataAddMaskArray(builder, maskArray)
-
-def PartAnimationDataStartMaskArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartMaskArrayVector(builder, numElems):
-    return PartAnimationDataStartMaskArrayVector(builder, numElems)
-
-def PartAnimationDataAddSkewArray(builder, skewArray):
-    builder.PrependUOffsetTRelativeSlot(35, flatbuffers.number_types.UOffsetTFlags.py_type(skewArray), 0)
-
-def AddSkewArray(builder, skewArray):
-    PartAnimationDataAddSkewArray(builder, skewArray)
-
-def PartAnimationDataStartSkewArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartSkewArrayVector(builder, numElems):
-    return PartAnimationDataStartSkewArrayVector(builder, numElems)
-
-def PartAnimationDataAddDeformArray(builder, deformArray):
-    builder.PrependUOffsetTRelativeSlot(36, flatbuffers.number_types.UOffsetTFlags.py_type(deformArray), 0)
-
-def AddDeformArray(builder, deformArray):
-    PartAnimationDataAddDeformArray(builder, deformArray)
-
-def PartAnimationDataStartDeformArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartDeformArrayVector(builder, numElems):
-    return PartAnimationDataStartDeformArrayVector(builder, numElems)
-
-def PartAnimationDataAddTextureArray(builder, textureArray):
-    builder.PrependUOffsetTRelativeSlot(37, flatbuffers.number_types.UOffsetTFlags.py_type(textureArray), 0)
-
-def AddTextureArray(builder, textureArray):
-    PartAnimationDataAddTextureArray(builder, textureArray)
-
-def PartAnimationDataStartTextureArrayVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-def StartTextureArrayVector(builder, numElems):
-    return PartAnimationDataStartTextureArrayVector(builder, numElems)
+def AddTextureKeys(builder, textureKeys):
+    PartAnimationDataAddTextureKeys(builder, textureKeys)
 
 def PartAnimationDataEnd(builder):
     return builder.EndObject()

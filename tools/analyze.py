@@ -2,14 +2,14 @@
 """Displayability audit (plain CPython, no Ren'Py).
 
 For each ``.ssab`` it: parses metadata, plays the first animation through every
-frame, collects which DrawBatchKinds appear, runs the M1 Normal-quad geometry
+frame, collects which DrawBatchKinds appear, runs the Normal-quad geometry
 pipeline on a sample frame, and validates the quads against the real atlas
-size. Prints a per-pack verdict: what M1 can render now vs. what needs a later
-milestone.
+size. Prints a per-pack verdict: what renders with the Normal-quad pipeline
+vs. which draw-batch kinds a pack additionally requires.
 
 Usage:
     python tools/analyze.py [dir_or_ssab ...]
-Default target: game/sprites/overall (the converted "overall" test project).
+Default target: game/ss_assets/overall (the converted "overall" test project).
 """
 
 from __future__ import annotations
@@ -59,6 +59,13 @@ def audit_pack(lib, path: str) -> dict:
         dims = png_size(os.path.join(base, c.image_path)) if c.image_path else None
         tex[c.name_hash] = (c.image_path, dims, "name_hash")
         tex[c.image_path_hash] = (c.image_path, dims, "image_path_hash")
+    # The other texture table: files a texture-change (TCHG) part draws from,
+    # keyed by FILE-name hash. Without these the unresolved-hash report below
+    # flags every TCHG batch.
+    for t in meta.external_textures():
+        if t.name:
+            tex[t.name_hash] = (t.name, png_size(os.path.join(base, t.name)),
+                                "external_texture")
 
     result = {"name": name, "anims": [a.name for a in anims],
               "cellmaps": [(c.name, c.image_path) for c in cellmaps],
@@ -75,11 +82,11 @@ def audit_pack(lib, path: str) -> dict:
         if not rt.setup_animation(a0.name):
             result["verdict"] = f"setup_animation({a0.name!r}) failed"
             return result
-        rt.set_loop(-1)
+        rt.set_loop_count(-1)
         rt.play()
 
         total = max(1, a0.total_frame)
-        fps = rt.fps or a0.fps or 30
+        fps = rt.frame_rate or a0.fps or 30
         dt = 1.0 / fps
         kinds_seen: dict[int, int] = {}
         sample_quads = []
@@ -102,12 +109,12 @@ def audit_pack(lib, path: str) -> dict:
 
         # --- verdict ---
         seen = set(kinds_seen)
-        supported = seen & framedata.M1_RENDERABLE_KINDS
-        unsupported = seen - framedata.M1_RENDERABLE_KINDS
+        supported = seen & framedata.RENDERABLE_KINDS
+        unsupported = seen - framedata.RENDERABLE_KINDS
         if not seen:
             result["verdict"] = "no draw batches"
         elif not unsupported:
-            result["verdict"] = "FULL — M1 renders everything"
+            result["verdict"] = "FULL — the Normal path renders everything"
         elif supported:
             need = ", ".join(sorted(framedata.KIND_NAMES.get(k, str(k))
                                     for k in unsupported))
@@ -170,7 +177,7 @@ def main(argv: list[str]) -> int:
 
     lib = ssruntime.load_library()
     print(f"== Displayability audit: {len(paths)} packs "
-          f"(M1 renders kinds={sorted(framedata.M1_RENDERABLE_KINDS)} = Normal)\n")
+          f"(the Normal path renders kinds={sorted(framedata.RENDERABLE_KINDS)} = Normal)\n")
     full = partial = none = 0
     for p in paths:
         r = audit_pack(lib, p)

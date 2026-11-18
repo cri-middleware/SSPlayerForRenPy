@@ -3,15 +3,18 @@
 # Split out of script.rpy to keep that file focused on the story scenes. This
 # screen lists EVERY .ssab the resolver finds under ss_assets/ (including packs
 # the auto importer wrote to ss_assets/<project>/) and previews any of them live
-# with a clickable animation list. It only reuses the existing discovery
-# (_ss_get_index / SsabMeta, from spritestudio.rpy) and the SSPlayer displayable,
-# so neither the auto importer nor the core changes. The menu entry that jumps to
-# `asset_picker_demo` lives in script.rpy. (Demo-side companion to the Shift+B
-# dev browser in ss_browser.rpy.)
+# with a clickable animation list, drag to move and wheel to zoom. It only reuses
+# the existing discovery (_ss_get_index / SsabMeta, from spritestudio.rpy) and the
+# SSPlayer displayable, so neither the auto importer nor the core changes. The
+# menu entry that jumps to `asset_picker_demo` lives in script.rpy. (Demo-side
+# companion to the Shift+B dev browser in ss_browser.rpy.)
 
 default ss_picker_pack = None     # selected pack's gamedir-relative .ssab path
 default ss_picker_anims = []      # animation names for the selected pack
 default ss_picker_player = None   # live SSPlayer for the preview
+default ss_picker_zoom = 1.0      # preview scale (wheel / + - keys, 0 resets)
+default ss_picker_view = 0        # bumped by a reset; see ss_picker_reset_view
+default ss_picker_fit = True      # canvas fitted to the box, else at its own pixels
 
 init python:
     def ss_picker_records():
@@ -24,11 +27,40 @@ init python:
         except Exception:
             return []
 
-    # Fixed preview box. Giving the SSPlayer an explicit `size` makes it a
-    # definite-size displayable (so the draggable `drag` wrapping it has a real
-    # size) and centers the animation in that box; larger sprites overflow it and
-    # are clipped to the preview window — drag repositions them within the window.
+    # The preview box. A pack opens with its whole authored canvas fitted into
+    # it and centred — the framing a Reset view returns to, and what 100% on
+    # the zoom readout means. The 1:1 button shows the canvas at its own pixels
+    # instead, around the same centre.
     SS_PICKER_BOX = (820, 380)
+
+    # Zoom range for the preview. The zoom is a Transform wrapped around the live
+    # SSPlayer, so changing it neither rebuilds the player nor restarts the
+    # animation — the sprite keeps playing while you scale it.
+    SS_PICKER_ZOOM_MIN = 0.2
+    # Up to 16 times the fitted size: a canvas the size of an Animate stage fits
+    # at a few percent, and this still reaches its own pixels.
+    SS_PICKER_ZOOM_MAX = 16.0
+    SS_PICKER_ZOOM_STEP = 1.1        # one wheel notch
+
+    def ss_picker_zoom_by(factor):
+        """Scale the preview by `factor`, clamped to the range above."""
+        z = store.ss_picker_zoom * factor
+        store.ss_picker_zoom = max(SS_PICKER_ZOOM_MIN,
+                                   min(SS_PICKER_ZOOM_MAX, z))
+
+    def ss_picker_reset_view():
+        """Put the preview back the way a pack opens: fitted, centred.
+
+        A new view number is a new drag, placed afresh; see the drag in
+        ss_asset_picker for why it takes one."""
+        store.ss_picker_zoom = 1.0
+        store.ss_picker_view += 1
+
+    def ss_picker_set_fit(fit):
+        """Fit the canvas to the box (True) or show it at its own pixels, and
+        start that framing at 100%, centred. The choice holds across packs."""
+        store.ss_picker_fit = fit
+        ss_picker_reset_view()
 
     def _ss_picker_stop_audio():
         # Held-and-swapped preview player: stop its sound before we replace it, so
@@ -45,40 +77,37 @@ init python:
         """Select a pack by its .ssab path: build a live SSPlayer for its 1st anim."""
         _ss_picker_stop_audio()
         store.ss_picker_pack = rel_path
+        # A new pack is a new subject: start it fitted rather than at whatever
+        # scale the previous one needed. Switching ANIMATION keeps the zoom, so
+        # you can compare two clips of one pack at the same scale.
+        store.ss_picker_zoom = 1.0
         try:
             store.ss_picker_anims = list(anims)
             anim = store.ss_picker_anims[0] if store.ss_picker_anims else None
-            store.ss_picker_player = SSPlayer(rel_path, animation=anim, size=SS_PICKER_BOX)
+            store.ss_picker_player = SSPlayer(rel_path, animation=anim)
         except Exception as e:
             store.ss_picker_player = None
             store.ss_picker_anims = []
             renpy.notify("Preview failed: %s" % (e,))
 
     def ss_picker_play(anim):
-        """Switch the previewed animation by REBUILDING the SSPlayer with `anim`
-        as its initial animation.
-
-        An in-place `player.ss_play(anim)` looks like it does nothing here: the
-        anim-button click restarts the screen interaction, which resets the
-        displayable's shown-time, and SSPlayer.render() reads that as a re-show
-        and calls `_start_initial()` — replaying the player's ORIGINAL initial
-        animation and clobbering the switch (so it snaps back to e.g. attack1).
-        Rebuilding makes `anim` the new initial, so the re-show path replays the
-        animation we actually want. (Same proven path as picking a pack.)"""
+        """Switch the previewed animation by rebuilding the SSPlayer with `anim`
+        as its initial animation — the path picking a pack takes, so the
+        preview starts `anim` from its first frame."""
         rel = store.ss_picker_pack
         if not rel:
             return
         _ss_picker_stop_audio()
         try:
-            store.ss_picker_player = SSPlayer(rel, animation=anim, size=SS_PICKER_BOX)
+            store.ss_picker_player = SSPlayer(rel, animation=anim)
         except Exception as e:
             renpy.notify("Play failed: %s" % (e,))
 
 label asset_picker_demo:
     # Start unselected (the right pane shows "Select a pack on the left."). We
-    # deliberately do NOT auto-select a pack: previewing renders a live SSPlayer,
-    # and a few packs (e.g. the Mask sample) currently hit a mask-shader compile
-    # issue on some GPUs — letting the user choose avoids crashing on open.
+    # deliberately do NOT auto-select a pack: auto-building a live SSPlayer on
+    # open would turn any pack-specific render failure into a crash-on-open;
+    # letting the user pick keeps the browser reachable.
     call screen ss_asset_picker
     return
 
@@ -87,11 +116,24 @@ screen ss_asset_picker():
     zorder 100
     key "K_ESCAPE" action Return()
 
+    # Wheel = zoom the preview. These sit BEFORE the body, so they are offered
+    # the event last: a wheel over one of the two lists still scrolls it (a
+    # `mousewheel True` viewport only takes the event while the pointer is
+    # inside it) and anywhere else it reaches these and scales the sprite.
+    # Binding the wheel here also keeps it away from rollback while the browser
+    # is up. + / - / 0 do the same from the keyboard.
+    key "mousedown_4" action Function(ss_picker_zoom_by, SS_PICKER_ZOOM_STEP)
+    key "mousedown_5" action Function(ss_picker_zoom_by, 1.0 / SS_PICKER_ZOOM_STEP)
+    key "K_EQUALS" action Function(ss_picker_zoom_by, SS_PICKER_ZOOM_STEP)
+    key "K_PLUS" action Function(ss_picker_zoom_by, SS_PICKER_ZOOM_STEP)
+    key "K_MINUS" action Function(ss_picker_zoom_by, 1.0 / SS_PICKER_ZOOM_STEP)
+    key "K_0" action Function(ss_picker_reset_view)
+
     add Solid("#1c2026")
 
     $ _recs = ss_picker_records()
     $ _count = len(_recs)
-    $ _cur_anim = ss_picker_player.ss_get_animation() if ss_picker_player is not None else None
+    $ _cur_anim = ss_picker_player.ss_get_current_animation() if ss_picker_player is not None else None
     $ _cur_disp = ss_escape(_cur_anim) if _cur_anim else "—"
 
     # --- header (pinned top) -------------------------------------------
@@ -111,8 +153,7 @@ screen ss_asset_picker():
     # screens.rpy), so the default scrollbar styles are absent and a
     # `scrollbars`-enabled viewport collapses its content to zero size — the
     # Packs list then renders empty even though the index finds the packs.
-    # Mouse-wheel + drag scrolling works without those styles. (ss_browser.rpy
-    # had the same latent bug.)
+    # Mouse-wheel + drag scrolling works without those styles.
     hbox:
         xalign 0.5
         yalign 0.5
@@ -142,12 +183,11 @@ screen ss_asset_picker():
             spacing 10
             if ss_picker_pack:
                 text "[ss_picker_pack]" size 24 color "#ffffff"
-                # Preview: the SSPlayer (built with size=SS_PICKER_BOX) is wrapped
-                # in a draggable `drag`. We deliberately do NOT clip — a clip window
-                # smaller than the sprite hides the parts that overflow (Ringo would
-                # show up headless), and the whole point of the drag is to bring
-                # those parts into view. So the sprite renders in full (it may spill
-                # over the surrounding UI) and you drag it to reposition.
+                # Preview: the SSPlayer, its canvas fitted into SS_PICKER_BOX, is
+                # wrapped in a draggable `drag` and scaled by ss_picker_zoom. We
+                # deliberately do NOT clip: zoomed in, the parts past the box are
+                # what the drag is there to bring into view, so the sprite renders
+                # in full (it may spill over the surrounding UI).
                 frame:
                     xsize 820
                     ysize 380
@@ -155,15 +195,36 @@ screen ss_asset_picker():
                     background Solid("#101216")
                     if ss_picker_player is not None:
                         draggroup:
-                            drag:
-                                drag_name ss_picker_pack
-                                draggable True
-                                drag_offscreen True
-                                xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
-                                add ss_picker_player
+                            # One drag per pack and view number. The screen hands a
+                            # rebuilt drag the one it replaces, and a drag takes that
+                            # one's position, so a new pack or a Reset view would stay
+                            # where the last drag was dropped; a new index key builds
+                            # the drag afresh. The name changes with it because the
+                            # group also keeps each dropped drag's position by name.
+                            for _view index _view in [(ss_picker_pack, ss_picker_view)]:
+                                drag:
+                                    drag_name "%s#%d" % _view
+                                    draggable True
+                                    drag_offscreen True
+                                    xpos 0.5 ypos 0.5 xanchor 0.5 yanchor 0.5
+                                    # The zoom scales the whole rendered sprite, so the
+                                    # drag's hit area grows with it and a scaled-up
+                                    # sprite stays draggable by any of its pixels.
+                                    # reset: a screen update hands the new transform the old
+                                    # one's properties, and Fit's size and fit would outlive
+                                    # a switch to 1:1.
+                                    add ss_picker_player at (Transform(xysize=SS_PICKER_BOX, fit="contain", zoom=ss_picker_zoom, reset=True) if ss_picker_fit else Transform(zoom=ss_picker_zoom, reset=True))
                     else:
                         text _("(no preview)") xalign 0.5 yalign 0.5 color "#888888"
-                text _("drag the preview to reposition") size 11 color "#667085"
+                # Percent, not a "x1.25" factor: at 11px the decimal point is
+                # easy to miss, and "125%" cannot be misread.
+                $ _zoom_disp = "%d%%" % round(ss_picker_zoom * 100)
+                hbox:
+                    spacing 12
+                    text _("drag to move  |  wheel (or + / -) to zoom: [_zoom_disp]") size 11 color "#667085" yalign 0.5
+                    textbutton _("Fit") action Function(ss_picker_set_fit, True) selected ss_picker_fit text_size 11 yalign 0.5
+                    textbutton _("1:1") action Function(ss_picker_set_fit, False) selected (not ss_picker_fit) text_size 11 yalign 0.5
+                    textbutton _("Reset view (0)") action Function(ss_picker_reset_view) text_size 11 yalign 0.5
                 $ _na = len(ss_picker_anims)
                 text _("animation: [_cur_disp]  |  [_na] animation(s)") size 14 color "#9aa0ab"
                 text _("click an animation to preview:") size 13 color "#9aa0ab"
@@ -175,7 +236,10 @@ screen ss_asset_picker():
                     vbox:
                         spacing 2
                         for _a in ss_picker_anims:
-                            textbutton _a:
+                            # Escaped label, raw name to the action: Ren'Py
+                            # interpolates [..] / {..} in a button's text, so an
+                            # animation called "[NG]_dance" would raise NameError.
+                            textbutton ss_escape(_a):
                                 action Function(ss_picker_play, _a)
                                 text_size 14
                                 text_color ("#ffd479" if _a == _cur_anim else "#dddddd")
@@ -193,5 +257,5 @@ screen ss_asset_picker():
         padding (24, 10)
         hbox:
             spacing 24
-            text _("click a pack to preview | click an animation to switch | Esc to return") size 14 color "#9aa0ab" yalign 0.5
+            text _("click a pack to preview | click an animation to switch | drag / wheel to move / zoom | Esc to return") size 14 color "#9aa0ab" yalign 0.5
             textbutton _("Close") action Return() text_size 16 yalign 0.5

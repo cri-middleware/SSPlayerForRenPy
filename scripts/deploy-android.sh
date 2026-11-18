@@ -5,7 +5,7 @@
 # "Brain" .so must land in the APK's lib/<abi>/ (jniLibs) — the only place Android's
 # linker will dlopen from — so this script stages game/spritestudio/libs/android/<abi>/
 # into RAPT's jniLibs before building; ssruntime.py then loads it by soname at
-# runtime (abi ∈ arm64-v8a / armeabi-v7a / x86_64, the NDK names).
+# runtime (abi: arm64-v8a / armeabi-v7a / x86_64, the NDK names).
 #
 # This script auto-fetches the Ren'Py SDK and RAPT if missing, but it does NOT
 # perform the three INTERACTIVE one-time setup steps (do them once in the launcher
@@ -29,15 +29,17 @@ RAPT="$RENPY_SDK/rapt"
 LIBS="$ROOT_DIR/game/spritestudio/libs"
 
 # --- parse args (one positional dest + passthrough flags) -----------------
+# The help is the header comment, all of it.
+usage() { sed -n '2,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
 DEST=""; BUNDLE=0; PASS=()
 for a in "$@"; do
   case "$a" in
-    -h|--help|help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help|help) usage; exit 0 ;;
     --bundle)  BUNDLE=1; PASS+=(--bundle) ;;
     --install) PASS+=(--install) ;;
     --launch)  PASS+=(--launch) ;;
     -*) echo "deploy-android.sh: unknown flag '$a'" >&2; exit 2 ;;
-    *) [ -z "$DEST" ] && DEST="$a" || { echo "deploy-android.sh: unexpected extra arg '$a'" >&2; exit 2; } ;;
+    *) [ -z "$DEST" ] || { echo "deploy-android.sh: unexpected extra arg '$a'" >&2; exit 2; }; DEST="$a" ;;
   esac
 done
 DEST="${DEST:-dist}"
@@ -95,7 +97,7 @@ done
 # read-only nativeLibraryDir (W^X since API 29) — i.e. libs shipped in lib/<abi>/.
 # RAPT sources jniLibs from prototype/renpyandroid/src/main/jniLibs/<abi>/ (copied
 # into every build), so mirror our per-ABI .so there. Consumers building via the
-# stock launcher must do this copy once by hand — see docs/export.md (Android).
+# stock launcher must do this copy once by hand — see docs/en/export.md (Android Export).
 JNILIBS="$RAPT/prototype/renpyandroid/src/main/jniLibs"
 for abi in arm64-v8a armeabi-v7a x86_64; do
   so="$LIBS/android/$abi/libssruntime.so"
