@@ -24,6 +24,26 @@ extra:
       link: https://x.com/spritestudio
       name: X の SpriteStudio
 
+plugins:
+  - search
+  - redirects
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |
+        ビジュアルノベルの作者向けの Ren'Py 用 Player です。Ren'Py ランチャーからゲームを起動すると `SpriteStudio_Source/` の SpriteStudio プロジェクトが変換され、`show ringo wait1` で表示できます。
+      sections:
+        Player の使い方:
+          - index.md: "この Player の概要、主な機能、関連リポジトリ。"
+          - setup.md: "ゲームへの導入。必要環境、ライブラリの配置、`.ssab` の置き場所、アップデートとアンインストール。"
+          - import.md: "`.sspj` から `.ssab` への変換。起動時の自動インポート、SSConverter GUI、スクリプトや CI 向けの `ssconverter-cli`、ブラウザ版コンバータ、`.rpa` アーカイブを使うリリースビルド。"
+          - usage.md: "スクリプトから使うすべての API。`show`、スクリーンでの `SSPlayer`、ループ回数、Python からの制御、パーツへの追従、パーツの上書き、着せ替えや表情差分のためのテクスチャの差し替え、ユーザーデータとシグナルのイベント、便利機能、Shift+B のブラウザ。"
+          - buttons.md: "`SSButton` でアニメーションを Ren'Py のボタンにする。状態ごとに再生する部分、クリックを受けるパーツの限定、動きを減らす設定、読み上げ。"
+          - export.md: "デスクトップ・Android・iOS・Web へのエクスポートで、この Player が加える手順。"
+          - limitations.md: "この Player が対応していないもの、一部だけ対応しているもの。全 Player に共通する制約はポータルにある。"
+        Player・SDK 開発者向けガイド:
+          - development/build.md: "Player のビルド、変更したコピーをゲームで使う方法、エクスポート用のヘルパースクリプト、Ren'Py での確認。"
+          - development/architecture.md: "Player の層構成、ネイティブライブラリの読み込み元、この作りになっている理由。"
+
 nav:
   - 🏠 ホーム: index.md
   - 🚀 導入ガイド: setup.md
