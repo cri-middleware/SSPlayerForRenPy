@@ -480,7 +480,7 @@ image boss = SSPlayer(
 ```
 
 **Available Callback Arguments:**
-- `on_user_data`: Called when User Data is reached
+- `on_user_data`: Called when User Data is reached. The event carries the values the key sets in `integer`, `string`, `point` as `(x, y)` and `rect` as `(left, top, right, bottom)`; a value the key does not set is `None`
 - `on_signal`: Called when a Signal is reached
 - `on_audio`: Called when an audio playback specified frame is reached. The player plays the sound itself, so use this to react to it (a subtitle, say), not to play it again
 - `on_animation_finished`: Called once every configured `loop` has played. Never fires under an infinite loop, nor on a commanded stop
