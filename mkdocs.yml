@@ -24,6 +24,28 @@ extra:
       link: https://x.com/spritestudio
       name: SpriteStudio on X
 
+plugins:
+  - search
+  - redirects
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |
+        Ren'Py player for visual-novel authors: launching the game from the Ren'Py launcher
+        converts the SpriteStudio projects in `SpriteStudio_Source/`, and `show ringo wait1`
+        shows one.
+      sections:
+        Using the Player:
+          - index.md: "What the player is, its key features, and the related repositories."
+          - setup.md: "Installing the player into a game: requirements, placing the library, where the `.ssab` files go, and updating or removing it."
+          - import.md: "Converting `.sspj` into `.ssab`: the Auto Importer on launch, SSConverter GUI, `ssconverter-cli` for scripts and CI, the browser converter, and release builds with `.rpa` archives."
+          - usage.md: "Every API used from a script: `show`, `SSPlayer` in screens, loop counts, control from Python, part tracking, part overrides, texture swaps for costumes and expressions, user data and signal events, utilities, and the Shift+B browser."
+          - buttons.md: "`SSButton`, an animation as a Ren'Py button: a part of the animation per state, clicks only on chosen parts, reduced motion, and self-voicing."
+          - export.md: "What this player adds to a desktop, Android, iOS or Web export."
+          - limitations.md: "What this player does not support, or supports in part. The limitations every player shares are on the portal."
+        For Player & SDK Developers:
+          - development/build.md: "Building the player, using a changed copy in a game, the export helper scripts, and checking a change in Ren'Py."
+          - development/architecture.md: "The player's layers, where the native library loads from, and why it is built the way it is."
+
 nav:
   - 🏠 Home: index.md
   - 🚀 Setup Guide: setup.md
