@@ -23,8 +23,8 @@ For detailed specifications, import procedures, and API references, please visit
 - [**Documentation site (hosted)**](https://cri-middleware.github.io/SSPlayerForRenPy/)
 - [**Documentation (English)**](./docs/en/index.md)
 - [**ドキュメント (日本語)**](./docs/ja/index.md)
-- [**For AI assistants**](https://cri-middleware.github.io/SSPlayerForRenPy/llms.txt) — these docs as Markdown: `llms.txt` indexes the pages and `llms-full.txt` holds all of them in one file
-- [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place
+- [**For AI assistants**](https://cri-middleware.github.io/SSPlayerForRenPy/llms.txt) — these docs as Markdown: `llms.txt` indexes the pages and `llms-full.txt` holds all of them in one file; the installed player carries the same pages in `game/spritestudio/`
+- [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place, with a [plugin](https://cri-middleware.github.io/SpriteStudio-Docs/ai/) that tells your coding assistant about SpriteStudio
 
 ### Quick Links
 - [Setup Guide](docs/en/setup.md)
