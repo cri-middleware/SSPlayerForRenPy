@@ -521,7 +521,7 @@ Press **Shift+B** in developer mode to open the **SpriteStudio Browser** — a b
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/2-asset_browser.webm" type="video/webm">
 > </video>
-> <img src="assets/2-asset_browser.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/2-asset_browser.webp" alt="The SpriteStudio Browser over the running demo: choosing the Ringo pack plays it in the preview, clicking animation names switches between them, and Save snippet writes the generated snippet to ss_snippets.txt in the project folder, shown open in a text editor." width="100%" style="display: none;" loading="lazy">
 
 The window has three panes:
 
@@ -542,4 +542,4 @@ You do not have to relaunch to pick up a brand-new pack. Drop a new project into
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/3-asset_browser_autoimport.webm" type="video/webm">
 > </video>
-> <img src="assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/3-asset_browser_autoimport.webp" alt="The SPR folder dragged into SpriteStudio_Source/ is converted while the game reloads by itself, and its packs appear in the SpriteStudio Browser, where one is chosen and plays." width="100%" style="display: none;" loading="lazy">

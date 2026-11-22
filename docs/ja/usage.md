@@ -521,7 +521,7 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/2-asset_browser.webm" type="video/webm">
 > </video>
-> <img src="assets/2-asset_browser.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/2-asset_browser.webp" alt="起動中のデモに重ねて開いた SpriteStudio Browser で Ringo のパックを選ぶとプレビューで再生され、アニメーション名をクリックすると切り替わり、Save snippet で生成されたスニペットがプロジェクトフォルダの ss_snippets.txt に書き出され、テキストエディタで開かれる。" width="100%" style="display: none;" loading="lazy">
 
 ウィンドウは3ペイン構成です。
 
@@ -542,4 +542,4 @@ $ ss_play_once("ss_assets/ParticleEffect/e038.ssab", "hit",
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/3-asset_browser_autoimport.webm" type="video/webm">
 > </video>
-> <img src="assets/3-asset_browser_autoimport.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/3-asset_browser_autoimport.webp" alt="SPR フォルダを SpriteStudio_Source/ へドラッグすると、ゲームが自動でリロードされる間にコンバートされ、SpriteStudio Browser にそのパックが並び、1 つを選ぶと再生される。" width="100%" style="display: none;" loading="lazy">
