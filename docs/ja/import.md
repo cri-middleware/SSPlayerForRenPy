@@ -84,7 +84,7 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/1-auto_import_live.webm" type="video/webm">
 > </video>
-> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/1-auto_import_live.webp" alt="Ren'Py のデモを起動したまま SpriteStudio_Source/Ringo の Ringo.sspj を SpriteStudio で開き、頭のりんごを大きくして保存すると、起動中のゲームが自動でリロードされ、大きくなったりんごが映る。" width="100%" style="display: none;" loading="lazy">
 
 > [!TIP]
 > **出力パスのカスタマイズ**ソースとなる配置場所や出力先パスを変更したい場合は、Ren'Pyスクリプト側で変数を定義して上書きできます。

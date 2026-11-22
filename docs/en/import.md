@@ -89,7 +89,7 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 > <video autoplay loop muted playsinline width="100%">
 >   <source src="assets/1-auto_import_live.webm" type="video/webm">
 > </video>
-> <img src="assets/1-auto_import_live.webp" width="100%" style="display: none;" loading="lazy">
+> <img src="assets/1-auto_import_live.webp" alt="With the Ren'Py demo running, Ringo.sspj is opened in SpriteStudio from SpriteStudio_Source/Ringo, the apple on Ringo's head is enlarged and saved, and the running game reloads by itself to show the bigger apple." width="100%" style="display: none;" loading="lazy">
 
 > [!TIP]
 > **Customizing Output Paths**
