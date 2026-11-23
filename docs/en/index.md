@@ -1,6 +1,6 @@
 # 🎭 SpriteStudio Player for Ren'Py
 
-A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. Put a SpriteStudio project in your game, press **Launch Project** in the Ren'Py launcher, and show the animation with a `show` line.
+A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/eng/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. Put a SpriteStudio project in your game, press **Launch Project** in the Ren'Py launcher, and show the animation with a `show` line.
 
 !!! tip "Try it in your browser"
     [▶️ Run the sample project](demo/) — a Ren'Py Web build published alongside this
@@ -11,6 +11,7 @@ A plugin (player) to play animations created in [SpriteStudio](https://www.webte
     Japanese only, but the downloads themselves are language-neutral.
     [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and
     [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects.
+    To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
 
 ## Table of Contents
 
