@@ -202,6 +202,32 @@ try {
         Write-Host "${APP}: docs=no -- site\ keeps whatever the last build left there"
     }
 
+    # Puts a fixed "Powered by" box, linking to the docs and the repository, into
+    # every *.html directly in $Dir, ahead of the last </body>. $Root is the path
+    # from those pages to the site root.
+    function Add-DemoLinks {
+        param([string] $Dir, [string] $Root)
+        if (!(Test-Path -LiteralPath $Dir -PathType Container)) { return }
+        $a = 'target="_blank" rel="noopener" style="color:#fff"'
+        $links = '<div id="ss-demo-links" style="position:fixed;left:12px;bottom:12px;z-index:2147483647;padding:4px 10px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:12px/1.6 system-ui,sans-serif">' +
+            "Powered by SpriteStudio Player for Ren'Py &middot; <a href=`"$Root`" $a>Docs</a>" +
+            " &middot; <a href=`"https://github.com/cri-middleware/SSPlayerForRenPy`" $a>GitHub</a></div>"
+        foreach ($page in Get-ChildItem -LiteralPath $Dir -Filter '*.html' -File) {
+            $text = [IO.File]::ReadAllText($page.FullName)
+            if ($text.Contains('id="ss-demo-links"')) { continue }
+            $at = $text.LastIndexOf('</body>', [StringComparison]::OrdinalIgnoreCase)
+            if ($at -ge 0) {
+                $text = $text.Insert($at, $links)
+            } else {
+                if ($text.Length -gt 0 -and !$text.EndsWith("`n")) { $text += "`n" }
+                $text += $links
+            }
+            if (!$text.EndsWith("`n")) { $text += "`n" }
+            [IO.File]::WriteAllText($page.FullName, $text)
+        }
+        Write-Host "   links to the docs and the repository -> site\$($Dir.Substring($SITE_DIR.Length).TrimStart('/', '\'))\*.html"
+    }
+
     # --- demo: download the release asset (what pages.yml does) -----------
     function Get-Demo {
         $src = $opts.zip
@@ -246,6 +272,7 @@ try {
         New-Item -ItemType Directory -Force -Path $DEMO_DIR | Out-Null
         Expand-Archive -Path $src -DestinationPath $DEMO_DIR -Force
         if ($tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+        Add-DemoLinks $DEMO_DIR "../"
     }
 
     # --- demo: build it here (what release.yml does) ----------------------
@@ -309,6 +336,7 @@ try {
         if (Test-Path $DEMO_DIR) { Remove-Item -Recurse -Force $DEMO_DIR }
         New-Item -ItemType Directory -Force -Path $DEMO_DIR | Out-Null
         Copy-Item -Path (Join-Path (Join-Path $ROOT_DIR $WORK_DIR) "*") -Destination $DEMO_DIR -Recurse -Force
+        Add-DemoLinks $DEMO_DIR "../"
     }
 
     switch ($opts.demo) {
