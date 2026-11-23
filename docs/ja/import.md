@@ -4,47 +4,8 @@
 
 Ren'Py ランチャーからゲームを起動すると変換するのが Auto Importer（方法 1）で、README の手順はこれです。方法 2〜4 は Ren'Py を起動せずに変換します（デスクトップの GUI、スクリプトや CI 向けの CLI、ブラウザのツール）。
 
-```mermaid
-graph LR
-    SS[" .sspj / 画像<br>(ソースアセット) "]
-
-    subgraph Convert ["① 開発中"]
-        AUTO[[" Auto Importer<br>(Ren'Py起動時) "]]
-        GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
-        CLI[[" ssconverter-cli<br>(CLIツール) "]]
-        WEB[[" ssconverter-web<br>(Webブラウザ) "]]
-    end
-
-    DEPLOY(("配置<br>(Deploy)"))
-
-    subgraph RenPy ["② Ren'Py のプロジェクト"]
-        BIN[" game/ss_assets/Ringo/<br>.ssab + テクスチャ "]
-    end
-
-    SS -- "SpriteStudio_Source/ に配置" --> AUTO
-    SS -- "ドラッグ＆ドロップ" --> GUI
-    SS -- "CLI / CI" --> CLI
-    SS -- "ブラウザにドロップ" --> WEB
-    
-    AUTO -. "自動生成" .-> BIN
-    GUI -. "手動で配置" .-> DEPLOY
-    CLI -. "手動で配置" .-> DEPLOY
-    WEB -. "解凍して配置" .-> DEPLOY
-    
-    DEPLOY --> BIN
-
-    classDef generated stroke-dasharray: 5 5;
-    class BIN generated;
-```
-
 > [!TIP]
 > 手元に `.sspj` がまだ無い状態で試したい場合は、[SpriteStudio 公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo)、エフェクトを含むものなら [パーティクル](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) が手頃です。ダウンロードしたプロジェクト一式は、以下のどのコンバート方法にもそのまま渡せます。
-
-> [!NOTE]
-> **どの SpriteStudio ファイルが、変換後のどれになるのか**（`.sspj` / `.ssae` / `.ssce` / `.ssqe` の役割と対応）は Player 共通なので、ポータルにまとめてあります —
-> [アセットの変換 — プロジェクトの構成と、変換後の対応](https://cri-middleware.github.io/SpriteStudio-Docs/ja/overview/conversion/#プロジェクトの構成と変換後の対応)。
->
-> 要点は 2 つです。**`.ssae` 1 本が `.ssab` 1 本**になること、そして**セルの切り出し位置は `.ssce` から `.ssab` へ焼き込まれる**こと。後者があるため、セルを追加・移動・リサイズしたり画像サイズを変えたりしたときは、**画像だけでなく `.ssab` も作り直して一緒に配置**してください。画像だけを新しくすると、古い切り出し位置のまま描画されて絵がずれます。
 
 ---
 
@@ -96,6 +57,49 @@ Ren'Pyの起動時に `.sspj` ファイルの更新を自動で検知し、裏�
 
 > [!IMPORTANT]
 > **方法 2〜4 は Ren'Py を起動せずに変換するので、出力は自分で置きます。** 変換したフォルダはそのまま `game/ss_assets/` に置いてください。`.ssab` とそのテクスチャ（`.png`）、参照する外部インスタンスパックは同じフォルダに置きます。プレイヤーはそれらを `.ssab` の隣から読み込みます。SSConverter GUI と `ssconverter-web` の **Embedded Assets**、`ssconverter-cli` の `--embedded` はオフのままにしてください。プレイヤーは `.ssab` の中のテクスチャや音を読みません。
+
+---
+
+## 変換方法の全体像
+
+```mermaid
+graph LR
+    SS[" .sspj / 画像<br>(ソースアセット) "]
+
+    subgraph Convert ["① 開発中"]
+        AUTO[[" Auto Importer<br>(Ren'Py起動時) "]]
+        GUI[[" SSConverter GUI<br>(GUIアプリ) "]]
+        CLI[[" ssconverter-cli<br>(CLIツール) "]]
+        WEB[[" ssconverter-web<br>(Webブラウザ) "]]
+    end
+
+    DEPLOY(("配置<br>(Deploy)"))
+
+    subgraph RenPy ["② Ren'Py のプロジェクト"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + テクスチャ "]
+    end
+
+    SS -- "SpriteStudio_Source/ に配置" --> AUTO
+    SS -- "ドラッグ＆ドロップ" --> GUI
+    SS -- "CLI / CI" --> CLI
+    SS -- "ブラウザにドロップ" --> WEB
+    
+    AUTO -. "自動生成" .-> BIN
+    GUI -. "手動で配置" .-> DEPLOY
+    CLI -. "手動で配置" .-> DEPLOY
+    WEB -. "解凍して配置" .-> DEPLOY
+    
+    DEPLOY --> BIN
+
+    classDef generated stroke-dasharray: 5 5;
+    class BIN generated;
+```
+
+> [!NOTE]
+> **どの SpriteStudio ファイルが、変換後のどれになるのか**（`.sspj` / `.ssae` / `.ssce` / `.ssqe` の役割と対応）は Player 共通なので、ポータルにまとめてあります —
+> [アセットの変換 — プロジェクトの構成と、変換後の対応](https://cri-middleware.github.io/SpriteStudio-Docs/ja/overview/conversion/#プロジェクトの構成と変換後の対応)。
+>
+> 要点は 2 つです。**`.ssae` 1 本が `.ssab` 1 本**になること、そして**セルの切り出し位置は `.ssce` から `.ssab` へ焼き込まれる**こと。後者があるため、セルを追加・移動・リサイズしたり画像サイズを変えたりしたときは、**画像だけでなく `.ssab` も作り直して一緒に配置**してください。画像だけを新しくすると、古い切り出し位置のまま描画されて絵がずれます。
 
 ---
 

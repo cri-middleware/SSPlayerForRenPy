@@ -12,10 +12,6 @@ label start:
     show ringo wait1
 ```
 
-- The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the SpriteStudio Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
-- A tag the game already defines — an `image` statement, an `SSCharacter`, a file under `images/` — is left alone, so the definitions below take over as soon as you write one. Of two packs that spell one tag, the first in path order has it.
-- `define ss_auto_images = False` turns this off.
-
 > [!TIP]
 > Not sure which pack or animation to use? Open the **SpriteStudio Browser** with **Shift+B** in developer mode to browse every `.ssab`, preview animations live, and copy a ready-to-paste snippet. See the **SpriteStudio Browser** section (§10) below.
 
@@ -84,6 +80,13 @@ label start:
 
 > [!NOTE]
 > While a line is spoken, `talk` replaces the attribute the sprite was showing, so an emotion such as `show ringo happy` is not visible during the line; it comes back when the line ends. There is no per-emotion talk animation.
+
+### Image Names
+How a converted pack becomes the image `show` uses:
+
+- The tag is the file name, lowercased, with anything a `show` statement cannot spell (a space, a bracket) turned into `_`: `BG art w pink.ssab` is `bg_art_w_pink`. The packs are the ones the SpriteStudio Browser lists — under `ss_assets/` and the Auto Importer's `ss_output_dir`.
+- A tag the game already defines — an `image` statement, an `SSCharacter`, a file under `images/` — is left alone, so the definitions above take over as soon as you write one. Of two packs that spell one tag, the first in path order has it.
+- `define ss_auto_images = False` turns these images off.
 
 ---
 

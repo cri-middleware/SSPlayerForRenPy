@@ -4,51 +4,8 @@ The `.sspj` file is converted to `.ssab` **during development, never while the g
 
 The Auto Importer (Method 1) converts when you launch the game from the Ren'Py launcher — the route the README takes. Methods 2–4 convert without Ren'Py running: a desktop GUI, a CLI for scripts and CI, and a browser tool.
 
-```mermaid
-graph LR
-    SS[" .sspj / Images<br>(Source Assets) "]
-
-    subgraph Convert ["① During development"]
-        AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
-        GUI[[" SSConverter GUI<br>(GUI App) "]]
-        CLI[[" ssconverter-cli<br>(CLI Tool) "]]
-        WEB[[" ssconverter-web<br>(Web Browser) "]]
-    end
-
-    DEPLOY(("Deploy"))
-
-    subgraph RenPy ["② Your Ren'Py project"]
-        BIN[" game/ss_assets/Ringo/<br>.ssab + Textures "]
-    end
-
-    SS -- "Place in SpriteStudio_Source/" --> AUTO
-    SS -- "Drag & Drop" --> GUI
-    SS -- "CLI / CI" --> CLI
-    SS -- "Drop in Browser" --> WEB
-    
-    AUTO -. "Auto Generate" .-> BIN
-    GUI -. "Manual Deploy" .-> DEPLOY
-    CLI -. "Manual Deploy" .-> DEPLOY
-    WEB -. "Unzip & Deploy" .-> DEPLOY
-    
-    DEPLOY --> BIN
-
-    classDef generated stroke-dasharray: 5 5;
-    class BIN generated;
-```
-
 > [!TIP]
 > If you do not have a `.sspj` yet and just want to try this out, the [official SpriteStudio sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is (that page is only available in Japanese; the downloads themselves are language-neutral). [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects. The downloaded project feeds any of the conversion methods below as-is.
-
-> [!NOTE]
-> **Which SpriteStudio file becomes which converted file** (the roles of `.sspj` / `.ssae` / `.ssce` /
-> `.ssqe` and how they map) is the same for every Player, so it is documented in the portal —
-> [Asset Conversion — How a project's files map to the output](https://cri-middleware.github.io/SpriteStudio-Docs/overview/conversion/#how-a-projects-files-map-to-the-output).
->
-> Two points matter. **One `.ssae` becomes one `.ssab`**, and **cell positions are baked from the
-> `.ssce` into the `.ssab`**. Because of the latter, whenever you add, move or resize cells, or change
-> the image size, **rebuild the `.ssab` and ship it alongside the image** — replacing the image alone
-> leaves the old source rectangles in place and the artwork shifts.
 
 ---
 
@@ -107,6 +64,53 @@ Press **`Shift + R`** once in the running game and you are done pressing it: the
 > beside the `.ssab`. Leave **Embedded Assets** (SSConverter GUI, `ssconverter-web`) and
 > `--embedded` (`ssconverter-cli`) off: the player does not read textures and sounds from inside
 > the `.ssab`.
+
+---
+
+## How the Methods Fit Together
+
+```mermaid
+graph LR
+    SS[" .sspj / Images<br>(Source Assets) "]
+
+    subgraph Convert ["① During development"]
+        AUTO[[" Auto Importer<br>(On Ren'Py Startup) "]]
+        GUI[[" SSConverter GUI<br>(GUI App) "]]
+        CLI[[" ssconverter-cli<br>(CLI Tool) "]]
+        WEB[[" ssconverter-web<br>(Web Browser) "]]
+    end
+
+    DEPLOY(("Deploy"))
+
+    subgraph RenPy ["② Your Ren'Py project"]
+        BIN[" game/ss_assets/Ringo/<br>.ssab + Textures "]
+    end
+
+    SS -- "Place in SpriteStudio_Source/" --> AUTO
+    SS -- "Drag & Drop" --> GUI
+    SS -- "CLI / CI" --> CLI
+    SS -- "Drop in Browser" --> WEB
+    
+    AUTO -. "Auto Generate" .-> BIN
+    GUI -. "Manual Deploy" .-> DEPLOY
+    CLI -. "Manual Deploy" .-> DEPLOY
+    WEB -. "Unzip & Deploy" .-> DEPLOY
+    
+    DEPLOY --> BIN
+
+    classDef generated stroke-dasharray: 5 5;
+    class BIN generated;
+```
+
+> [!NOTE]
+> **Which SpriteStudio file becomes which converted file** (the roles of `.sspj` / `.ssae` / `.ssce` /
+> `.ssqe` and how they map) is the same for every Player, so it is documented in the portal —
+> [Asset Conversion — How a project's files map to the output](https://cri-middleware.github.io/SpriteStudio-Docs/overview/conversion/#how-a-projects-files-map-to-the-output).
+>
+> Two points matter. **One `.ssae` becomes one `.ssab`**, and **cell positions are baked from the
+> `.ssce` into the `.ssab`**. Because of the latter, whenever you add, move or resize cells, or change
+> the image size, **rebuild the `.ssab` and ship it alongside the image** — replacing the image alone
+> leaves the old source rectangles in place and the artwork shifts.
 
 ---
 

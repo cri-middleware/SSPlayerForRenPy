@@ -26,12 +26,6 @@
 - [**AI アシスタント向け**](https://cri-middleware.github.io/SSPlayerForRenPy/ja/llms.txt) — このドキュメントを Markdown で提供します。`llms.txt` はページの目次、`llms-full.txt` は全ページを 1 ファイルにまとめたものです。インストールした Player にも、同じページが `game/spritestudio/` に入っています
 - [**SpriteStudio Docs（ポータル）**](https://cri-middleware.github.io/SpriteStudio-Docs/ja/) — SDK と全公式 Player の入口。コーディングアシスタントに SpriteStudio を教える[プラグイン](https://cri-middleware.github.io/SpriteStudio-Docs/ja/ai/)もあります
 
-### クイックリンク
-- [導入ガイド (Setup)](docs/ja/setup.md)
-- [アセットの取り込み (Import)](docs/ja/import.md)
-- [再生と制御 (Usage)](docs/ja/usage.md)
-- [制約と適用範囲](docs/ja/limitations.md)
-
 ---
 
 ## 🚀 クイックスタート
@@ -65,21 +59,21 @@
            └── …
    ```
 
-3. **表示**: 変換したパックは、そのまま画像として使えます。名前は `.ssab` のファイル名を小文字にしたもので、アニメーションが属性になります。`game/script.rpy` に次のように書きます。
+3. **表示**: 変換したパックは、そのまま画像として使えます。名前は `.ssab` のファイル名を小文字にしたもので、アニメーションが属性になります。`game/script.rpy` の、新しいプロジェクトなら `show eileen happy` がある行を `show ringo wait1` にします。
 
    ```renpy
    label start:
+
+       scene bg room
+
        show ringo wait1
-       "こんにちは！"
    ```
 
    名前が分からないときは、ゲームの実行中に **Shift+B** を押してください。SpriteStudio Browserがパックとアニメーションを一覧にして再生し、貼り付けるスニペットをコピーしてくれます。
 
-SpriteStudio で編集したら、ゲームの実行中に **Shift+R** を 1 回押してください。以後は保存するたびに変更が変換され、ゲームが自動で読み込み直されます。押すのは 1 回だけです。もう一度押すとオフになります（[ホットリロード](docs/ja/import.md#ホットリロード)）。
-
 SpriteStudio のデータが手元に無くても始められます。[公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) が手頃です。
 
-**次に読む:** [再生と制御](docs/ja/usage.md) · [アセットの取り込み](docs/ja/import.md)（Ren'Py を起動せずに変換する方法も含む） · [制約と適用範囲](docs/ja/limitations.md)
+**次に読む:** [再生と制御](docs/ja/usage.md) · [アセットの取り込み](docs/ja/import.md)（SpriteStudio で編集したあとの[ホットリロード](docs/ja/import.md#ホットリロード)と、Ren'Py を起動せずに変換する方法も含む） · [制約と適用範囲](docs/ja/limitations.md)
 
 ## 🔗 関連リポジトリ
 
