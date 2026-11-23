@@ -12,10 +12,6 @@ label start:
     show ringo wait1
 ```
 
-- タグはファイル名を小文字にしたもので、`show` に書けない文字（空白や括弧）は `_` に置き換わります。`BG art w pink.ssab` なら `bg_art_w_pink` です。対象のパックはSpriteStudio Browserに並ぶもの（`ss_assets/` と Auto Importer の `ss_output_dir` の下）です。
-- ゲームがすでに定義しているタグ（`image` 文、`SSCharacter`、`images/` の下のファイル）には手を付けないので、下の定義を書けばそちらが使われます。同じタグになるパックが 2 つあるときは、パス順で先のものがそのタグになります。
-- `define ss_auto_images = False` で無効にできます。
-
 > [!TIP]
 > どのパック／アニメーションを使えばいいか分からないときは、開発者モードで **Shift+B** から **SpriteStudio Browser** を開けば、全 `.ssab` を一覧・ライブプレビューし、貼り付け可能なスニペットをコピーできます。詳細は下の **SpriteStudio Browser**（§10）を参照。
 
@@ -84,6 +80,13 @@ label start:
 
 > [!NOTE]
 > 台詞の間は `talk` が表示中の属性を置き換えるため、`show ringo happy` のような感情は台詞の間は見えませんが、台詞が終わると元に戻ります。感情ごとの talk アニメには対応していません。
+
+### 画像の名前
+変換したパックが `show` で使う画像になるときの決まりです。
+
+- タグはファイル名を小文字にしたもので、`show` に書けない文字（空白や括弧）は `_` に置き換わります。`BG art w pink.ssab` なら `bg_art_w_pink` です。対象のパックはSpriteStudio Browserに並ぶもの（`ss_assets/` と Auto Importer の `ss_output_dir` の下）です。
+- ゲームがすでに定義しているタグ（`image` 文、`SSCharacter`、`images/` の下のファイル）には手を付けないので、上の定義を書けばそちらが使われます。同じタグになるパックが 2 つあるときは、パス順で先のものがそのタグになります。
+- `define ss_auto_images = False` で、パックが自動で画像になるのを止められます。
 
 ---
 

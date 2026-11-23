@@ -26,12 +26,6 @@ For detailed specifications, import procedures, and API references, please visit
 - [**For AI assistants**](https://cri-middleware.github.io/SSPlayerForRenPy/llms.txt) — these docs as Markdown: `llms.txt` indexes the pages and `llms-full.txt` holds all of them in one file; the installed player carries the same pages in `game/spritestudio/`
 - [**SpriteStudio Docs (portal)**](https://cri-middleware.github.io/SpriteStudio-Docs/) — the SDK and every official player in one place, with a [plugin](https://cri-middleware.github.io/SpriteStudio-Docs/ai/) that tells your coding assistant about SpriteStudio
 
-### Quick Links
-- [Setup Guide](docs/en/setup.md)
-- [Asset Import](docs/en/import.md)
-- [Usage Guide](docs/en/usage.md)
-- [Limitations & Scope](docs/en/limitations.md)
-
 ---
 
 ## 🚀 Quick Start
@@ -75,25 +69,25 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    ```
 
 3. **Show**: Every converted pack is already an image, named after its `.ssab` in lower case,
-   with its animations as attributes. In `game/script.rpy`:
+   with its animations as attributes. In `game/script.rpy`, put `show ringo wait1` where a new project
+   has `show eileen happy`:
 
    ```renpy
    label start:
+
+       scene bg room
+
        show ringo wait1
-       "Hello!"
    ```
 
    Not sure of a name? Press **Shift+B** in the running game: the SpriteStudio Browser lists every pack
    and animation, plays them, and copies a snippet to paste.
 
-After editing in SpriteStudio, press **Shift+R** once in the running game; from then on every save
-converts the change and reloads the game by itself. Press it only once — a second press turns it
-off ([hot reload](docs/en/import.md#hot-reload)).
-
 No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with.
 
 **Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
-the converters that work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
+[hot reload](docs/en/import.md#hot-reload) after editing in SpriteStudio, and the converters that
+work without Ren'Py running · [Limitations & Scope](docs/en/limitations.md)
 
 ## 🔗 Related Repositories
 
