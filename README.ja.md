@@ -71,7 +71,7 @@
 
    名前が分からないときは、ゲームの実行中に **Shift+B** を押してください。SpriteStudio Browserがパックとアニメーションを一覧にして再生し、貼り付けるスニペットをコピーしてくれます。
 
-SpriteStudio のデータが手元に無くても始められます。[公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) が手頃です。
+SpriteStudio のデータが手元に無くても始められます。[公式のサンプルデータ](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/)がそのまま使えます。キャラクターなら [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) が手頃です。自分のアニメーションを作るには SpriteStudio 本体を使います（[製品サイト](https://www.webtech.co.jp/spritestudio/)）。
 
 **次に読む:** [再生と制御](docs/ja/usage.md) · [アセットの取り込み](docs/ja/import.md)（SpriteStudio で編集したあとの[ホットリロード](docs/ja/import.md#ホットリロード)と、Ren'Py を起動せずに変換する方法も含む） · [制約と適用範囲](docs/ja/limitations.md)
 

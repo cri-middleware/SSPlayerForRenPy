@@ -6,7 +6,7 @@
 
 ▶️ **[Try the live demo in your browser](https://cri-middleware.github.io/SSPlayerForRenPy/demo/)** — the bundled SpriteStudio animations running in Ren'Py Web.
 
-An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
+An extension (player) that plays **[SpriteStudio](https://www.webtech.co.jp/eng/spritestudio/)** animations (`.ssab`) directly in [Ren'Py](https://www.renpy.org/). Animate the sprite art you already use (PNG / WebP) in a dedicated editor, then drop the finished animation into your project — with none of the long, complex ATL or heavy video files it would normally take.
 
 ## ✨ Why use SpriteStudio with Ren'Py?
 
@@ -83,7 +83,7 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    Not sure of a name? Press **Shift+B** in the running game: the SpriteStudio Browser lists every pack
    and animation, plays them, and copies a snippet to paste.
 
-No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with.
+No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with. To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
 
 **Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
 [hot reload](docs/en/import.md#hot-reload) after editing in SpriteStudio, and the converters that
