@@ -83,7 +83,7 @@ You need **Ren'Py 8.x** (the Python 3 line), and a project made in **SpriteStudi
    Not sure of a name? Press **Shift+B** in the running game: the SpriteStudio Browser lists every pack
    and animation, plays them, and copies a snippet to paste.
 
-No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character to start with. To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
+No `.sspj` of your own yet? SpriteStudio's [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — the page is in Japanese, the downloads are not. [Ringo](https://www.webtech.co.jp/spritestudio/ss6user/download/OPTPiX_SpriteStudio_Ringo_Sample_20220121.zip) is a good character to start with. To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
 
 **Read next:** [Usage Guide](docs/en/usage.md) · [Asset Import](docs/en/import.md) — including
 [hot reload](docs/en/import.md#hot-reload) after editing in SpriteStudio, and the converters that
