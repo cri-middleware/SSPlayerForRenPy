@@ -3,7 +3,7 @@
 [SpriteStudio](https://www.webtech.co.jp/spritestudio/) で作成したアニメーションを [Ren'Py](https://www.renpy.org/) 上で再生するためのプラグイン（プレイヤー）です。SpriteStudio のプロジェクトをゲームに置き、Ren'Py ランチャーで **プロジェクトの起動** を押せば、`show` の 1 行でアニメを表示できます。
 
 !!! tip "ブラウザで試す"
-    [▶️ サンプルプロジェクトを再生する](../demo/) — 本ドキュメントと同じサイトで公開している
+    [▶️ サンプルプロジェクトを再生する](https://cri-middleware.github.io/SSPlayerForRenPy/demo/) — 本ドキュメントと同じサイトで公開している
     Ren'Py Web ビルドです。インストールは不要です。
 
 !!! tip "SpriteStudio のデータが手元に無くても始められます"

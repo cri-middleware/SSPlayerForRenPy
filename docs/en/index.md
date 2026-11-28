@@ -3,7 +3,7 @@
 A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/eng/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. Put a SpriteStudio project in your game, press **Launch Project** in the Ren'Py launcher, and show the animation with a `show` line.
 
 !!! tip "Try it in your browser"
-    [▶️ Run the sample project](demo/) — a Ren'Py Web build published alongside this
+    [▶️ Run the sample project](https://cri-middleware.github.io/SSPlayerForRenPy/demo/) — a Ren'Py Web build published alongside this
     documentation. Nothing to install.
 
 !!! tip "No SpriteStudio data of your own yet?"
