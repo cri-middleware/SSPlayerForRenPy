@@ -2,16 +2,16 @@
 
 A plugin (player) to play animations created in [SpriteStudio](https://www.webtech.co.jp/eng/spritestudio/) on the [Ren'Py](https://www.renpy.org/) visual novel engine. Put a SpriteStudio project in your game, press **Launch Project** in the Ren'Py launcher, and show the animation with a `show` line.
 
-!!! tip "Try it in your browser"
-    [▶️ Run the sample project](https://cri-middleware.github.io/SSPlayerForRenPy/demo/) — a Ren'Py Web build published alongside this
-    documentation. Nothing to install.
+> [!TIP] Try it in your browser
+> [▶️ Run the sample project](https://cri-middleware.github.io/SSPlayerForRenPy/demo/) — a Ren'Py Web build published alongside this
+> documentation. Nothing to install.
 
-!!! tip "No SpriteStudio data of your own yet?"
-    The [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — that page is
-    Japanese only, but the downloads themselves are language-neutral.
-    [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and
-    [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects.
-    To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
+> [!TIP] No SpriteStudio data of your own yet?
+> The [official sample data](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/) works as-is — that page is
+> Japanese only, but the downloads themselves are language-neutral.
+> [Ringo](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#ringo) is a good character sample, and
+> [Particle](https://www.webtech.co.jp/help/ja/spritestudio7/download/sample/#Perticle_sample) is a good one if you want effects.
+> To make your own, you use SpriteStudio itself — see [its site](https://www.webtech.co.jp/eng/spritestudio/).
 
 ## Table of Contents
 
